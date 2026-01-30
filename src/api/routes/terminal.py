@@ -4,8 +4,6 @@ import asyncio
 import os
 import shlex
 from collections.abc import AsyncIterator
-from typing import Literal
-
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel

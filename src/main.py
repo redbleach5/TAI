@@ -16,6 +16,7 @@ from src.api.routes.files import router as files_router
 from src.api.routes.git import router as git_router
 from src.api.routes.improve import router as improve_router
 from src.api.routes.models import router as models_router
+from src.api.routes.projects import router as projects_router
 from src.api.routes.rag import router as rag_router
 from src.api.routes.terminal import router as terminal_router
 from src.api.routes.workflow import router as workflow_router
@@ -59,6 +60,7 @@ app.include_router(files_router)
 app.include_router(git_router)
 app.include_router(improve_router)
 app.include_router(models_router)
+app.include_router(projects_router)
 app.include_router(rag_router)
 app.include_router(terminal_router)
 app.include_router(workflow_router)

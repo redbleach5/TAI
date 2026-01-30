@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { getConfig, patchConfig, type ConfigPatch, type ConfigResponse } from '../../api/client'
+import { ProjectSelector } from '../projects/ProjectSelector'
 
 export function SettingsPanel() {
   const [config, setConfig] = useState<ConfigResponse | null>(null)
@@ -46,6 +47,12 @@ export function SettingsPanel() {
   return (
     <div className="settings-panel">
       <h3>Настройки</h3>
+
+      <ProjectSelector />
+
+      <hr className="settings-panel__divider" />
+
+      <h4>Конфигурация LLM</h4>
       <p className="settings-panel__hint">
         Изменения сохраняются в config/development.toml. Перезапустите backend для применения.
       </p>

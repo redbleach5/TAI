@@ -4,7 +4,7 @@ import asyncio
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from src.api.dependencies import limiter
