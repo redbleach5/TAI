@@ -2,12 +2,13 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
-from src.api.dependencies import get_config, get_llm_adapter, limiter
+from src.api.container import get_container
+from src.api.dependencies import limiter
 from src.api.routes.assistant import router as assistant_router
 from src.api.routes.chat import router as chat_router
 from src.api.routes.code import router as code_router
@@ -21,19 +22,19 @@ from src.api.routes.projects import router as projects_router
 from src.api.routes.rag import router as rag_router
 from src.api.routes.terminal import router as terminal_router
 from src.api.routes.workflow import router as workflow_router
-from src.domain.ports.llm import LLMPort
 from src.shared.logging import setup_logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: load config, setup logging."""
-    config = get_config()
-    setup_logging(config.log_level)
+    container = get_container()
+    setup_logging(container.config.log_level)
     yield
     # Shutdown if needed
 
 
+# Create app
 app = FastAPI(
     title="CodeGen AI",
     version="0.1.0",
@@ -41,18 +42,21 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Rate limiting
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-config = get_config()
+# CORS
+container = get_container()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=config.security.cors_origins,
+    allow_origins=container.config.security.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# Register routers
 app.include_router(assistant_router)
 app.include_router(chat_router)
 app.include_router(code_router)
@@ -70,16 +74,13 @@ app.include_router(workflow_router)
 
 @app.get("/health")
 @limiter.limit("100/minute")
-async def health(
-    request: Request,
-    llm: LLMPort = Depends(get_llm_adapter),
-):
+async def health(request: Request):
     """Health check with LLM availability."""
-    llm_available = await llm.is_available()
-    provider = get_config().llm.provider
+    container = get_container()
+    llm_available = await container.llm.is_available()
     return {
         "status": "ok",
         "service": "codegen-ai",
-        "llm_provider": provider,
+        "llm_provider": container.config.llm.provider,
         "llm_available": llm_available,
     }
