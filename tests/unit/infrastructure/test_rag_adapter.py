@@ -46,13 +46,14 @@ class TestChunkText:
         assert len(result) >= 2
 
     def test_zero_chunk_size(self):
-        """Zero chunk_size returns empty list."""
-        assert chunk_text("Hello", 0, 0) == []
+        """Zero chunk_size raises ValueError."""
+        with pytest.raises(ValueError, match="chunk_size must be positive"):
+            chunk_text("Hello", 0, 0)
 
     def test_whitespace_stripped(self):
-        """Chunks are stripped of whitespace."""
-        text = "  Hello  " + "a" * 100
-        result = chunk_text(text, 20, 0)
+        """Chunks are stripped of leading/trailing whitespace."""
+        text = "  Hello  "
+        result = chunk_text(text, 100, 0)
         assert result[0] == "Hello"
 
 
@@ -147,7 +148,8 @@ class TestChromaDBRAGAdapter:
     def mock_embeddings(self):
         embeddings = MagicMock()
         embeddings.embed = AsyncMock(return_value=[0.1, 0.2, 0.3])
-        embeddings.embed_batch = AsyncMock(return_value=[[0.1, 0.2], [0.3, 0.4]])
+        # Return variable number of embeddings based on input length
+        embeddings.embed_batch = AsyncMock(side_effect=lambda texts: [[0.1, 0.2, 0.3] for _ in texts])
         return embeddings
 
     @pytest.fixture

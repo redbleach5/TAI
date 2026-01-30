@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from src.domain.ports.llm import LLMMessage, LLMResponse
 from src.infrastructure.agents.planner import planner_node
-from src.infrastructure.agents.tests_writer import tests_writer_node
+from src.infrastructure.agents.tests_writer import tests_writer_node as write_tests_node
 from src.infrastructure.agents.coder import coder_node
 from src.infrastructure.agents.researcher import researcher_node
 from src.infrastructure.agents.validator import validator_node
@@ -13,8 +13,22 @@ from src.infrastructure.agents.validator import validator_node
 
 @pytest.fixture
 def mock_llm():
-    """Mock LLM adapter."""
+    """Mock LLM adapter with both generate and generate_stream."""
     llm = MagicMock()
+    
+    # Mock generate for non-streaming calls
+    from src.domain.ports.llm import LLMResponse
+    llm.generate = AsyncMock(return_value=LLMResponse(
+        content="Step 1: Define function\nStep 2: Implement logic",
+        model="test-model",
+    ))
+    
+    # Mock generate_stream as async generator
+    async def mock_stream(*args, **kwargs):
+        yield "Step 1: Define function\n"
+        yield "Step 2: Implement logic"
+    llm.generate_stream = mock_stream
+    
     return llm
 
 
@@ -78,13 +92,14 @@ class TestTestsWriter:
         """Tests writer updates state with tests."""
         base_state["plan"] = "Step 1: Define function"
 
-        async def mock_stream(*args, **kwargs):
-            yield "def test_factorial():\n"
-            yield "    assert factorial(5) == 120"
+        # Mock generate for non-streaming case (on_chunk=None)
+        from src.domain.ports.llm import LLMResponse
+        mock_llm.generate = AsyncMock(return_value=LLMResponse(
+            content="def test_factorial():\n    assert factorial(5) == 120",
+            model="test-model",
+        ))
 
-        mock_llm.generate_stream = mock_stream
-
-        result = await tests_writer_node(base_state, mock_llm, "test-model", None)
+        result = await write_tests_node(base_state, mock_llm, "test-model", None)
 
         assert result["tests"] is not None
         assert "test_factorial" in result["tests"]
@@ -100,12 +115,12 @@ class TestCoder:
         base_state["plan"] = "Step 1: Define function"
         base_state["tests"] = "def test_factorial(): pass"
 
-        async def mock_stream(*args, **kwargs):
-            yield "def factorial(n):\n"
-            yield "    if n <= 1: return 1\n"
-            yield "    return n * factorial(n-1)"
-
-        mock_llm.generate_stream = mock_stream
+        # Mock generate for non-streaming case (on_chunk=None)
+        from src.domain.ports.llm import LLMResponse
+        mock_llm.generate = AsyncMock(return_value=LLMResponse(
+            content="def factorial(n):\n    if n <= 1: return 1\n    return n * factorial(n-1)",
+            model="test-model",
+        ))
 
         result = await coder_node(base_state, mock_llm, "test-model", None)
 

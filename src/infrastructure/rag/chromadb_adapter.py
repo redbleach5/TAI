@@ -69,7 +69,7 @@ class ChromaDBRAGAdapter:
             
             meta = metadatas[i] if i < len(metadatas) else {}
             dist = distances[i] if i < len(distances) else 0.0
-            score = max(0, 1 - (dist / 2)) if dist is not None else 1.0
+            score = max(0.0, min(1.0, 1 - (dist / 2))) if dist is not None else 1.0
             
             if score < min_score:
                 continue
