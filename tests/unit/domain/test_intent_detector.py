@@ -22,13 +22,13 @@ def test_detect_help():
 
 
 def test_detect_code():
-    """Code patterns return code intent with template."""
+    """Code patterns return code intent (no template, handled by workflow)."""
     detector = IntentDetector()
     for msg in ("write a function", "создай класс", "implement sorting"):
         intent = detector.detect(msg)
         assert intent.kind == "code"
-        assert intent.response is not None
-        assert "Workflow" in intent.response or "Phase" in intent.response
+        # Code intents don't have a template response - they're handled by workflow
+        assert intent.response is None
 
 
 def test_detect_chat():
