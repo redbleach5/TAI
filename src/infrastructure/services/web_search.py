@@ -1,13 +1,25 @@
-"""Web Search service - multi-engine search with fallback."""
+"""Web Search service - multi-engine search with fallback.
+
+Production-ready implementation with:
+- Thread-safe LRU cache with configurable limits
+- URL normalization for deduplication
+- Parallel search with fallbacks
+"""
 
 import asyncio
 import hashlib
 import html
+import logging
 import re
+import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass, field
+from urllib.parse import urlparse, urlunparse
 
 from src.infrastructure.services.http_pool import get_http_client
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -19,35 +31,108 @@ class SearchResult:
     source: str = ""  # Which engine returned this
 
 
-@dataclass
 class SearchCache:
-    """Simple in-memory cache for search results."""
-    _cache: dict = field(default_factory=dict)
-    _ttl: int = 300  # 5 minutes
+    """Thread-safe LRU cache for search results.
+    
+    Features:
+    - TTL-based expiration
+    - LRU eviction when max_entries exceeded
+    - Configurable limits
+    """
+    
+    def __init__(self, ttl: int = 300, max_entries: int = 100):
+        """Initialize cache.
+        
+        Args:
+            ttl: Time-to-live in seconds (default 5 minutes)
+            max_entries: Maximum cache entries (default 100)
+        """
+        self._cache: OrderedDict[str, tuple[list[SearchResult], float]] = OrderedDict()
+        self._ttl = ttl
+        self._max_entries = max_entries
+        self._lock = threading.Lock()
+        self._hits = 0
+        self._misses = 0
     
     def get(self, key: str) -> list[SearchResult] | None:
-        if key in self._cache:
-            results, timestamp = self._cache[key]
-            if time.time() - timestamp < self._ttl:
-                return results
-            del self._cache[key]
-        return None
+        """Get cached results (thread-safe, updates LRU order)."""
+        with self._lock:
+            if key in self._cache:
+                results, timestamp = self._cache[key]
+                if time.time() - timestamp < self._ttl:
+                    # Move to end (most recently used)
+                    self._cache.move_to_end(key)
+                    self._hits += 1
+                    return results
+                # Expired
+                del self._cache[key]
+            self._misses += 1
+            return None
     
     def set(self, key: str, results: list[SearchResult]) -> None:
-        self._cache[key] = (results, time.time())
-        # Cleanup old entries
-        if len(self._cache) > 100:
-            self._cleanup()
+        """Set cached results (thread-safe, with LRU eviction)."""
+        with self._lock:
+            # Remove old entry if exists
+            if key in self._cache:
+                del self._cache[key]
+            
+            # Evict oldest entries if at capacity
+            while len(self._cache) >= self._max_entries:
+                self._cache.popitem(last=False)  # Remove oldest (LRU)
+            
+            self._cache[key] = (results, time.time())
     
-    def _cleanup(self) -> None:
-        now = time.time()
-        expired = [k for k, (_, t) in self._cache.items() if now - t > self._ttl]
-        for k in expired:
-            del self._cache[k]
+    def stats(self) -> dict:
+        """Get cache statistics."""
+        with self._lock:
+            total = self._hits + self._misses
+            return {
+                "size": len(self._cache),
+                "max_entries": self._max_entries,
+                "hits": self._hits,
+                "misses": self._misses,
+                "hit_rate": self._hits / total if total > 0 else 0.0,
+            }
+    
+    def clear(self) -> None:
+        """Clear all cache entries."""
+        with self._lock:
+            self._cache.clear()
 
 
 # Global cache instance
 _search_cache = SearchCache()
+
+
+def normalize_url(url: str) -> str:
+    """Normalize URL for deduplication.
+    
+    - Lowercase domain
+    - Remove trailing slash
+    - Remove www prefix
+    - Remove fragment
+    - Keep query params (may be significant)
+    """
+    try:
+        parsed = urlparse(url)
+        # Lowercase domain
+        netloc = parsed.netloc.lower()
+        # Remove www prefix
+        if netloc.startswith("www."):
+            netloc = netloc[4:]
+        # Remove trailing slash from path
+        path = parsed.path.rstrip("/") if parsed.path != "/" else ""
+        # Reconstruct without fragment
+        return urlunparse((
+            parsed.scheme.lower(),
+            netloc,
+            path,
+            parsed.params,
+            parsed.query,
+            "",  # Remove fragment
+        ))
+    except Exception:
+        return url
 
 
 # SearXNG public instances (fallback list)
@@ -122,19 +207,22 @@ async def _parallel_search(
     # Run in parallel
     done = await asyncio.gather(*tasks, return_exceptions=True)
     
-    # Collect results
+    # Collect results with URL normalization for deduplication
     all_results: list[SearchResult] = []
     seen_urls: set[str] = set()
     
     for item in done:
         if isinstance(item, Exception):
+            logger.debug(f"Search task failed: {item}")
             continue
         name, results = item
         for r in results:
-            if r.url and r.url not in seen_urls:
-                r.source = name
-                all_results.append(r)
-                seen_urls.add(r.url)
+            if r.url:
+                normalized = normalize_url(r.url)
+                if normalized not in seen_urls:
+                    r.source = name
+                    all_results.append(r)
+                    seen_urls.add(normalized)
     
     # If no results, try fallback SearXNG instances
     if not all_results:

@@ -900,6 +900,46 @@ query, was_fixed = maybe_fix_query("ghbdtn")
 
 ---
 
+## Фаза 12: Project Analyzer
+
+### 12.1 Анализ проекта
+
+**Зачем:** Полный анализ любого проекта с генерацией отчёта.
+
+**Как проверить:**
+```bash
+# Анализ проекта
+curl -X POST http://localhost:8000/analyze/project \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/path/to/project"}'
+
+# Получить Markdown отчёт
+curl -X POST http://localhost:8000/analyze/project/report \
+  -H "Content-Type: application/json" \
+  -d '{"path": "/path/to/project"}'
+```
+
+**Ожидаемо:** JSON с security_score, quality_score, recommendations.
+
+- [ ] Анализ возвращает scores
+- [ ] Security issues обнаруживаются
+- [ ] Code smells детектируются
+- [ ] Markdown отчёт генерируется
+
+---
+
+### 12.2 Сравнение проектов
+
+**Как проверить:**
+```bash
+curl "http://localhost:8000/analyze/compare?path1=/project1&path2=/project2"
+```
+
+- [ ] Два проекта сравниваются
+- [ ] Winner определяется
+
+---
+
 ## Сводный чеклист
 
 После прохождения всех фаз можно использовать этот список для быстрой проверки:
@@ -916,6 +956,7 @@ query, was_fixed = maybe_fix_query("ghbdtn")
 | 7 | Self-Improvement: анализ проекта, улучшение с retry, очередь задач |
 | 8 | Advanced IDE: File Browser, Multi-File Editor, Terminal, Git Panel |
 | 9+ | Circuit Breaker, Code Security, Performance Metrics, Keyboard Layout |
+| 12 | Project Analyzer: анализ, отчёты, сравнение проектов |
 
 ---
 

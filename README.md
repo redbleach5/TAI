@@ -25,6 +25,8 @@
 - **Code Security** — проверка кода на опасные операции перед выполнением
 - **Performance Metrics** — мониторинг и адаптивные оценки времени
 - **Keyboard Layout Fix** — автоисправление текста в неправильной раскладке
+- **Project Analyzer** — комплексный анализ любого проекта (безопасность, качество, архитектура)
+- **Report Generator** — генерация Markdown отчётов с рекомендациями
 
 ## Требования
 
@@ -113,6 +115,11 @@ curl http://localhost:8000/rag/status
 | `GET /code/metrics` | Метрики выполнения кода |
 | `GET /models/resilience` | Статус Circuit Breaker |
 | `GET /models/router/cache` | Статистика кэша Model Router |
+| `POST /analyze/project` | Полный анализ проекта |
+| `POST /analyze/project/detailed` | Детальный анализ со всеми данными |
+| `POST /analyze/project/report` | Markdown отчёт анализа |
+| `POST /analyze/security` | Только проверка безопасности |
+| `GET /analyze/compare` | Сравнение двух проектов |
 
 ## Конфигурация
 
@@ -162,6 +169,7 @@ curl http://localhost:8000/rag/status
 | 9 | ✓ | Smart Context: расширенный RAG, Project Map, Multi-Project |
 | 10 | ✓ | Cherry Studio: @commands, modes, templates, web search |
 | 11 | ✓ | Resilience: Circuit Breaker, Code Security, Performance Metrics |
+| 12 | ✓ | Project Analyzer: анализ любого проекта, отчёты, сравнение |
 
 ## Проверка
 

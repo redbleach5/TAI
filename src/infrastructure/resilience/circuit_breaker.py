@@ -10,12 +10,18 @@
 """
 
 import asyncio
+import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Callable, TypeVar
 
+logger = logging.getLogger(__name__)
 T = TypeVar("T")
+
+# Lock for global registry
+_registry_lock = threading.Lock()
 
 
 class CircuitState(Enum):
@@ -32,8 +38,26 @@ class CircuitBreakerConfig:
     recovery_timeout: float = 30.0  # Секунд до попытки восстановления
     success_threshold: int = 2      # Успехов для закрытия
     
-    # Исключения, которые считаются ошибками
+    # Исключения, которые считаются ошибками (исключая системные)
     tracked_exceptions: tuple = (Exception,)
+    
+    def __post_init__(self) -> None:
+        """Validate configuration."""
+        if self.failure_threshold < 1:
+            raise ValueError("failure_threshold must be >= 1")
+        if self.recovery_timeout <= 0:
+            raise ValueError("recovery_timeout must be > 0")
+        if self.success_threshold < 1:
+            raise ValueError("success_threshold must be >= 1")
+        # Exclude system exceptions that shouldn't be tracked
+        if self.tracked_exceptions == (Exception,):
+            self.tracked_exceptions = (Exception,)  # Keep as-is but document
+    
+    def is_tracked(self, exc: BaseException) -> bool:
+        """Check if exception should be tracked (excludes system exceptions)."""
+        if isinstance(exc, (SystemExit, KeyboardInterrupt, GeneratorExit)):
+            return False
+        return isinstance(exc, self.tracked_exceptions)
 
 
 @dataclass
@@ -79,17 +103,22 @@ class CircuitBreaker:
         
         Raises:
             CircuitOpenError: Если circuit открыт
+            ValueError: Если func не callable
         """
+        if not callable(func):
+            raise ValueError("func must be callable")
+        
         async with self._lock:
             # Проверка состояния
             if self._state == CircuitState.OPEN:
                 if self._should_try_reset():
                     self._state = CircuitState.HALF_OPEN
                     self._success_count = 0
+                    logger.debug(f"Circuit '{self.name}' transitioned to HALF_OPEN")
                 else:
+                    retry_in = max(0, self.config.recovery_timeout - (time.time() - self._last_failure_time))
                     raise CircuitOpenError(
-                        f"Circuit '{self.name}' is OPEN. "
-                        f"Retry in {self.config.recovery_timeout - (time.time() - self._last_failure_time):.1f}s"
+                        f"Circuit '{self.name}' is OPEN. Retry in {retry_in:.1f}s"
                     )
         
         # Выполнение запроса
@@ -102,19 +131,25 @@ class CircuitBreaker:
             await self._on_success()
             return result
             
-        except self.config.tracked_exceptions:
-            await self._on_failure()
+        except BaseException as e:
+            # Only track configured exceptions, not system exceptions
+            if self.config.is_tracked(e):
+                await self._on_failure()
             raise
     
     async def _on_success(self) -> None:
         """Обработка успешного вызова."""
         async with self._lock:
-            self._failure_count = 0
-            
             if self._state == CircuitState.HALF_OPEN:
                 self._success_count += 1
                 if self._success_count >= self.config.success_threshold:
                     self._state = CircuitState.CLOSED
+                    self._failure_count = 0  # Reset on transition to CLOSED
+                    self._success_count = 0
+                    logger.info(f"Circuit '{self.name}' transitioned to CLOSED")
+            elif self._state == CircuitState.CLOSED:
+                # Reset failure count on any success in CLOSED state
+                self._failure_count = 0
     
     async def _on_failure(self) -> None:
         """Обработка неудачного вызова."""
@@ -159,21 +194,33 @@ def get_circuit_breaker(
     name: str,
     config: CircuitBreakerConfig | None = None,
 ) -> CircuitBreaker:
-    """Получить или создать Circuit Breaker по имени."""
-    if name not in _breakers:
-        _breakers[name] = CircuitBreaker(
-            name=name,
-            config=config or CircuitBreakerConfig(),
-        )
-    return _breakers[name]
+    """Получить или создать Circuit Breaker по имени.
+    
+    Thread-safe: uses double-checked locking pattern.
+    """
+    # Fast path without lock
+    if name in _breakers:
+        return _breakers[name]
+    
+    # Slow path with lock
+    with _registry_lock:
+        # Double-check after acquiring lock
+        if name not in _breakers:
+            _breakers[name] = CircuitBreaker(
+                name=name,
+                config=config or CircuitBreakerConfig(),
+            )
+        return _breakers[name]
 
 
 def get_all_breakers() -> dict[str, dict]:
-    """Получить статистику всех breakers."""
-    return {name: b.get_stats() for name, b in _breakers.items()}
+    """Получить статистику всех breakers (thread-safe)."""
+    with _registry_lock:
+        return {name: b.get_stats() for name, b in _breakers.items()}
 
 
 def reset_all_breakers() -> None:
-    """Сбросить все breakers (для тестов)."""
-    for breaker in _breakers.values():
-        breaker.reset()
+    """Сбросить все breakers (для тестов, thread-safe)."""
+    with _registry_lock:
+        for breaker in _breakers.values():
+            breaker.reset()
