@@ -815,6 +815,91 @@ curl "http://localhost:8000/git/diff?path=README.md"
 
 ---
 
+## Фаза 9+: Resilience & Performance
+
+### 9.1 Circuit Breaker
+
+**Зачем:** Защита от каскадных сбоев при недоступности LLM.
+
+**Как проверить:**
+```bash
+# Статус circuit breaker
+curl http://localhost:8000/models/resilience
+
+# После ошибок circuit откроется
+# Ожидаемо: state = "OPEN" если много ошибок
+```
+
+**Ожидаемо:** При недоступности Ollama circuit breaker открывается, возвращает placeholder вместо ошибки.
+
+- [ ] Circuit breaker статус доступен
+- [ ] При ошибках circuit открывается
+- [ ] Автоматическое восстановление
+
+---
+
+### 9.2 Code Security
+
+**Зачем:** Проверка кода на опасные операции перед выполнением.
+
+**Как проверить:**
+```bash
+# Безопасный код
+curl -X POST http://localhost:8000/code/check \
+  -H "Content-Type: application/json" \
+  -d '{"code": "print(\"hello\")"}'
+# Ожидаемо: is_safe: true
+
+# Опасный код
+curl -X POST http://localhost:8000/code/check \
+  -H "Content-Type: application/json" \
+  -d '{"code": "import os; os.system(\"rm -rf /\")"}'
+# Ожидаемо: is_safe: false, blocked: ["os.system"]
+```
+
+- [ ] Безопасный код проходит проверку
+- [ ] os.system блокируется
+- [ ] subprocess.run блокируется
+- [ ] eval/exec вызывают warning
+
+---
+
+### 9.3 Performance Metrics
+
+**Зачем:** Мониторинг производительности системы.
+
+**Как проверить:**
+```bash
+curl http://localhost:8000/code/metrics
+# Ожидаемо: статистика по code_execution
+```
+
+**Проверка:** После нескольких запусков кода появляется статистика.
+
+- [ ] Метрики собираются
+- [ ] Персистентность (output/metrics/)
+- [ ] Статистика avg/median/min/max
+
+---
+
+### 9.4 Keyboard Layout Fix
+
+**Зачем:** Исправление текста набранного в неправильной раскладке.
+
+**Как проверить в коде:**
+```python
+from src.infrastructure.services.keyboard_layout import maybe_fix_query
+
+query, was_fixed = maybe_fix_query("ghbdtn")
+# query = "привет", was_fixed = True
+```
+
+- [ ] "ghbdtn" → "привет"
+- [ ] "cjplf" → "создай"
+- [ ] Обычный текст не меняется
+
+---
+
 ## Сводный чеклист
 
 После прохождения всех фаз можно использовать этот список для быстрой проверки:
@@ -830,6 +915,7 @@ curl "http://localhost:8000/git/diff?path=README.md"
 | 6 | Reasoning (если есть), Settings UI, README, ARCHITECTURE, E2E |
 | 7 | Self-Improvement: анализ проекта, улучшение с retry, очередь задач |
 | 8 | Advanced IDE: File Browser, Multi-File Editor, Terminal, Git Panel |
+| 9+ | Circuit Breaker, Code Security, Performance Metrics, Keyboard Layout |
 
 ---
 

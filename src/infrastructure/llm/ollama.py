@@ -1,4 +1,4 @@
-"""Ollama adapter - implements LLMPort."""
+"""Ollama adapter - implements LLMPort with Circuit Breaker."""
 
 from typing import AsyncIterator
 
@@ -7,15 +7,30 @@ from ollama import AsyncClient
 
 from src.domain.ports.config import OllamaConfig
 from src.domain.ports.llm import LLMMessage, LLMResponse
+from src.infrastructure.resilience import (
+    get_circuit_breaker,
+    CircuitBreakerConfig,
+    CircuitOpenError,
+)
 
 
 class OllamaAdapter:
-    """Ollama implementation of LLMPort with connection pooling."""
+    """Ollama implementation of LLMPort with Circuit Breaker protection."""
 
     def __init__(self, config: OllamaConfig) -> None:
         self._config = config
         self._client = AsyncClient(host=config.host)
         self._available: bool | None = None
+        
+        # Circuit Breaker для защиты от каскадных сбоев
+        self._breaker = get_circuit_breaker(
+            "ollama",
+            CircuitBreakerConfig(
+                failure_threshold=5,
+                recovery_timeout=30.0,
+                success_threshold=2,
+            ),
+        )
 
     async def generate(
         self,
@@ -23,16 +38,28 @@ class OllamaAdapter:
         model: str | None = None,
         temperature: float = 0.7,
     ) -> LLMResponse:
-        """Generate a single response (non-streaming)."""
+        """Generate a single response with Circuit Breaker protection."""
         model = model or "llama2"
         msg_dicts = [{"role": m.role, "content": m.content} for m in messages]
-        response = await self._client.chat(
-            model=model,
-            messages=msg_dicts,
-            options={"temperature": temperature},
-        )
-        content = response.message.content if response.message else ""
-        return LLMResponse(content=content, model=response.model, done=True)
+        
+        async def _call():
+            response = await self._client.chat(
+                model=model,
+                messages=msg_dicts,
+                options={"temperature": temperature},
+            )
+            content = response.message.content if response.message else ""
+            return LLMResponse(content=content, model=response.model, done=True)
+        
+        try:
+            return await self._breaker.call(_call)
+        except CircuitOpenError:
+            # Возвращаем ошибку, но не падаем
+            return LLMResponse(
+                content="[LLM temporarily unavailable - circuit breaker open]",
+                model=model,
+                done=True,
+            )
 
     async def generate_stream(
         self,

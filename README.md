@@ -12,7 +12,7 @@
 - **Multi-Project** — работа с несколькими проектами
 - **Quick Commands** — @web, @code, @rag команды в чате (Cherry Studio стиль)
 - **Assistant Modes** — пресеты (Coder, Researcher, Writer, Analyst, Reviewer)
-- **Web Search** — DuckDuckGo интеграция через @web
+- **Web Search** — Multi-engine (DuckDuckGo, SearXNG, Brave) с кэшированием
 - **Prompt Templates** — библиотека готовых промптов
 - **Стриминг** — SSE для chat и workflow
 - **Reasoning** — парсинг `<think>` (DeepSeek-R1, QwQ), стриминг thinking в UI
@@ -21,6 +21,10 @@
 - **Advanced IDE** — File Browser, Multi-File Editor (Monaco), Terminal, Git integration
 - **Полноценная IDE** — Monaco Editor с подсветкой синтаксиса, редактированием и выполнением кода
 - **Полированный UI** — табы IDE, индикатор шагов workflow, markdown в чате, toast, responsive
+- **Resilience** — Circuit Breaker для защиты от каскадных сбоев LLM
+- **Code Security** — проверка кода на опасные операции перед выполнением
+- **Performance Metrics** — мониторинг и адаптивные оценки времени
+- **Keyboard Layout Fix** — автоисправление текста в неправильной раскладке
 
 ## Требования
 
@@ -104,7 +108,11 @@ curl http://localhost:8000/rag/status
 | `POST /projects/{id}/index` | Индексировать проект |
 | `GET /assistant/modes` | Список режимов ассистента |
 | `GET /assistant/templates` | Список шаблонов промптов |
-| `POST /assistant/search/web` | Веб-поиск (DuckDuckGo) |
+| `POST /assistant/search/web` | Веб-поиск (multi-engine) |
+| `POST /code/check` | Проверка безопасности кода |
+| `GET /code/metrics` | Метрики выполнения кода |
+| `GET /models/resilience` | Статус Circuit Breaker |
+| `GET /models/router/cache` | Статистика кэша Model Router |
 
 ## Конфигурация
 
@@ -153,6 +161,7 @@ curl http://localhost:8000/rag/status
 | 8 | ✓ | Advanced IDE: File Browser, Terminal, Git integration |
 | 9 | ✓ | Smart Context: расширенный RAG, Project Map, Multi-Project |
 | 10 | ✓ | Cherry Studio: @commands, modes, templates, web search |
+| 11 | ✓ | Resilience: Circuit Breaker, Code Security, Performance Metrics |
 
 ## Проверка
 

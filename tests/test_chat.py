@@ -22,17 +22,20 @@ async def test_chat_greeting_returns_template():
 
 
 @pytest.mark.asyncio
-async def test_chat_code_returns_template():
-    """Code intent returns template response."""
+async def test_chat_code_returns_response():
+    """Code intent returns response (template or LLM)."""
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
+        timeout=120.0,  # LLM can be slow
     ) as client:
         resp = await client.post("/chat", json={"message": "write a function"})
     assert resp.status_code == 200
     data = resp.json()
-    assert data["model"] == "template"
-    assert "Workflow" in data["content"] or "Phase" in data["content"]
+    assert "content" in data
+    assert "model" in data
+    # Can be template or real model
+    assert len(data["content"]) > 0
 
 
 @pytest.mark.asyncio

@@ -1,12 +1,16 @@
-"""Code execution API - sandboxed code runner."""
+"""Code execution API - sandboxed code runner with security checks."""
 
 import asyncio
 import subprocess
 import tempfile
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
+
+from src.api.dependencies import limiter
+from src.infrastructure.services.code_security import get_security_checker
+from src.infrastructure.services.performance_metrics import get_metrics
 
 router = APIRouter(prefix="/code", tags=["code"])
 
@@ -63,17 +67,68 @@ def _run_code_sync(code: str, tests: str | None, timeout: int) -> tuple[bool, st
 
 
 @router.post("/run")
-async def run_code(request: CodeRunRequest) -> CodeRunResponse:
-    """Execute Python code in a sandboxed subprocess."""
-    if not request.code.strip():
+@limiter.limit("30/minute")
+async def run_code(request: Request, body: CodeRunRequest) -> CodeRunResponse:
+    """Execute Python code in a sandboxed subprocess.
+    
+    Security: Code is checked for dangerous operations before execution.
+    """
+    if not body.code.strip():
         return CodeRunResponse(success=False, output="", error="Код пуст")
-
+    
+    # Security check
+    checker = get_security_checker()
+    security_result = checker.check(body.code)
+    
+    if not security_result.is_safe:
+        blocked_str = "; ".join(security_result.blocked)
+        return CodeRunResponse(
+            success=False,
+            output="",
+            error=f"Security check failed: {blocked_str}",
+        )
+    
+    # Run with metrics
+    metrics = get_metrics()
+    import time
+    start = time.perf_counter()
+    
     # Run in thread to avoid blocking
     success, output, error = await asyncio.to_thread(
         _run_code_sync,
-        request.code,
-        request.tests,
-        request.timeout,
+        body.code,
+        body.tests,
+        body.timeout,
     )
+    
+    metrics.record("code_execution", time.perf_counter() - start)
+    
+    # Add security warnings to output if any
+    if security_result.warnings:
+        warnings_str = "\n".join(f"⚠️ {w}" for w in security_result.warnings)
+        output = f"{warnings_str}\n\n{output}" if output else warnings_str
 
     return CodeRunResponse(success=success, output=output, error=error)
+
+
+@router.post("/check")
+@limiter.limit("60/minute")
+async def check_code_security(request: Request, body: CodeRunRequest):
+    """Check code for security issues without executing."""
+    checker = get_security_checker()
+    result = checker.check(body.code)
+    
+    return {
+        "is_safe": result.is_safe,
+        "warnings": result.warnings,
+        "blocked": result.blocked,
+    }
+
+
+@router.get("/metrics")
+@limiter.limit("60/minute")
+async def get_code_metrics(request: Request):
+    """Get code execution performance metrics."""
+    metrics = get_metrics()
+    stats = metrics.get_stats("code_execution")
+    return {"code_execution": stats}

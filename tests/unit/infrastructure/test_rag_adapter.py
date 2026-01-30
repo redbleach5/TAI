@@ -7,36 +7,33 @@ import tempfile
 import os
 
 from src.domain.ports.config import RAGConfig
-from src.infrastructure.rag.chromadb_adapter import (
-    ChromaDBRAGAdapter,
-    _chunk_text,
-    _collect_code_files,
-)
+from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
+from src.infrastructure.rag.file_collector import chunk_text, collect_code_files
 
 
 class TestChunkText:
-    """Tests for _chunk_text helper."""
+    """Tests for chunk_text helper."""
 
     def test_empty_text(self):
         """Empty text returns empty list."""
-        assert _chunk_text("", 100, 10) == []
+        assert chunk_text("", 100, 10) == []
 
     def test_short_text(self):
         """Text shorter than chunk_size returns single chunk."""
-        result = _chunk_text("Hello", 100, 10)
+        result = chunk_text("Hello", 100, 10)
         assert result == ["Hello"]
 
     def test_exact_chunk_size(self):
         """Text exactly chunk_size returns single chunk."""
         text = "a" * 100
-        result = _chunk_text(text, 100, 10)
+        result = chunk_text(text, 100, 10)
         assert len(result) == 1
         assert result[0] == text
 
     def test_multiple_chunks(self):
         """Text longer than chunk_size returns multiple chunks."""
         text = "a" * 250
-        result = _chunk_text(text, 100, 20)
+        result = chunk_text(text, 100, 20)
         assert len(result) > 1
         # First chunk should be 100 chars
         assert len(result[0]) == 100
@@ -44,28 +41,28 @@ class TestChunkText:
     def test_overlap(self):
         """Chunks overlap by specified amount."""
         text = "0123456789" * 5  # 50 chars
-        result = _chunk_text(text, 20, 5)
+        result = chunk_text(text, 20, 5)
         # With overlap, chunks should share characters
         assert len(result) >= 2
 
     def test_zero_chunk_size(self):
         """Zero chunk_size returns empty list."""
-        assert _chunk_text("Hello", 0, 0) == []
+        assert chunk_text("Hello", 0, 0) == []
 
     def test_whitespace_stripped(self):
         """Chunks are stripped of whitespace."""
         text = "  Hello  " + "a" * 100
-        result = _chunk_text(text, 20, 0)
+        result = chunk_text(text, 20, 0)
         assert result[0] == "Hello"
 
 
 class TestCollectCodeFiles:
-    """Tests for _collect_code_files helper."""
+    """Tests for collect_code_files helper."""
 
     def test_empty_directory(self):
         """Empty directory returns empty list."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            result = _collect_code_files(Path(tmpdir))
+            result = collect_code_files(Path(tmpdir))
             assert result == []
 
     def test_collects_python_files(self):
@@ -75,20 +72,20 @@ class TestCollectCodeFiles:
             py_file = Path(tmpdir) / "test.py"
             py_file.write_text("print('hello')")
             
-            result = _collect_code_files(Path(tmpdir))
+            result = collect_code_files(Path(tmpdir))
             
             assert len(result) == 1
             assert result[0][0] == "test.py"
             assert "print('hello')" in result[0][1]
 
-    def test_ignores_non_python(self):
-        """Ignores non-Python files."""
+    def test_collects_txt_files(self):
+        """Now also collects .txt files (documentation)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             txt_file = Path(tmpdir) / "readme.txt"
             txt_file.write_text("readme content")
             
-            result = _collect_code_files(Path(tmpdir))
-            assert result == []
+            result = collect_code_files(Path(tmpdir))
+            assert len(result) == 1
 
     def test_ignores_venv(self):
         """Ignores .venv directory."""
@@ -98,7 +95,7 @@ class TestCollectCodeFiles:
             venv_file = venv_dir / "test.py"
             venv_file.write_text("venv code")
             
-            result = _collect_code_files(Path(tmpdir))
+            result = collect_code_files(Path(tmpdir))
             assert result == []
 
     def test_ignores_pycache(self):
@@ -109,7 +106,7 @@ class TestCollectCodeFiles:
             cache_file = cache_dir / "test.py"
             cache_file.write_text("cached")
             
-            result = _collect_code_files(Path(tmpdir))
+            result = collect_code_files(Path(tmpdir))
             assert result == []
 
     def test_recursive(self):
@@ -120,7 +117,7 @@ class TestCollectCodeFiles:
             (sub_dir / "nested.py").write_text("nested")
             (Path(tmpdir) / "root.py").write_text("root")
             
-            result = _collect_code_files(Path(tmpdir))
+            result = collect_code_files(Path(tmpdir))
             
             assert len(result) == 2
             paths = [r[0] for r in result]
@@ -129,7 +126,7 @@ class TestCollectCodeFiles:
 
     def test_nonexistent_directory(self):
         """Nonexistent directory returns empty list."""
-        result = _collect_code_files(Path("/nonexistent/path"))
+        result = collect_code_files(Path("/nonexistent/path"))
         assert result == []
 
 
