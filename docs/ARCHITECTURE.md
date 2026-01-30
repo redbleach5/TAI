@@ -8,7 +8,7 @@
 ┌─────────────────────────────────────────────────────────┐
 │  API (FastAPI) — routes, dependencies                    │
 │  /health, /chat, /workflow, /models, /rag, /config,      │
-│  /conversations                                          │
+│  /files, /terminal, /git, /improve                       │
 └────────────────────────┬────────────────────────────────┘
                          │
 ┌────────────────────────▼────────────────────────────────┐
@@ -90,7 +90,7 @@ PATCH /config → merge into config/development.toml → cache clear
 
 ```
 src/
-├── api/routes/        chat, workflow, models, rag, config, code, files, improve
+├── api/routes/        chat, workflow, models, rag, config, code, files, terminal, git, improve
 ├── application/
 │   ├── chat/          use_case, dto
 │   ├── workflow/      use_case, dto
@@ -105,6 +105,18 @@ src/
 │   ├── llm/           ollama, openai_compatible, reasoning_parser
 │   ├── rag/           chromadb_adapter
 │   └── workflow/      graph, improvement_graph
+
+frontend/src/features/
+├── chat/              ChatPanel, ChatMessage, ChatInput
+├── workflow/          WorkflowPanel, useWorkflowStream
+├── ide/               IDEPanel (workflow results)
+├── editor/            MultiFileEditor, EditorTabs, useOpenFiles
+├── files/             FileBrowser, useFileTree
+├── terminal/          TerminalPanel, useTerminal
+├── git/               GitPanel, useGitStatus
+├── improve/           ImprovementPanel
+├── settings/          SettingsPanel
+└── layout/            Layout (main navigation)
 ```
 
 ## Self-Improvement Flow
@@ -123,6 +135,40 @@ src/
 - **FileWriter** — безопасная запись с автоматическим backup
 - **ImprovementGraph** — LangGraph workflow с retry loop
 - **TaskQueue** — фоновая очередь задач улучшения
+
+## Advanced IDE (Phase 8)
+
+```
+┌─────────────────────────────────────────────────┐
+│  Tabs: Chat | Workflow | IDE | Результат | ...  │
+├────────────┬────────────────────────────────────┤
+│   Files    │   File Tabs: main.py | utils.py   │
+│   or Git   ├────────────────────────────────────┤
+│  (sidebar) │                                    │
+│            │         Monaco Editor              │
+│            │                                    │
+│            ├────────────────────────────────────┤
+│            │         Terminal Panel             │
+└────────────┴────────────────────────────────────┘
+```
+
+**API Routes:**
+- `/files/tree` — дерево файлов (исключает `__pycache__`, `.git`, `node_modules`)
+- `/files/create`, `/files/delete`, `/files/rename` — файловые операции
+- `/terminal/exec`, `/terminal/stream` — выполнение команд
+- `/git/status`, `/git/diff`, `/git/log`, `/git/commit`, `/git/branches`, `/git/checkout`
+
+**Security:**
+- Files: операции только внутри project directory
+- Terminal: whitelist команд (`python`, `pip`, `npm`, `git`, `ls`, etc.)
+- Terminal: блокировка опасных паттернов (`&&`, `|`, `>`, `$`)
+- Git: read + commit, без push по умолчанию
+
+**Frontend компоненты:**
+- **FileBrowser** — дерево файлов с Git-статусом, контекстное меню
+- **MultiFileEditor** — Monaco Editor с динамическими табами
+- **TerminalPanel** — терминал с историей команд
+- **GitPanel** — Source Control с diff-просмотром и commit
 
 ## Тестирование
 

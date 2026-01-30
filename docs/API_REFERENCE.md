@@ -398,6 +398,245 @@ Endpoints для управления очередью задач:
 
 Восстановление из backup.
 
+### GET /files/tree?path=.
+
+Получить дерево файлов проекта.
+
+**Query Parameters:**
+- `path` - корневая директория (default: ".")
+- `max_depth` - максимальная глубина (default: 10)
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "tree": {
+    "name": "src",
+    "path": "src",
+    "type": "directory",
+    "children": [
+      {
+        "name": "main.py",
+        "path": "src/main.py",
+        "type": "file",
+        "size": 1234,
+        "extension": "py"
+      }
+    ]
+  }
+}
+```
+
+**Исключаемые директории:** `__pycache__`, `.git`, `node_modules`, `.venv`, `dist`, `build`
+
+### POST /files/create
+
+Создать файл или директорию.
+
+**Request:**
+
+```json
+{
+  "path": "src/new_module.py",
+  "is_directory": false
+}
+```
+
+### DELETE /files/delete?path=src/old.py
+
+Удалить файл или директорию.
+
+**Query Parameters:**
+- `create_backup` - создать backup перед удалением (default: true)
+
+### POST /files/rename
+
+Переименовать/переместить файл.
+
+**Request:**
+
+```json
+{
+  "old_path": "src/old_name.py",
+  "new_path": "src/new_name.py"
+}
+```
+
+---
+
+## Terminal
+
+### POST /terminal/exec
+
+Выполнить команду в терминале.
+
+**Request:**
+
+```json
+{
+  "command": "python --version",
+  "cwd": "src",
+  "timeout": 30
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "command": "python --version",
+  "stdout": "Python 3.11.0\n",
+  "stderr": "",
+  "exit_code": 0,
+  "error": null
+}
+```
+
+**Разрешённые команды:** `python`, `pip`, `pytest`, `npm`, `node`, `git`, `ls`, `cat`, `grep`, `echo`, `pwd`, `mkdir`, `rm`, `cp`, `mv`, `touch`
+
+**Заблокированные паттерны:** `&&`, `||`, `;`, `|`, `>`, `<`, `` ` ``, `$`
+
+### GET /terminal/stream
+
+SSE-стриминг вывода команды.
+
+**Query Parameters:**
+- `command` - команда для выполнения
+- `cwd` - рабочая директория
+- `timeout` - таймаут в секундах
+
+**SSE Events:**
+
+```
+data: {"type": "start", "command": "ls", "pid": 12345}
+data: {"type": "stdout", "data": "file.txt\n"}
+data: {"type": "stderr", "data": "warning...\n"}
+data: {"type": "exit", "exit_code": 0}
+data: {"type": "error", "data": "Timeout after 30s"}
+```
+
+---
+
+## Git
+
+### GET /git/status
+
+Получить статус git репозитория.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "branch": "main",
+  "files": [
+    {"path": "src/main.py", "status": "M", "staged": false},
+    {"path": "new_file.py", "status": "?", "staged": false}
+  ],
+  "ahead": 0,
+  "behind": 0
+}
+```
+
+**Status codes:** `M` (modified), `A` (added), `D` (deleted), `?` (untracked), `R` (renamed), `U` (unmerged)
+
+### GET /git/diff
+
+Получить diff изменений.
+
+**Query Parameters:**
+- `path` - конкретный файл (optional)
+- `staged` - показать staged изменения (default: false)
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "path": "src/main.py",
+  "diff": "--- a/src/main.py\n+++ b/src/main.py\n..."
+}
+```
+
+### GET /git/log
+
+Получить историю коммитов.
+
+**Query Parameters:**
+- `limit` - количество записей (default: 20, max: 100)
+- `path` - фильтр по файлу (optional)
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "entries": [
+    {
+      "hash": "abc123def456...",
+      "short_hash": "abc123d",
+      "author": "John Doe",
+      "date": "2026-01-30 12:00:00 +0300",
+      "message": "Add new feature"
+    }
+  ]
+}
+```
+
+### POST /git/commit
+
+Создать коммит.
+
+**Request:**
+
+```json
+{
+  "message": "Fix bug in module",
+  "files": ["src/main.py"]
+}
+```
+
+Если `files` не указан, будут закоммичены все изменения.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "hash": "abc123d",
+  "message": "Fix bug in module"
+}
+```
+
+### GET /git/branches
+
+Получить список веток.
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "current": "main",
+  "branches": ["main", "feature/new-api"]
+}
+```
+
+### POST /git/checkout
+
+Переключиться на ветку.
+
+**Request:**
+
+```json
+{
+  "branch": "feature/new-api",
+  "create": false
+}
+```
+
 ---
 
 ## Error Responses

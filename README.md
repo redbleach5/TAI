@@ -12,6 +12,7 @@
 - **Reasoning** — парсинг `<think>` (DeepSeek-R1, QwQ), стриминг thinking в UI
 - **Settings UI** — редактирование config через веб-интерфейс
 - **Self-Improvement** — автоматический анализ, рефакторинг и улучшение кода с retry loop
+- **Advanced IDE** — File Browser, Multi-File Editor (Monaco), Terminal, Git integration
 - **Полноценная IDE** — Monaco Editor с подсветкой синтаксиса, редактированием и выполнением кода
 - **Полированный UI** — табы IDE, индикатор шагов workflow, markdown в чате, toast, responsive
 
@@ -83,6 +84,11 @@ curl http://localhost:8000/rag/status
 | `POST /improve/run` | Запуск улучшения файла |
 | `GET /improve/queue/status` | Статус очереди улучшений |
 | `POST /files/write` | Запись файла с backup |
+| `GET /files/tree` | Дерево файлов проекта |
+| `POST /files/create` | Создание файла/директории |
+| `POST /terminal/exec` | Выполнение команды |
+| `GET /git/status` | Git статус |
+| `POST /git/commit` | Git commit |
 | `POST /rag/index?path=.` | Индексация директории |
 | `GET /rag/status` | Статус RAG индекса |
 
@@ -129,6 +135,8 @@ curl http://localhost:8000/rag/status
 | 4 | ✓ | RAG: ChromaDB, embeddings, researcher node |
 | 5 | ✓ | IDE: код, Copy, Download, layout split |
 | 6 | ✓ | Reasoning, Settings UI, документация |
+| 7 | ✓ | Self-Improvement: анализ, рефакторинг с retry loop |
+| 8 | ✓ | Advanced IDE: File Browser, Terminal, Git integration |
 
 ## Проверка
 
