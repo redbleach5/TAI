@@ -7,7 +7,7 @@ from src.main import app
 
 @pytest.mark.asyncio
 async def test_rag_status_returns_ok():
-    """RAG status returns document count."""
+    """RAG status returns chunk count and stats."""
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
@@ -16,7 +16,7 @@ async def test_rag_status_returns_ok():
     assert resp.status_code == 200
     data = resp.json()
     assert "status" in data
-    assert "documents" in data
+    assert "total_chunks" in data
     assert data["status"] == "ok"
 
 
