@@ -8,7 +8,7 @@ from src.infrastructure.services.assistant_modes import list_modes, get_mode
 from src.infrastructure.services.prompt_templates import get_library, PromptTemplate
 from src.infrastructure.services.command_parser import get_help_text
 from src.infrastructure.services.web_search import (
-    search_duckduckgo,
+    multi_search,
     format_search_results,
 )
 
@@ -154,10 +154,14 @@ class SearchRequest(BaseModel):
 
 
 @router.post("/search/web")
-@limiter.limit("20/minute")
+@limiter.limit("30/minute")
 async def web_search(request: Request, body: SearchRequest):
-    """Search the web using DuckDuckGo."""
-    results = await search_duckduckgo(body.query, body.max_results)
+    """Search using multiple engines (DuckDuckGo + SearXNG) in parallel."""
+    results = await multi_search(
+        body.query,
+        max_results=body.max_results,
+        use_cache=True,
+    )
     
     return {
         "query": body.query,
@@ -166,6 +170,7 @@ async def web_search(request: Request, body: SearchRequest):
                 "title": r.title,
                 "url": r.url,
                 "snippet": r.snippet,
+                "source": r.source,
             }
             for r in results
         ],

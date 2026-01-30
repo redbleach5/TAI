@@ -111,29 +111,30 @@ class ChatUseCase:
         return messages
 
     async def _process_commands(self, commands: list) -> str:
-        """Process all commands and return combined context."""
+        """Process all commands in PARALLEL and return combined context."""
         if not commands:
             return ""
         
-        context_parts: list[str] = []
+        import asyncio
         
-        for cmd in commands:
-            # Map CommandType enum to string
+        # Prepare command execution tasks
+        async def execute_cmd(cmd):
             cmd_type = cmd.type.value if hasattr(cmd.type, "value") else str(cmd.type)
-            
-            # Skip clear command (handled separately)
             if cmd_type == "clear":
-                continue
-            
-            # Execute command via registry
+                return None
             result = await self._command_registry.execute(
                 cmd_type,
                 cmd.argument,
                 rag=self._rag,
             )
-            
-            if result.content:
-                context_parts.append(result.content)
+            return result.content if result.content else None
+        
+        # Execute ALL commands in parallel
+        tasks = [execute_cmd(cmd) for cmd in commands]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Collect successful results
+        context_parts = [r for r in results if r and not isinstance(r, Exception)]
         
         return "\n\n---\n\n".join(context_parts)
 
