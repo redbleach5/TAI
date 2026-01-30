@@ -1,8 +1,14 @@
 """Code Security - проверка безопасности сгенерированного кода.
 
 Проверяет код на опасные операции перед выполнением или сохранением.
+
+Production-ready with:
+- Regex-based pattern matching with word boundaries
+- Comment and string detection to reduce false positives
+- Extended dangerous pattern list
 """
 
+import re
 from dataclasses import dataclass
 
 
@@ -17,49 +23,58 @@ class SecurityCheckResult:
 class CodeSecurityChecker:
     """Проверяет код на опасные операции.
     
-    Использует паттерны для обнаружения:
-    - Опасных импортов (os, subprocess, etc.)
+    Использует regex паттерны для обнаружения:
+    - Опасных импортов (os, subprocess, pickle, etc.)
     - Опасных функций (eval, exec, etc.)
     - Опасных системных вызовов
+    
+    Reduces false positives by skipping comments and strings.
     """
     
-    # Опасные импорты
-    DANGEROUS_IMPORTS = [
-        "import os",
-        "import subprocess",
-        "import sys",
-        "import socket",
-        "import ctypes",
-        "from os",
-        "from subprocess",
-        "from sys",
-        "from socket",
-        "from ctypes",
-        "__import__",
+    # Опасные импорты (regex patterns)
+    DANGEROUS_IMPORT_PATTERNS = [
+        r"^\s*import\s+os\b",
+        r"^\s*import\s+subprocess\b",
+        r"^\s*import\s+sys\b",
+        r"^\s*import\s+socket\b",
+        r"^\s*import\s+ctypes\b",
+        r"^\s*import\s+pickle\b",
+        r"^\s*import\s+marshal\b",
+        r"^\s*from\s+os\b",
+        r"^\s*from\s+subprocess\b",
+        r"^\s*from\s+sys\b",
+        r"^\s*from\s+socket\b",
+        r"^\s*from\s+ctypes\b",
+        r"^\s*from\s+pickle\b",
+        r"^\s*from\s+marshal\b",
+        r"\b__import__\s*\(",
     ]
     
-    # Опасные функции
-    DANGEROUS_FUNCTIONS = [
-        "eval(",
-        "exec(",
-        "compile(",
-        "globals(",
-        "locals(",
-        "__builtins__",
-        "__code__",
-        "__globals__",
+    # Опасные функции (regex patterns)
+    DANGEROUS_FUNCTION_PATTERNS = [
+        r"\beval\s*\(",
+        r"\bexec\s*\(",
+        r"\bcompile\s*\(",
+        r"\bglobals\s*\(",
+        r"\blocals\s*\(",
+        r"\b__builtins__\b",
+        r"\b__code__\b",
+        r"\b__globals__\b",
     ]
     
-    # Опасные системные вызовы
-    DANGEROUS_CALLS = [
-        "os.system",
-        "os.popen",
-        "os.execv",
-        "os.spawn",
-        "subprocess.run",
-        "subprocess.call",
-        "subprocess.Popen",
-        "subprocess.check_output",
+    # Опасные системные вызовы (regex patterns) - always blocked
+    DANGEROUS_CALL_PATTERNS = [
+        r"\bos\.system\s*\(",
+        r"\bos\.popen\s*\(",
+        r"\bos\.execv\s*\(",
+        r"\bos\.spawn\w*\s*\(",
+        r"\bsubprocess\.run\s*\(",
+        r"\bsubprocess\.call\s*\(",
+        r"\bsubprocess\.Popen\s*\(",
+        r"\bsubprocess\.check_output\s*\(",
+        r"\bshutil\.rmtree\s*\(",
+        r"\bos\.remove\s*\(",
+        r"\bos\.unlink\s*\(",
     ]
     
     def __init__(
@@ -75,9 +90,35 @@ class CodeSecurityChecker:
         """
         self.strict_mode = strict_mode
         self.allow_file_ops = allow_file_ops
+        
+        # Pre-compile regex patterns
+        self._import_patterns = [
+            (re.compile(p, re.MULTILINE), p) for p in self.DANGEROUS_IMPORT_PATTERNS
+        ]
+        self._function_patterns = [
+            (re.compile(p), p) for p in self.DANGEROUS_FUNCTION_PATTERNS
+        ]
+        self._call_patterns = [
+            (re.compile(p), p) for p in self.DANGEROUS_CALL_PATTERNS
+        ]
+    
+    def _remove_comments_and_strings(self, code: str) -> str:
+        """Remove comments and string literals to reduce false positives."""
+        # Remove single-line comments
+        code = re.sub(r'#.*$', '', code, flags=re.MULTILINE)
+        # Remove triple-quoted strings (docstrings)
+        code = re.sub(r'""".*?"""', '""', code, flags=re.DOTALL)
+        code = re.sub(r"'''.*?'''", "''", code, flags=re.DOTALL)
+        # Remove regular strings (simplified - may have edge cases)
+        code = re.sub(r'"[^"\\]*(?:\\.[^"\\]*)*"', '""', code)
+        code = re.sub(r"'[^'\\]*(?:\\.[^'\\]*)*'", "''", code)
+        return code
     
     def check(self, code: str) -> SecurityCheckResult:
         """Проверяет код на опасные операции.
+        
+        Uses regex with word boundaries to reduce false positives.
+        Skips patterns found in comments and strings.
         
         Args:
             code: Код для проверки
@@ -85,40 +126,49 @@ class CodeSecurityChecker:
         Returns:
             SecurityCheckResult с результатом проверки
         """
-        if not code:
+        if not code or not code.strip():
             return SecurityCheckResult(is_safe=True, warnings=[], blocked=[])
         
         warnings: list[str] = []
         blocked: list[str] = []
-        code_lower = code.lower()
+        
+        # Clean code for analysis (remove comments/strings)
+        clean_code = self._remove_comments_and_strings(code)
         
         # Проверяем опасные импорты
-        for pattern in self.DANGEROUS_IMPORTS:
-            if pattern.lower() in code_lower:
-                msg = f"Dangerous import: {pattern}"
+        for compiled_pattern, pattern in self._import_patterns:
+            match = compiled_pattern.search(clean_code)
+            if match:
+                # Extract the matched import for better error message
+                matched_text = match.group(0).strip()
+                msg = f"Dangerous import: {matched_text}"
                 if self.strict_mode:
                     blocked.append(msg)
                 else:
                     warnings.append(msg)
         
         # Проверяем опасные функции
-        for pattern in self.DANGEROUS_FUNCTIONS:
-            if pattern.lower() in code_lower:
-                msg = f"Dangerous function: {pattern}"
+        for compiled_pattern, pattern in self._function_patterns:
+            match = compiled_pattern.search(clean_code)
+            if match:
+                matched_text = match.group(0).strip()
+                msg = f"Dangerous function: {matched_text}"
                 if self.strict_mode:
                     blocked.append(msg)
                 else:
                     warnings.append(msg)
         
         # Проверяем опасные системные вызовы
-        for pattern in self.DANGEROUS_CALLS:
-            if pattern.lower() in code_lower:
-                msg = f"Dangerous system call: {pattern}"
+        for compiled_pattern, pattern in self._call_patterns:
+            match = compiled_pattern.search(clean_code)
+            if match:
+                matched_text = match.group(0).strip()
+                msg = f"Dangerous system call: {matched_text}"
                 blocked.append(msg)  # Всегда блокируем
         
         # Проверяем файловые операции (если запрещены)
         if not self.allow_file_ops:
-            if "open(" in code_lower or "file(" in code_lower:
+            if re.search(r'\bopen\s*\(', clean_code):
                 warnings.append("File operation detected: open()")
         
         is_safe = len(blocked) == 0
@@ -142,26 +192,25 @@ class CodeSecurityChecker:
     def sanitize(self, code: str) -> str:
         """Удаляет опасные конструкции из кода.
         
-        WARNING: Это простая реализация, не гарантирует безопасность.
+        WARNING: Это простая реализация, не гарантирует полную безопасность.
+        Используйте только как дополнительный слой защиты.
         """
         lines = code.split("\n")
         safe_lines = []
         
         for line in lines:
-            line_lower = line.lower().strip()
-            
             # Пропускаем строки с опасными импортами
             skip = False
-            for pattern in self.DANGEROUS_IMPORTS:
-                if line_lower.startswith(pattern.lower()):
+            for compiled_pattern, _ in self._import_patterns:
+                if compiled_pattern.search(line):
                     skip = True
                     safe_lines.append(f"# REMOVED: {line}")
                     break
             
             # Пропускаем строки с опасными вызовами
             if not skip:
-                for pattern in self.DANGEROUS_CALLS:
-                    if pattern.lower() in line_lower:
+                for compiled_pattern, _ in self._call_patterns:
+                    if compiled_pattern.search(line):
                         skip = True
                         safe_lines.append(f"# REMOVED: {line}")
                         break

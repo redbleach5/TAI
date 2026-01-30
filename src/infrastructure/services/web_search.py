@@ -188,21 +188,34 @@ async def _parallel_search(
     query: str,
     max_results: int,
     timeout: float,
+    brave_api_key: str | None = None,
 ) -> list[SearchResult]:
-    """Run multiple search engines in parallel."""
+    """Run multiple search engines in parallel.
+    
+    Runs all engines simultaneously for best latency.
+    Falls back to additional SearXNG instances in parallel if no results.
+    """
     
     async def safe_search(coro, name: str) -> tuple[str, list[SearchResult]]:
         try:
-            results = await asyncio.wait_for(coro, timeout=timeout)
+            results = await asyncio.wait_for(coro, timeout=timeout + 5)  # Extra buffer
             return (name, results)
-        except Exception:
+        except asyncio.TimeoutError:
+            logger.debug(f"Search '{name}' timed out")
+            return (name, [])
+        except Exception as e:
+            logger.debug(f"Search '{name}' failed: {e}")
             return (name, [])
     
-    # Create search tasks
+    # Create search tasks - run all engines in parallel
     tasks = [
         safe_search(search_duckduckgo(query, max_results, timeout), "duckduckgo"),
-        safe_search(search_searxng(query, max_results, SEARXNG_INSTANCES[0]), "searxng"),
+        safe_search(search_searxng(query, max_results, SEARXNG_INSTANCES[0], timeout), "searxng"),
     ]
+    
+    # Include Brave if API key is available
+    if brave_api_key:
+        tasks.append(safe_search(search_brave(query, max_results, brave_api_key), "brave"))
     
     # Run in parallel
     done = await asyncio.gather(*tasks, return_exceptions=True)
@@ -213,7 +226,7 @@ async def _parallel_search(
     
     for item in done:
         if isinstance(item, Exception):
-            logger.debug(f"Search task failed: {item}")
+            logger.debug(f"Search task exception: {item}")
             continue
         name, results = item
         for r in results:
@@ -224,20 +237,28 @@ async def _parallel_search(
                     all_results.append(r)
                     seen_urls.add(normalized)
     
-    # If no results, try fallback SearXNG instances
-    if not all_results:
-        for instance in SEARXNG_INSTANCES[1:]:
-            try:
-                results = await asyncio.wait_for(
-                    search_searxng(query, max_results, instance),
-                    timeout=timeout,
-                )
-                if results:
-                    for r in results:
-                        r.source = "searxng"
-                    return results[:max_results]
-            except Exception:
+    # If no results, try remaining SearXNG instances in parallel
+    if not all_results and len(SEARXNG_INSTANCES) > 1:
+        logger.debug("Primary search failed, trying fallback instances in parallel")
+        fallback_tasks = [
+            safe_search(search_searxng(query, max_results, inst, timeout), f"searxng-{i}")
+            for i, inst in enumerate(SEARXNG_INSTANCES[1:], 1)
+        ]
+        fallback_done = await asyncio.gather(*fallback_tasks, return_exceptions=True)
+        
+        for item in fallback_done:
+            if isinstance(item, Exception):
                 continue
+            name, results = item
+            if results:
+                for r in results:
+                    r.source = "searxng"
+                    normalized = normalize_url(r.url)
+                    if normalized not in seen_urls:
+                        all_results.append(r)
+                        seen_urls.add(normalized)
+                if len(all_results) >= max_results:
+                    break
     
     return all_results[:max_results]
 
@@ -246,21 +267,34 @@ async def search_duckduckgo(
     query: str,
     max_results: int = 5,
     timeout: float = 10.0,
+    retries: int = 2,
 ) -> list[SearchResult]:
-    """Search DuckDuckGo using HTML API (no API key required)."""
+    """Search DuckDuckGo using HTML API (no API key required).
+    
+    Retries on transient errors with exponential backoff.
+    """
     if not query.strip():
         return []
     
     url = "https://lite.duckduckgo.com/lite/"
     data = {"q": query, "kl": "wt-wt"}
     
-    try:
-        async with get_http_client() as client:
-            response = await client.post(url, data=data, timeout=timeout)
-            response.raise_for_status()
-            return _parse_ddg_lite(response.text, max_results)
-    except Exception:
-        return []
+    last_error: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            async with get_http_client() as client:
+                response = await client.post(url, data=data, timeout=timeout)
+                response.raise_for_status()
+                return _parse_ddg_lite(response.text, max_results)
+        except Exception as e:
+            last_error = e
+            if attempt < retries:
+                wait_time = (2 ** attempt)  # Exponential backoff: 1, 2, 4...
+                logger.debug(f"DuckDuckGo retry {attempt + 1} after {wait_time}s: {e}")
+                await asyncio.sleep(wait_time)
+    
+    logger.warning(f"DuckDuckGo search failed after {retries + 1} attempts: {last_error}")
+    return []
 
 
 def _parse_ddg_lite(html_text: str, max_results: int) -> list[SearchResult]:
@@ -307,8 +341,13 @@ async def search_searxng(
     query: str,
     max_results: int = 5,
     instance: str = "https://search.bus-hit.me",
+    timeout: float = 10.0,
+    retries: int = 1,
 ) -> list[SearchResult]:
-    """Search using SearXNG public instance (JSON API)."""
+    """Search using SearXNG public instance (JSON API).
+    
+    Retries on transient errors.
+    """
     if not query.strip():
         return []
     
@@ -319,31 +358,44 @@ async def search_searxng(
         "categories": "general",
     }
     
-    try:
-        async with get_http_client() as client:
-            response = await client.get(url, params=params, timeout=10.0)
-            response.raise_for_status()
-            data = response.json()
-    except Exception:
-        return []
+    last_error: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            async with get_http_client() as client:
+                response = await client.get(url, params=params, timeout=timeout)
+                response.raise_for_status()
+                data = response.json()
+            
+            results = []
+            for item in data.get("results", [])[:max_results]:
+                results.append(SearchResult(
+                    title=item.get("title", ""),
+                    url=item.get("url", ""),
+                    snippet=item.get("content", "")[:300],
+                ))
+            return results
+        except Exception as e:
+            last_error = e
+            if attempt < retries:
+                wait_time = (2 ** attempt)
+                logger.debug(f"SearXNG retry {attempt + 1}: {e}")
+                await asyncio.sleep(wait_time)
     
-    results = []
-    for item in data.get("results", [])[:max_results]:
-        results.append(SearchResult(
-            title=item.get("title", ""),
-            url=item.get("url", ""),
-            snippet=item.get("content", "")[:300],
-        ))
-    
-    return results
+    logger.debug(f"SearXNG {instance} failed: {last_error}")
+    return []
 
 
 async def search_brave(
     query: str,
     max_results: int = 5,
     api_key: str | None = None,
+    timeout: float = 10.0,
+    retries: int = 2,
 ) -> list[SearchResult]:
-    """Search using Brave Search API (2000 free/month with key)."""
+    """Search using Brave Search API (2000 free/month with key).
+    
+    Retries on transient errors with exponential backoff.
+    """
     if not query.strip() or not api_key:
         return []
     
@@ -354,28 +406,36 @@ async def search_brave(
         "X-Subscription-Token": api_key,
     }
     
-    try:
-        async with get_http_client() as client:
-            response = await client.get(
-                url,
-                params=params,
-                headers=headers,
-                timeout=10.0,
-            )
-            response.raise_for_status()
-            data = response.json()
-    except Exception:
-        return []
+    last_error: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            async with get_http_client() as client:
+                response = await client.get(
+                    url,
+                    params=params,
+                    headers=headers,
+                    timeout=timeout,
+                )
+                response.raise_for_status()
+                data = response.json()
+            
+            results = []
+            for item in data.get("web", {}).get("results", [])[:max_results]:
+                results.append(SearchResult(
+                    title=item.get("title", ""),
+                    url=item.get("url", ""),
+                    snippet=item.get("description", "")[:300],
+                ))
+            return results
+        except Exception as e:
+            last_error = e
+            if attempt < retries:
+                wait_time = (2 ** attempt)
+                logger.debug(f"Brave retry {attempt + 1}: {e}")
+                await asyncio.sleep(wait_time)
     
-    results = []
-    for item in data.get("web", {}).get("results", [])[:max_results]:
-        results.append(SearchResult(
-            title=item.get("title", ""),
-            url=item.get("url", ""),
-            snippet=item.get("description", "")[:300],
-        ))
-    
-    return results
+    logger.debug(f"Brave search failed: {last_error}")
+    return []
 
 
 def _clean_html(text: str) -> str:

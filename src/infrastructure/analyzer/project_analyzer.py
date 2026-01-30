@@ -2,14 +2,27 @@
 
 Анализирует структуру, качество кода, безопасность и архитектуру.
 Генерирует детальный отчёт с рекомендациями.
+
+Production-ready with:
+- Pre-compiled regex patterns
+- Proper input validation
+- Logging for debugging
 """
 
 import ast
+import logging
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# Number of workers for parallel file processing
+MAX_WORKERS = 8
 
 
 @dataclass
@@ -149,7 +162,21 @@ class ProjectAnalyzer:
         Args:
             max_file_size: Максимальный размер файла для анализа (байты)
         """
+        if max_file_size <= 0:
+            raise ValueError("max_file_size must be positive")
         self.max_file_size = max_file_size
+        
+        # Pre-compile security patterns for performance
+        self._compiled_security_patterns = [
+            (re.compile(pattern, re.IGNORECASE), severity, issue, rec)
+            for pattern, severity, issue, rec in self.SECURITY_PATTERNS
+        ]
+        
+        # Pre-compile code smell patterns
+        self._compiled_smell_patterns = [
+            (re.compile(pattern, re.MULTILINE), desc)
+            for pattern, desc in self.CODE_SMELL_PATTERNS
+        ]
     
     def analyze(self, project_path: str) -> ProjectAnalysis:
         """Полный анализ проекта.
@@ -159,11 +186,26 @@ class ProjectAnalyzer:
             
         Returns:
             ProjectAnalysis с результатами
+            
+        Raises:
+            ValueError: If path is invalid or inaccessible
         """
+        if not project_path:
+            raise ValueError("Project path cannot be empty")
+        
         path = Path(project_path).resolve()
         
         if not path.exists():
             raise ValueError(f"Project path does not exist: {project_path}")
+        
+        if not path.is_dir():
+            raise ValueError(f"Project path is not a directory: {project_path}")
+        
+        # Check read permission
+        if not os.access(path, os.R_OK):
+            raise ValueError(f"No read permission for: {project_path}")
+        
+        logger.info(f"Analyzing project: {path}")
         
         analysis = ProjectAnalysis(
             project_path=str(path),
@@ -175,25 +217,45 @@ class ProjectAnalyzer:
         files = self._collect_files(path)
         analysis.total_files = len(files)
         
-        # Анализируем каждый файл
-        for file_path in files:
+        # File content cache to avoid reading files multiple times
+        file_cache: dict[Path, str] = {}
+        
+        # Анализируем файлы параллельно для производительности
+        def analyze_single_file(file_path: Path) -> tuple[FileMetrics | None, list[SecurityIssue], str | None]:
+            """Analyze a single file and return results."""
             try:
                 metrics = self._analyze_file(file_path, path)
-                analysis.file_metrics.append(metrics)
-                analysis.total_lines += metrics.lines_total
-                analysis.total_code_lines += metrics.lines_code
-                
-                # Определяем язык
-                lang = self._detect_language(file_path)
-                if lang:
-                    analysis.languages[lang] = analysis.languages.get(lang, 0) + 1
-                
-                # Проверяем безопасность
                 security_issues = self._check_security(file_path, path)
-                analysis.security_issues.extend(security_issues)
-                
-            except Exception:
-                continue
+                lang = self._detect_language(file_path)
+                return metrics, security_issues, lang
+            except Exception as e:
+                logger.debug(f"Error analyzing {file_path}: {e}")
+                return None, [], None
+        
+        # Use ThreadPoolExecutor for I/O-bound file operations
+        with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+            future_to_file = {
+                executor.submit(analyze_single_file, file_path): file_path
+                for file_path in files
+            }
+            
+            for future in as_completed(future_to_file):
+                file_path = future_to_file[future]
+                try:
+                    metrics, security_issues, lang = future.result()
+                    
+                    if metrics:
+                        analysis.file_metrics.append(metrics)
+                        analysis.total_lines += metrics.lines_total
+                        analysis.total_code_lines += metrics.lines_code
+                    
+                    if lang:
+                        analysis.languages[lang] = analysis.languages.get(lang, 0) + 1
+                    
+                    analysis.security_issues.extend(security_issues)
+                    
+                except Exception as e:
+                    logger.debug(f"Failed to get result for {file_path}: {e}")
         
         # Анализ архитектуры
         analysis.architecture = self._analyze_architecture(path, files)
@@ -323,12 +385,15 @@ class ProjectAnalyzer:
         # Пропускаем документацию и тесты для security анализа
         if file_path.suffix in [".md", ".mdx", ".rst", ".txt"]:
             return issues
-        if "test" in rel_path.lower() and file_path.suffix == ".py":
+        # More robust test file exclusion
+        path_lower = rel_path.lower()
+        if any(part in path_lower for part in ["test", "tests", "spec", "__tests__"]) and file_path.suffix == ".py":
             return issues  # Tests often have intentional "bad" patterns
         
         try:
             content = file_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
+        except OSError as e:
+            logger.debug(f"Failed to read {rel_path}: {e}")
             return issues
         
         lines = content.split("\n")
@@ -341,8 +406,9 @@ class ProjectAnalyzer:
             if stripped.startswith('"""') or stripped.startswith("'''"):
                 continue
             
-            for pattern, severity, issue, recommendation in self.SECURITY_PATTERNS:
-                if re.search(pattern, line, re.IGNORECASE):
+            # Use pre-compiled patterns for performance
+            for compiled_pattern, severity, issue, recommendation in self._compiled_security_patterns:
+                if compiled_pattern.search(line):
                     issues.append(SecurityIssue(
                         severity=severity,
                         file=rel_path,
@@ -354,7 +420,7 @@ class ProjectAnalyzer:
         return issues
     
     def _find_code_smells(self, files: list[Path], base_path: Path) -> list[str]:
-        """Находит code smells."""
+        """Находит code smells using pre-compiled patterns."""
         smells = []
         
         for file_path in files:
@@ -368,8 +434,9 @@ class ProjectAnalyzer:
             
             rel_path = str(file_path.relative_to(base_path))
             
-            for pattern, description in self.CODE_SMELL_PATTERNS:
-                matches = re.findall(pattern, content)
+            # Use pre-compiled patterns
+            for compiled_pattern, description in self._compiled_smell_patterns:
+                matches = compiled_pattern.findall(content)
                 if matches:
                     smells.append(f"{rel_path}: {description} ({len(matches)} occurrences)")
         

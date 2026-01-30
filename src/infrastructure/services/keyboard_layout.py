@@ -2,7 +2,12 @@
 
 Полезно когда пользователь забыл переключить раскладку:
 - "ghbdtn" -> "привет"
-- "cjplf" -> "создай"
+- "cjplfq" -> "создай"
+
+Production-ready with:
+- Whitelist of common English/tech terms to avoid false positives
+- Improved consonant streak heuristic
+- Input validation
 """
 
 
@@ -37,6 +42,28 @@ COMMON_PATTERNS = {
     "ghjuhfvvf": "программа",
     "gjvjom": "помощь",
     "gjbcr": "поиск",
+    "dsgjkyb": "выполни",
+    "pfghjc": "запрос",
+    "jnrhjq": "открой",
+    "pfrhjq": "закрой",
+}
+
+# Common English words and tech terms to NOT convert (whitelist)
+ENGLISH_WHITELIST = {
+    # Common short words
+    "the", "and", "for", "not", "but", "you", "all", "can", "had", "her",
+    "was", "one", "our", "out", "has", "his", "how", "man", "new", "now",
+    "old", "see", "two", "way", "who", "boy", "did", "get", "let", "put",
+    "say", "she", "too", "use", "are", "its",
+    # Tech terms (often have consonant clusters)
+    "http", "https", "html", "css", "json", "xml", "api", "url", "uri",
+    "npm", "git", "ssh", "ftp", "sql", "php", "cli", "gui", "sdk", "jwt",
+    "test", "tests", "code", "help", "file", "type", "sync", "async",
+    "script", "function", "class", "method", "string", "print", "return",
+    "python", "javascript", "typescript", "react", "node", "docker",
+    "linux", "nginx", "mysql", "redis", "mongodb", "postgres",
+    # Common programming words
+    "import", "export", "const", "let", "var", "def", "func", "struct",
 }
 
 
@@ -45,23 +72,46 @@ def looks_like_wrong_layout(text: str) -> bool:
     
     Эвристика: если текст состоит из латинских букв, но не похож
     на английские слова - вероятно это русский в EN раскладке.
+    
+    Uses whitelist of common English/tech terms to reduce false positives.
     """
-    if not text:
+    if not text or not isinstance(text, str):
         return False
     
     text = text.strip().lower()
+    
+    # Too short - skip
+    if len(text) < 3:
+        return False
     
     # Если есть русские буквы - раскладка правильная
     if any('\u0400' <= c <= '\u04ff' for c in text):
         return False
     
-    # Если только ASCII буквы
+    # Если есть неASCII символы - не конвертируем
     if not all(c.isascii() for c in text):
         return False
+    
+    # Если текст полностью числа - не конвертируем
+    if text.isdigit():
+        return False
+    
+    # Check whitelist - if any word is a known English/tech term, skip
+    words = text.split()
+    for word in words:
+        # Remove common punctuation for comparison
+        clean_word = word.strip(".,!?;:'\"()[]{}").lower()
+        if clean_word in ENGLISH_WHITELIST:
+            return False
     
     # Проверяем известные паттерны
     if text in COMMON_PATTERNS:
         return True
+    
+    # Check each word for patterns
+    for word in words:
+        if word.lower() in COMMON_PATTERNS:
+            return True
     
     # Эвристика: много согласных подряд без гласных
     # (типично для русского в EN раскладке)
@@ -76,9 +126,19 @@ def looks_like_wrong_layout(text: str) -> bool:
         else:
             consonant_streak = 0
     
-    # 4+ согласных подряд очень необычно для английского
-    if max_streak >= 4 and len(text) > 3:
+    # 5+ согласных подряд (raised from 4) очень необычно для английского
+    # Except for some words like "strengths"
+    if max_streak >= 5 and len(text) > 4:
         return True
+    
+    # Additional heuristic: high ratio of 'j', 'b', 'n' which are common in RU->EN
+    # but less common in normal English
+    suspicious_chars = set("jbnfghpx")  # Common in Russian, less in English starts
+    alpha_chars = [c for c in text if c.isalpha()]
+    if len(alpha_chars) >= 4:
+        suspicious_ratio = sum(1 for c in alpha_chars if c in suspicious_chars) / len(alpha_chars)
+        if suspicious_ratio > 0.5:
+            return True
     
     return False
 
@@ -92,9 +152,16 @@ def fix_layout(text: str, direction: str = "auto") -> str:
     
     Returns:
         Исправленный текст или оригинал если исправление не нужно
+        
+    Raises:
+        ValueError: If direction is invalid
     """
-    if not text:
-        return text
+    if not text or not isinstance(text, str):
+        return text or ""
+    
+    valid_directions = {"auto", "en_to_ru", "ru_to_en"}
+    if direction not in valid_directions:
+        raise ValueError(f"direction must be one of {valid_directions}")
     
     # Автоопределение направления
     if direction == "auto":
