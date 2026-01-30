@@ -15,7 +15,7 @@ class TestTerminalExec:
         """Test executing echo command."""
         response = client.post(
             "/terminal/exec",
-            json={"command": "echo hello", "timeout": 5}
+            json={"command": "echo hello"}
         )
         assert response.status_code == 200
         data = response.json()
@@ -27,7 +27,7 @@ class TestTerminalExec:
         """Test executing pwd command."""
         response = client.post(
             "/terminal/exec",
-            json={"command": "pwd", "timeout": 5}
+            json={"command": "pwd"}
         )
         assert response.status_code == 200
         data = response.json()
@@ -38,7 +38,7 @@ class TestTerminalExec:
         """Test executing ls command."""
         response = client.post(
             "/terminal/exec",
-            json={"command": "ls", "timeout": 5}
+            json={"command": "ls"}
         )
         assert response.status_code == 200
         data = response.json()
@@ -49,7 +49,7 @@ class TestTerminalExec:
         """Test that blocked commands are rejected."""
         response = client.post(
             "/terminal/exec",
-            json={"command": "curl http://example.com", "timeout": 5}
+            json={"command": "curl http://example.com"}
         )
         assert response.status_code == 200
         data = response.json()
@@ -60,18 +60,19 @@ class TestTerminalExec:
         """Test that dangerous patterns are blocked."""
         response = client.post(
             "/terminal/exec",
-            json={"command": "echo hello && rm -rf /", "timeout": 5}
+            json={"command": "echo hello && rm -rf /"}
         )
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is False
-        assert "dangerous" in data["error"].lower() or "not allowed" in data["error"].lower()
+        # Can be "blocked pattern" or "not allowed"
+        assert "blocked" in data["error"].lower() or "not allowed" in data["error"].lower()
 
     def test_exec_pipe_blocked(self):
         """Test that pipes are blocked."""
         response = client.post(
             "/terminal/exec",
-            json={"command": "ls | grep py", "timeout": 5}
+            json={"command": "ls | grep py"}
         )
         assert response.status_code == 200
         data = response.json()
@@ -81,7 +82,7 @@ class TestTerminalExec:
         """Test executing python command."""
         response = client.post(
             "/terminal/exec",
-            json={"command": "python --version", "timeout": 5}
+            json={"command": "python --version"}
         )
         assert response.status_code == 200
         data = response.json()
@@ -92,7 +93,7 @@ class TestTerminalExec:
         """Test executing command in specific directory."""
         response = client.post(
             "/terminal/exec",
-            json={"command": "ls", "cwd": "src", "timeout": 5}
+            json={"command": "ls", "cwd": "src"}
         )
         assert response.status_code == 200
         data = response.json()
@@ -103,7 +104,7 @@ class TestTerminalExec:
         """Test executing empty command."""
         response = client.post(
             "/terminal/exec",
-            json={"command": "", "timeout": 5}
+            json={"command": ""}
         )
         assert response.status_code == 200
         data = response.json()
@@ -117,10 +118,10 @@ class TestTerminalStream:
     def test_stream_echo(self):
         """Test streaming echo command."""
         response = client.get(
-            "/terminal/stream?command=echo%20streaming&timeout=5"
+            "/terminal/stream?command=echo%20streaming"
         )
         assert response.status_code == 200
         # SSE response
         content = response.text
         assert "data:" in content
-        assert "streaming" in content or "start" in content
+        assert "streaming" in content.lower() or "output" in content.lower()
