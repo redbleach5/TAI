@@ -1,0 +1,58 @@
+# CodeGen AI - Default configuration
+# Override with development.toml or environment variables
+
+[server]
+host = "0.0.0.0"
+port = 8000
+
+[llm]
+provider = "ollama"  # "ollama" | "lm_studio"
+
+[ollama]
+host = "http://localhost:11434"
+timeout = 120
+pool_size = 4
+
+[openai_compatible]
+base_url = "http://localhost:1234/v1"
+api_key = ""
+timeout = 120
+
+# Model identifiers by task complexity. Defaults for Ollama.
+# Per-provider overrides: [models.lm_studio], [models.ollama], etc.
+# LM Studio IDs: "local" for loaded model, or exact ID from GET /v1/models.
+[models]
+simple = "qwen2.5-coder:7b"
+medium = "qwen2.5-coder:7b"
+complex = "qwen2.5-coder:32b"
+fallback = "qwen2.5-coder:7b"
+
+# Per-provider overrides. Add [models.<provider>] for any provider.
+# LM Studio: "local" = loaded model. Or use different IDs per complexity.
+[models.lm_studio]
+simple = "local"
+medium = "local"
+complex = "local"
+fallback = "local"
+
+[embeddings]
+provider = "auto"
+model = "nomic-embed-text"
+
+[security]
+rate_limit_requests_per_minute = 100
+cors_origins = ["http://localhost:5173"]
+
+[persistence]
+output_dir = "output"
+max_context_messages = 20
+
+[rag]
+chromadb_path = "output/chromadb"
+collection_name = "codebase"
+chunk_size = 500
+chunk_overlap = 50
+
+[logging]
+level = "INFO"
+format = "json"

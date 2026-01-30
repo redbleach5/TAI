@@ -1,0 +1,110 @@
+"""TOML configuration loader with env overrides."""
+
+import os
+import tomllib
+from pathlib import Path
+
+from src.domain.ports.config import (
+    AppConfig,
+    EmbeddingsConfig,
+    LLMConfig,
+    ModelConfig,
+    OllamaConfig,
+    OpenAICompatibleConfig,
+    PersistenceConfig,
+    ProviderModelSet,
+    RAGConfig,
+    SecurityConfig,
+    ServerConfig,
+)
+
+
+def _load_toml(path: Path) -> dict:
+    """Load TOML file."""
+    with open(path, "rb") as f:
+        return tomllib.load(f)
+
+
+def _load_models_config(raw: dict) -> ModelConfig:
+    """Load ModelConfig with per-provider overrides from nested TOML."""
+    overrides_raw = {k: v for k, v in raw.items() if isinstance(v, dict)}
+    defaults_raw = {k: v for k, v in raw.items() if k not in overrides_raw and isinstance(v, str)}
+    overrides = {k: ProviderModelSet(**(v or {})) for k, v in overrides_raw.items()}
+    return ModelConfig(overrides=overrides, **defaults_raw)
+
+
+def _apply_env_overrides(config: dict) -> dict:
+    """Apply environment variable overrides."""
+    if provider := os.getenv("LLM_PROVIDER"):
+        config.setdefault("llm", {})["provider"] = provider
+    if host := os.getenv("OLLAMA_HOST"):
+        config.setdefault("ollama", {})["host"] = host
+    if base_url := os.getenv("OPENAI_BASE_URL"):
+        config.setdefault("openai_compatible", {})["base_url"] = base_url
+    if port := os.getenv("PORT"):
+        try:
+            config.setdefault("server", {})["port"] = int(port)
+        except ValueError:
+            pass
+    if level := os.getenv("LOG_LEVEL"):
+        config.setdefault("logging", {})["level"] = level.upper()
+    if origins := os.getenv("CORS_ORIGINS"):
+        config.setdefault("security", {})["cors_origins"] = [o.strip() for o in origins.split(",")]
+    if rate := os.getenv("RATE_LIMIT_PER_MINUTE"):
+        try:
+            config.setdefault("security", {})["rate_limit_requests_per_minute"] = int(rate)
+        except ValueError:
+            pass
+    if model := os.getenv("EMBEDDINGS_MODEL"):
+        config.setdefault("embeddings", {})["model"] = model
+    return config
+
+
+def load_config(config_dir: Path | None = None) -> AppConfig:
+    """
+    Load configuration from TOML files with env overrides.
+    Loads default.toml, then development.toml if exists.
+    """
+    if config_dir is None:
+        config_dir = Path(__file__).resolve().parent.parent.parent.parent / "config"
+
+    config: dict = {}
+
+    default_path = config_dir / "default.toml"
+    if default_path.exists():
+        config = _load_toml(default_path)
+
+    dev_path = config_dir / "development.toml"
+    if dev_path.exists():
+        dev_config = _load_toml(dev_path)
+        for key, value in dev_config.items():
+            if isinstance(value, dict) and key in config and isinstance(config[key], dict):
+                config[key] = {**config[key], **value}
+            else:
+                config[key] = value
+
+    config = _apply_env_overrides(config)
+
+    server = ServerConfig(**(config.get("server") or {}))
+    llm = LLMConfig(**(config.get("llm") or {}))
+    ollama = OllamaConfig(**(config.get("ollama") or {}))
+    openai_compat = OpenAICompatibleConfig(**(config.get("openai_compatible") or {}))
+    models = _load_models_config(config.get("models") or {})
+    embeddings = EmbeddingsConfig(**(config.get("embeddings") or {}))
+    security = SecurityConfig(**(config.get("security") or {}))
+    persistence = PersistenceConfig(**(config.get("persistence") or {}))
+    rag = RAGConfig(**(config.get("rag") or {}))
+    log_level = config.get("logging", {}).get("level", "INFO")
+
+    return AppConfig(
+        server=server,
+        llm=llm,
+        ollama=ollama,
+        openai_compatible=openai_compat,
+        models=models,
+        embeddings=embeddings,
+        security=security,
+        persistence=persistence,
+        rag=rag,
+        log_level=log_level,
+    )

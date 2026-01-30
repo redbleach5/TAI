@@ -1,0 +1,357 @@
+"""Self-Improvement Workflow - analyze → plan → code → validate → write with retry."""
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Literal, TypedDict
+
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.graph import END, START, StateGraph
+
+from src.domain.ports.llm import LLMMessage, LLMPort
+from src.infrastructure.agents.file_writer import FileWriter
+
+
+class ImprovementState(TypedDict, total=False):
+    """State for improvement workflow."""
+    
+    # Input
+    file_path: str
+    issue: dict  # CodeIssue as dict
+    original_code: str
+    
+    # Processing
+    plan: str
+    improved_code: str
+    tests: str
+    
+    # Validation
+    validation_passed: bool
+    validation_output: str
+    retry_count: int
+    max_retries: int
+    
+    # Output
+    write_result: dict
+    error: str | None
+    current_step: str
+
+
+@dataclass
+class ImprovementResult:
+    """Result of improvement attempt."""
+    
+    success: bool
+    file_path: str
+    original_code: str
+    improved_code: str | None
+    backup_path: str | None
+    validation_output: str | None
+    error: str | None
+    retries: int
+
+
+async def _analyze_node(
+    state: ImprovementState,
+    file_writer: FileWriter,
+) -> ImprovementState:
+    """Read original file for improvement."""
+    file_path = state.get("file_path", "")
+    result = file_writer.read_file(file_path)
+    
+    if not result["success"]:
+        return {
+            **state,
+            "error": result["error"],
+            "current_step": "error",
+        }
+    
+    return {
+        **state,
+        "original_code": result["content"],
+        "retry_count": 0,
+        "max_retries": 3,
+        "current_step": "plan",
+    }
+
+
+async def _plan_node(
+    state: ImprovementState,
+    llm: LLMPort,
+    model: str,
+    on_chunk: Callable[[str, str], None] | None = None,
+) -> ImprovementState:
+    """Generate improvement plan."""
+    issue = state.get("issue", {})
+    original_code = state.get("original_code", "")
+    
+    prompt = f"""You need to improve this code to fix the following issue:
+
+Issue: {issue.get('message', 'General improvement')}
+Severity: {issue.get('severity', 'medium')}
+Type: {issue.get('issue_type', 'refactor')}
+Suggestion: {issue.get('suggestion', 'Improve code quality')}
+
+Original code:
+```python
+{original_code}
+```
+
+Create a brief step-by-step plan to fix this issue. Be specific about what changes to make.
+"""
+
+    messages = [
+        LLMMessage(role="system", content="You are a senior Python developer. Create concise improvement plans."),
+        LLMMessage(role="user", content=prompt),
+    ]
+    
+    if on_chunk:
+        content_parts = []
+        async for chunk in llm.generate_stream(messages=messages, model=model):
+            content_parts.append(chunk)
+            on_chunk("plan", chunk)
+        plan = "".join(content_parts)
+    else:
+        response = await llm.generate(messages=messages, model=model)
+        plan = response.content
+    
+    return {
+        **state,
+        "plan": plan,
+        "current_step": "code",
+    }
+
+
+async def _code_node(
+    state: ImprovementState,
+    llm: LLMPort,
+    model: str,
+    on_chunk: Callable[[str, str], None] | None = None,
+) -> ImprovementState:
+    """Generate improved code."""
+    issue = state.get("issue", {})
+    original_code = state.get("original_code", "")
+    plan = state.get("plan", "")
+    validation_output = state.get("validation_output", "")
+    retry_count = state.get("retry_count", 0)
+    
+    retry_context = ""
+    if retry_count > 0 and validation_output:
+        retry_context = f"""
+
+PREVIOUS ATTEMPT FAILED with error:
+{validation_output}
+
+Fix the issues and try again.
+"""
+    
+    prompt = f"""Improve this Python code following the plan below.
+
+Issue to fix: {issue.get('message', 'General improvement')}
+
+Plan:
+{plan}
+
+Original code:
+```python
+{original_code}
+```
+{retry_context}
+Output ONLY the improved Python code. No markdown, no explanations.
+Preserve the overall structure and imports. Make minimal necessary changes.
+"""
+
+    messages = [
+        LLMMessage(role="system", content="You are a Python expert. Output only valid Python code."),
+        LLMMessage(role="user", content=prompt),
+    ]
+    
+    if on_chunk:
+        content_parts = []
+        async for chunk in llm.generate_stream(messages=messages, model=model):
+            content_parts.append(chunk)
+            on_chunk("code", chunk)
+        improved_code = "".join(content_parts)
+    else:
+        response = await llm.generate(messages=messages, model=model)
+        improved_code = response.content
+    
+    # Clean up markdown if present
+    if improved_code.startswith("```"):
+        lines = improved_code.split("\n")
+        improved_code = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
+    
+    return {
+        **state,
+        "improved_code": improved_code,
+        "current_step": "validate",
+    }
+
+
+async def _validate_node(state: ImprovementState) -> ImprovementState:
+    """Validate improved code (syntax check + basic tests)."""
+    import ast
+    import subprocess
+    import tempfile
+    from pathlib import Path
+    
+    improved_code = state.get("improved_code", "")
+    
+    # Syntax check
+    try:
+        ast.parse(improved_code)
+    except SyntaxError as e:
+        return {
+            **state,
+            "validation_passed": False,
+            "validation_output": f"Syntax error at line {e.lineno}: {e.msg}",
+            "current_step": "check_retry",
+        }
+    
+    # Try to run basic import check
+    with tempfile.TemporaryDirectory() as tmpdir:
+        code_file = Path(tmpdir) / "improved.py"
+        code_file.write_text(improved_code, encoding="utf-8")
+        
+        try:
+            result = subprocess.run(
+                ["python", "-m", "py_compile", str(code_file)],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                return {
+                    **state,
+                    "validation_passed": False,
+                    "validation_output": result.stderr,
+                    "current_step": "check_retry",
+                }
+        except Exception as e:
+            return {
+                **state,
+                "validation_passed": False,
+                "validation_output": str(e),
+                "current_step": "check_retry",
+            }
+    
+    return {
+        **state,
+        "validation_passed": True,
+        "validation_output": "Syntax and compilation check passed",
+        "current_step": "write",
+    }
+
+
+def _should_retry(state: ImprovementState) -> Literal["retry", "write", "error"]:
+    """Check if should retry after validation failure."""
+    if state.get("validation_passed"):
+        return "write"
+    
+    retry_count = state.get("retry_count", 0)
+    max_retries = state.get("max_retries", 3)
+    
+    if retry_count < max_retries:
+        return "retry"
+    
+    return "error"
+
+
+async def _retry_node(state: ImprovementState) -> ImprovementState:
+    """Increment retry counter and go back to code generation."""
+    return {
+        **state,
+        "retry_count": state.get("retry_count", 0) + 1,
+        "current_step": "code",
+    }
+
+
+async def _write_node(
+    state: ImprovementState,
+    file_writer: FileWriter,
+) -> ImprovementState:
+    """Write improved code to file."""
+    file_path = state.get("file_path", "")
+    improved_code = state.get("improved_code", "")
+    
+    result = file_writer.write_file(
+        path=file_path,
+        content=improved_code,
+        create_backup=True,
+    )
+    
+    return {
+        **state,
+        "write_result": result,
+        "current_step": "done" if result["success"] else "error",
+        "error": result.get("error"),
+    }
+
+
+async def _error_node(state: ImprovementState) -> ImprovementState:
+    """Handle error state."""
+    error = state.get("error") or state.get("validation_output") or "Unknown error"
+    return {
+        **state,
+        "error": error,
+        "current_step": "error",
+    }
+
+
+def build_improvement_graph(
+    llm: LLMPort,
+    model: str = "qwen2.5-coder:32b",
+    file_writer: FileWriter | None = None,
+    on_chunk: Callable[[str, str], None] | None = None,
+) -> StateGraph:
+    """Build improvement workflow graph."""
+    writer = file_writer or FileWriter()
+    
+    async def analyze_wrapper(state: ImprovementState) -> ImprovementState:
+        return await _analyze_node(state, writer)
+    
+    async def plan_wrapper(state: ImprovementState) -> ImprovementState:
+        return await _plan_node(state, llm, model, on_chunk)
+    
+    async def code_wrapper(state: ImprovementState) -> ImprovementState:
+        return await _code_node(state, llm, model, on_chunk)
+    
+    async def write_wrapper(state: ImprovementState) -> ImprovementState:
+        return await _write_node(state, writer)
+    
+    builder = StateGraph(ImprovementState)
+    
+    builder.add_node("analyze", analyze_wrapper)
+    builder.add_node("plan", plan_wrapper)
+    builder.add_node("code", code_wrapper)
+    builder.add_node("validate", _validate_node)
+    builder.add_node("retry", _retry_node)
+    builder.add_node("write", write_wrapper)
+    builder.add_node("error", _error_node)
+    
+    # Flow
+    builder.add_edge(START, "analyze")
+    builder.add_edge("analyze", "plan")
+    builder.add_edge("plan", "code")
+    builder.add_edge("code", "validate")
+    
+    # Retry loop
+    builder.add_conditional_edges(
+        "validate",
+        _should_retry,
+        path_map={"retry": "retry", "write": "write", "error": "error"},
+    )
+    builder.add_edge("retry", "code")
+    
+    # End states
+    builder.add_edge("write", END)
+    builder.add_edge("error", END)
+    
+    return builder
+
+
+def compile_improvement_graph(
+    builder: StateGraph,
+    checkpointer: MemorySaver | None = None,
+):
+    """Compile improvement graph."""
+    return builder.compile(checkpointer=checkpointer or MemorySaver())
