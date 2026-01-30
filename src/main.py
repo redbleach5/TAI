@@ -8,6 +8,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from src.api.dependencies import get_config, get_llm_adapter, limiter
+from src.api.routes.assistant import router as assistant_router
 from src.api.routes.chat import router as chat_router
 from src.api.routes.code import router as code_router
 from src.api.routes.config import router as config_router
@@ -52,6 +53,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(assistant_router)
 app.include_router(chat_router)
 app.include_router(code_router)
 app.include_router(config_router)

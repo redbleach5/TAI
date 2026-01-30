@@ -7,7 +7,13 @@
 - **Chat** — диалог с LLM, greeting/help без workflow
 - **Workflow** — TDD: intent → planner → researcher (RAG) → tests → coder → validator
 - **Model Router** — выбор модели по сложности задачи (config-driven, per-provider)
-- **RAG** — ChromaDB + embeddings для контекста из кодовой базы
+- **RAG** — ChromaDB + embeddings для контекста из кодовой базы (все типы файлов, gitignore)
+- **Project Map** — автогенерация карты проекта при индексации
+- **Multi-Project** — работа с несколькими проектами
+- **Quick Commands** — @web, @code, @rag команды в чате (Cherry Studio стиль)
+- **Assistant Modes** — пресеты (Coder, Researcher, Writer, Analyst, Reviewer)
+- **Web Search** — DuckDuckGo интеграция через @web
+- **Prompt Templates** — библиотека готовых промптов
 - **Стриминг** — SSE для chat и workflow
 - **Reasoning** — парсинг `<think>` (DeepSeek-R1, QwQ), стриминг thinking в UI
 - **Settings UI** — редактирование config через веб-интерфейс
@@ -91,6 +97,14 @@ curl http://localhost:8000/rag/status
 | `POST /git/commit` | Git commit |
 | `POST /rag/index?path=.` | Индексация директории |
 | `GET /rag/status` | Статус RAG индекса |
+| `POST /rag/search` | Поиск по индексу |
+| `GET /rag/project-map` | Карта проекта |
+| `GET /projects` | Список проектов |
+| `POST /projects` | Добавить проект |
+| `POST /projects/{id}/index` | Индексировать проект |
+| `GET /assistant/modes` | Список режимов ассистента |
+| `GET /assistant/templates` | Список шаблонов промптов |
+| `POST /assistant/search/web` | Веб-поиск (DuckDuckGo) |
 
 ## Конфигурация
 
@@ -137,6 +151,8 @@ curl http://localhost:8000/rag/status
 | 6 | ✓ | Reasoning, Settings UI, документация |
 | 7 | ✓ | Self-Improvement: анализ, рефакторинг с retry loop |
 | 8 | ✓ | Advanced IDE: File Browser, Terminal, Git integration |
+| 9 | ✓ | Smart Context: расширенный RAG, Project Map, Multi-Project |
+| 10 | ✓ | Cherry Studio: @commands, modes, templates, web search |
 
 ## Проверка
 

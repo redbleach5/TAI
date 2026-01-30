@@ -71,16 +71,18 @@ def get_model_router() -> ModelRouter:
 
 
 def get_chat_use_case() -> ChatUseCase:
-    """Create ChatUseCase with LLM and config."""
+    """Create ChatUseCase with LLM, RAG, and config."""
     config = get_config()
     llm: LLMPort = get_llm_adapter()
     model_router = get_model_router()
     memory = get_conversation_memory()
+    rag = get_rag_adapter()
     return ChatUseCase(
         llm=llm,
         model_router=model_router,
         max_context_messages=config.persistence.max_context_messages,
         memory=memory,
+        rag=rag,
     )
 
 

@@ -9,7 +9,7 @@ export function useChat() {
   const [streaming, setStreaming] = useState(false)
 
   const send = useCallback(
-    async (text: string, useStream = false) => {
+    async (text: string, useStream = false, modeId = 'default') => {
       if (!text.trim() || loading) return
 
       const userMessage: ChatMessage = { role: 'user', content: text.trim() }
@@ -20,6 +20,7 @@ export function useChat() {
 
       try {
         if (useStream) {
+          // Note: streaming doesn't support mode_id yet in URL params
           const url = getChatStreamUrl(text.trim(), conversationId ?? undefined)
           const eventSource = new EventSource(url)
           let content = ''
@@ -62,6 +63,7 @@ export function useChat() {
             message: text.trim(),
             history: history.length > 0 ? history : undefined,
             conversation_id: conversationId ?? undefined,
+            mode_id: modeId,
           })
           setMessages((prev) => [
             ...prev,

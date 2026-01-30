@@ -11,6 +11,7 @@ class ChatRequest(BaseModel):
     message: str
     history: list[LLMMessage] | None = None
     conversation_id: str | None = None
+    mode_id: str | None = None  # Assistant mode (coder, researcher, etc.)
 
 
 class ChatResponse(BaseModel):

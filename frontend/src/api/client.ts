@@ -20,6 +20,7 @@ export interface ChatRequest {
   message: string
   history?: ChatMessage[]
   conversation_id?: string
+  mode_id?: string
 }
 
 export interface ChatResponse {
