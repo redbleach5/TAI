@@ -7,6 +7,7 @@ import tomli_w
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from src.api.container import reset_container
 from src.api.dependencies import get_config
 from src.domain.ports.config import AppConfig
 
@@ -109,5 +110,5 @@ async def patch_config_route(updates: ConfigPatch):
     with open(path, "wb") as f:
         tomli_w.dump(merged, f)
 
-    get_config.cache_clear()
+    reset_container()
     return {"ok": True, "message": "Config saved. Restart backend to apply changes."}
