@@ -1,5 +1,35 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { postChat, postChatStream, type ChatMessage } from '../../api/client'
+
+const CHAT_STORAGE_KEY = 'tai-chat'
+
+function loadFromStorage(): { messages: ChatMessage[]; conversationId: string | null } {
+  try {
+    const raw = localStorage.getItem(CHAT_STORAGE_KEY)
+    if (!raw) return { messages: [], conversationId: null }
+    const data = JSON.parse(raw)
+    return {
+      messages: Array.isArray(data.messages) ? data.messages : [],
+      conversationId: typeof data.conversationId === 'string' ? data.conversationId : null,
+    }
+  } catch {
+    return { messages: [], conversationId: null }
+  }
+}
+
+function saveToStorage(messages: ChatMessage[], conversationId: string | null) {
+  try {
+    localStorage.setItem(
+      CHAT_STORAGE_KEY,
+      JSON.stringify({
+        messages: messages.map((m) => ({ role: m.role, content: m.content, thinking: m.thinking, toolEvents: m.toolEvents, model: m.model })),
+        conversationId,
+      })
+    )
+  } catch {
+    // ignore
+  }
+}
 
 export const ANALYZE_PATTERNS = [
   'проанализируй', 'проанализировать', 'анализ проекта', 'анализируй проект',
@@ -24,11 +54,15 @@ export interface UseChatOptions {
 
 export function useChat(options: UseChatOptions = {}) {
   const { getContextFiles, onToolCall, onToolResult, onAnalyzeRequest } = options
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadFromStorage().messages)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [conversationId, setConversationId] = useState<string | null>(null)
+  const [conversationId, setConversationId] = useState<string | null>(() => loadFromStorage().conversationId)
   const [streaming, setStreaming] = useState(false)
+
+  useEffect(() => {
+    saveToStorage(messages, conversationId)
+  }, [messages, conversationId])
 
   const send = useCallback(
     async (text: string, useStream = false, modeId = 'default', model?: string) => {
@@ -72,12 +106,13 @@ export function useChat(options: UseChatOptions = {}) {
           let content = ''
           let thinking = ''
           const toolEvents: Array<{ type: 'tool_call' | 'tool_result'; data: string }> = []
+          let modelName = ''
           setMessages((prev) => [...prev, { role: 'assistant', content: '', thinking: '', toolEvents: [] }])
 
           const updateMessage = () => {
             setMessages((prev) => {
               const next = [...prev]
-              next[next.length - 1] = { role: 'assistant', content, thinking, toolEvents: [...toolEvents] }
+              next[next.length - 1] = { role: 'assistant', content, thinking, toolEvents: [...toolEvents], model: modelName || undefined }
               return next
             })
           }
@@ -104,6 +139,14 @@ export function useChat(options: UseChatOptions = {}) {
               } else if (eventType === 'tool_result' && data) {
                 toolEvents.push({ type: 'tool_result', data })
                 onToolResult?.(data)
+              }               else if (eventType === 'done' && data) {
+                try {
+                  const parsed = JSON.parse(data)
+                  if (parsed.conversation_id) setConversationId(parsed.conversation_id)
+                  if (parsed.model) modelName = parsed.model
+                } catch {
+                  setConversationId(data)
+                }
               }
               updateMessage()
               if (eventType === 'done') break
@@ -117,7 +160,7 @@ export function useChat(options: UseChatOptions = {}) {
           })
           setMessages((prev) => [
             ...prev,
-            { role: 'assistant', content: response.content },
+            { role: 'assistant', content: response.content, model: response.model },
           ])
           if (response.conversation_id) {
             setConversationId(response.conversation_id)
@@ -137,6 +180,7 @@ export function useChat(options: UseChatOptions = {}) {
     setMessages([])
     setConversationId(null)
     setError(null)
+    saveToStorage([], null)
   }, [])
 
   /** Add message (for Analyze, Generate results) */

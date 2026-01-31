@@ -10,6 +10,7 @@ from src.application.improvement.use_case import SelfImprovementUseCase
 from src.domain.ports.config import AppConfig
 from src.domain.ports.llm import LLMPort
 from src.domain.services.model_router import ModelRouter
+from src.domain.services.model_selector import ModelSelector
 from src.infrastructure.persistence.conversation_memory import ConversationMemory
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 
@@ -35,6 +36,11 @@ def get_conversation_memory() -> ConversationMemory:
 def get_model_router() -> ModelRouter:
     """Get model router."""
     return get_container().model_router
+
+
+def get_model_selector() -> ModelSelector:
+    """Get model selector (auto-select by capability)."""
+    return get_container().model_selector
 
 
 def get_chat_use_case() -> ChatUseCase:

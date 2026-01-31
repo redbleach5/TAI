@@ -7,10 +7,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
-from src.api.dependencies import get_llm_adapter, get_model_router, get_rag_adapter, limiter
+from src.api.dependencies import get_llm_adapter, get_model_selector, get_rag_adapter, limiter
 from src.application.analysis.deep_analyzer import DeepAnalyzer
 from src.domain.ports.llm import LLMPort
-from src.domain.services.model_router import ModelRouter
+from src.domain.services.model_selector import ModelSelector
 from src.infrastructure.analyzer.project_analyzer import get_analyzer, ProjectAnalysis
 from src.infrastructure.analyzer.report_generator import ReportGenerator
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
@@ -238,7 +238,7 @@ async def get_project_deep_report(
     request: Request,
     body: DeepAnalyzeRequest,
     llm: LLMPort = Depends(get_llm_adapter),
-    model_router: ModelRouter = Depends(get_model_router),
+    model_selector: ModelSelector = Depends(get_model_selector),
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
 ) -> str:
     """Глубокий анализ уровня Cursor AI: статика + RAG + LLM.
@@ -254,7 +254,7 @@ async def get_project_deep_report(
     if not path.is_dir():
         raise HTTPException(status_code=400, detail="Path must be a directory")
     
-    deep_analyzer = DeepAnalyzer(llm=llm, model_router=model_router, rag=rag)
+    deep_analyzer = DeepAnalyzer(llm=llm, model_selector=model_selector, rag=rag)
     return await deep_analyzer.analyze(str(path))
 
 

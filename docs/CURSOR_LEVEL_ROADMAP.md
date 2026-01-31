@@ -131,3 +131,20 @@
 | B5 | `improvement_graph.py` |
 | A3 | `deep_analyzer.py`, git commands |
 | C2 | `agent/tool_parser.py`, `use_case.py` (парсинг готов, подтверждение — backend) |
+
+---
+
+## Часть 4: Качество кода (результаты анализа 2026-01-31)
+
+### Исправлено
+- [x] **tool_parser.py** — `__import__("json")` заменён на статический `import json` (безопасность)
+
+### Не требуется / не применимо
+- **files.py import \*** — в нашем коде нет; в `code.py` — шаблон пользовательского теста
+- **Пустой except в тестах** — это тестовые данные (код для анализатора), не наш код
+- **workflow.py global** — в workflow.py нет; globals в других модулях
+
+### Отложено (рефакторинг)
+- [ ] **Глобальные переменные** — container, improve, project_analyzer, code_security и др.; вынести в DI
+- [ ] **project_analyzer.py** — высокая цикломатическая сложность; разбить на модули
+- [ ] **Большие файлы** (>500 строк) — report_generator, project_analyzer; вынести логику

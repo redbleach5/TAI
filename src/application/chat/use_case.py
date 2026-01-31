@@ -1,5 +1,6 @@
 """Chat use case - orchestration layer."""
 
+import json
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
@@ -8,7 +9,7 @@ from src.application.chat.handlers import CommandRegistry, get_default_registry
 from src.domain.ports.llm import LLMMessage, LLMPort
 from src.domain.ports.rag import RAGPort
 from src.domain.services.intent_detector import IntentDetector
-from src.domain.services.model_router import ModelRouter
+from src.domain.services.model_selector import ModelSelector
 from src.infrastructure.llm.reasoning_parser import stream_reasoning_chunks
 from src.infrastructure.services.command_parser import parse_message
 from src.infrastructure.services.assistant_modes import get_mode
@@ -24,7 +25,7 @@ class ChatUseCase:
     def __init__(
         self,
         llm: LLMPort,
-        model_router: ModelRouter,
+        model_selector: ModelSelector,
         max_context_messages: int = 20,
         memory: "ConversationMemory | None" = None,
         rag: "RAGPort | None" = None,
@@ -32,7 +33,7 @@ class ChatUseCase:
         agent_use_case: "AgentUseCase | None" = None,
     ) -> None:
         self._llm = llm
-        self._model_router = model_router
+        self._model_selector = model_selector
         self._max_context = max_context_messages
         self._memory = memory
         self._rag = rag
@@ -57,9 +58,9 @@ class ChatUseCase:
         messages = await self._build_messages(request)
         
         # Generate LLM response
-        model = request.model or self._model_router.select_model(request.message)
+        model, fallback = await self._model_selector.select_model(request.message)
         temperature = self._get_temperature(request)
-        llm_response = await self._generate_with_fallback(messages, model, temperature)
+        llm_response = await self._generate_with_fallback(messages, model, fallback, temperature)
         
         return self._create_response(request, llm_response.content, llm_response.model)
 
@@ -71,32 +72,43 @@ class ChatUseCase:
 
         # Agent mode: delegate to AgentUseCase
         if request.mode_id == "agent" and self._agent_use_case:
-            async for kind, chunk in self._agent_use_case.execute_stream(request):
+            model = request.model or (await self._model_selector.select_model(request.message))[0]
+            req_with_model = request.model_copy(update={"model": model}) if not request.model else request
+            async for kind, chunk in self._agent_use_case.execute_stream(req_with_model):
                 yield (kind, chunk)
+            yield ("done", json.dumps({"conversation_id": request.conversation_id or "", "model": model}))
             return
         
         # Check for template intent
         intent = self._intent_detector.detect(request.message)
         if intent.response is not None:
             yield ("content", intent.response)
+            conv_id = self._save_to_memory(request, intent.response, "template") if self._memory else None
+            yield ("done", json.dumps({"conversation_id": conv_id or request.conversation_id or "", "model": "template"}))
             return
 
         # Build messages with command processing
         messages = await self._build_messages(request)
-        model = request.model or self._model_router.select_model(request.message)
+        model, fallback = await self._model_selector.select_model(request.message)
         temperature = self._get_temperature(request)
         
         # Stream response
         full_content: list[str] = []
-        raw_stream = self._stream_with_fallback(messages, model, temperature)
+        raw_stream = self._stream_with_fallback(messages, model, fallback, temperature)
         async for kind, text in stream_reasoning_chunks(raw_stream):
             if kind == "content":
                 full_content.append(text)
             yield (kind, text)
 
-        # Save conversation
+        # Save conversation and send conversation_id in done event
+        conv_id: str | None = None
         if full_content:
-            self._save_to_memory(request, "".join(full_content), model)
+            conv_id = self._save_to_memory(request, "".join(full_content), model)
+        # done event: JSON with conversation_id and model for watermark
+        done_data = conv_id or ""
+        if model:
+            done_data = json.dumps({"conversation_id": conv_id or "", "model": model})
+        yield ("done", done_data)
 
     async def _build_messages(self, request: ChatRequest) -> list[LLMMessage]:
         """Build messages for LLM from request, history, and commands."""
@@ -229,25 +241,27 @@ class ChatUseCase:
         request: ChatRequest,
         content: str,
         model: str,
-    ) -> None:
-        """Save conversation to memory."""
+    ) -> str | None:
+        """Save conversation to memory. Returns conversation_id used."""
         if not self._memory:
-            return
+            return None
         
         conv_id = request.conversation_id or self._memory.create_id()
         history = list(request.history or [])
         history.append(LLMMessage(role="user", content=request.message))
         history.append(LLMMessage(role="assistant", content=content))
         self._memory.save(conv_id, history[-self._max_context:])
+        return conv_id
 
     async def _generate_with_fallback(
         self,
         messages: list[LLMMessage],
         model: str,
+        fallback: str,
         temperature: float = 0.7,
     ):
         """Generate with fallback if model unavailable."""
-        fallback_chain = [model, self._model_router.fallback_model]
+        fallback_chain = [model, fallback]
         last_error: Exception | None = None
         
         for m in fallback_chain:
@@ -267,10 +281,11 @@ class ChatUseCase:
         self,
         messages: list[LLMMessage],
         model: str,
+        fallback: str,
         temperature: float = 0.7,
     ) -> AsyncIterator[str]:
         """Stream with fallback if model unavailable."""
-        fallback_chain = [model, self._model_router.fallback_model]
+        fallback_chain = [model, fallback]
         last_error: Exception | None = None
         
         for m in fallback_chain:

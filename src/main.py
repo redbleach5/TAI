@@ -24,14 +24,16 @@ from src.api.routes.rag import router as rag_router
 from src.api.routes.terminal import router as terminal_router
 from src.api.routes.workflow import router as workflow_router
 from src.api.routes.workspace import router as workspace_router
+from src.infrastructure.config.model_validator import validate_models_config
 from src.shared.logging import setup_logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: load config, setup logging."""
+    """Startup: load config, setup logging, validate models."""
     container = get_container()
     setup_logging(container.config.log_level)
+    await validate_models_config(container.llm, container.config)
     yield
     # Shutdown if needed
 

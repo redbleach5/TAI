@@ -21,7 +21,7 @@ from src.application.improvement.dto import (
 )
 from src.domain.ports.llm import LLMPort
 from src.domain.ports.rag import RAGPort
-from src.domain.services.model_router import ModelRouter
+from src.domain.services.model_selector import ModelSelector
 from src.infrastructure.agents.analyzer import CodeAnalyzer, CodeIssue, ProjectAnalysis
 from src.infrastructure.agents.file_writer import FileWriter
 from src.infrastructure.workflow.improvement_graph import (
@@ -49,14 +49,14 @@ class SelfImprovementUseCase:
     def __init__(
         self,
         llm: LLMPort,
-        model_router: ModelRouter,
+        model_selector: ModelSelector,
         file_writer: FileWriter | None = None,
         rag: RAGPort | None = None,
         checkpointer: MemorySaver | None = None,
         workspace_path_getter: Callable[[], str] | None = None,
     ) -> None:
         self._llm = llm
-        self._model_router = model_router
+        self._model_selector = model_selector
         self._file_writer = file_writer or FileWriter()
         self._rag = rag
         self._checkpointer = checkpointer or MemorySaver()
@@ -179,12 +179,10 @@ class SelfImprovementUseCase:
         async with self._workspace_lock:
             try:
                 os.chdir(workspace_path)
-                # Select model based on complexity
-                model = self._model_router.select_model(
+                # For improvements, prefer complex model (largest available)
+                model, _ = await self._model_selector.select_model(
                     request.issue.get("message", "") if request.issue else "complex refactoring"
                 )
-                # For improvements, prefer complex model
-                model = self._model_router._models.complex
                 
                 builder = build_improvement_graph(
                     llm=self._llm,

@@ -818,6 +818,14 @@
   display: block;
 }
 
+.chat-message__watermark {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  opacity: 0.8;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
 .chat-message__content {
   word-break: break-word;
   line-height: 1.6;

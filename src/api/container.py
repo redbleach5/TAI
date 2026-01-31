@@ -7,6 +7,7 @@ from src.domain.ports.config import AppConfig
 from src.domain.ports.llm import LLMPort
 from src.domain.ports.embeddings import EmbeddingsPort
 from src.domain.services.model_router import ModelRouter
+from src.domain.services.model_selector import ModelSelector
 from src.infrastructure.config import load_config
 
 if TYPE_CHECKING:
@@ -76,7 +77,16 @@ class Container:
             self.config.models,
             provider=self.config.llm.provider,
         )
-    
+
+    @cached_property
+    def model_selector(self) -> ModelSelector:
+        """Model selector - auto-select by capability from available models."""
+        return ModelSelector(
+            llm=self.llm,
+            model_router=self.model_router,
+            config=self.config,
+        )
+
     @cached_property
     def conversation_memory(self) -> "ConversationMemory":
         """Conversation memory for chat history."""
@@ -100,7 +110,7 @@ class Container:
         from src.application.agent.use_case import AgentUseCase
         return AgentUseCase(
             llm=self.llm,
-            model_router=self.model_router,
+            model_selector=self.model_selector,
             rag=self.rag,
         )
 
@@ -110,7 +120,7 @@ class Container:
         from src.application.chat.use_case import ChatUseCase
         return ChatUseCase(
             llm=self.llm,
-            model_router=self.model_router,
+            model_selector=self.model_selector,
             max_context_messages=self.config.persistence.max_context_messages,
             memory=self.conversation_memory,
             rag=self.rag,
@@ -123,7 +133,7 @@ class Container:
         from src.application.workflow.use_case import WorkflowUseCase
         return WorkflowUseCase(
             llm=self.llm,
-            model_router=self.model_router,
+            model_selector=self.model_selector,
             rag=self.rag,
         )
     
@@ -133,7 +143,7 @@ class Container:
         from src.application.improvement.use_case import SelfImprovementUseCase
         return SelfImprovementUseCase(
             llm=self.llm,
-            model_router=self.model_router,
+            model_selector=self.model_selector,
             rag=self.rag,
         )
     

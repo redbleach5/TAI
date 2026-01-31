@@ -14,7 +14,7 @@ from src.application.workflow.dto import (
 from src.domain.entities.workflow_state import WorkflowState
 from src.domain.ports.llm import LLMPort
 from src.domain.ports.rag import RAGPort
-from src.domain.services.model_router import ModelRouter
+from src.domain.services.model_selector import ModelSelector
 from src.infrastructure.workflow import build_workflow_graph, compile_workflow_graph
 
 
@@ -47,12 +47,12 @@ class WorkflowUseCase:
     def __init__(
         self,
         llm: LLMPort,
-        model_router: ModelRouter,
+        model_selector: ModelSelector,
         rag: RAGPort | None = None,
         checkpointer: MemorySaver | None = None,
     ) -> None:
         self._llm = llm
-        self._model_router = model_router
+        self._model_selector = model_selector
         self._rag = rag
         self._checkpointer = checkpointer or MemorySaver()
 
@@ -61,7 +61,7 @@ class WorkflowUseCase:
         session_id = request.session_id or str(uuid.uuid4())
         builder = build_workflow_graph(
             self._llm,
-            self._model_router,
+            self._model_selector,
             on_chunk=None,
             rag=self._rag,
         )
@@ -84,7 +84,7 @@ class WorkflowUseCase:
 
         builder = build_workflow_graph(
             self._llm,
-            self._model_router,
+            self._model_selector,
             on_chunk=on_chunk,
             rag=self._rag,
         )

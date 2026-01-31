@@ -48,6 +48,9 @@ export function ChatMessage({ message }: Props) {
             </div>
           </details>
         )}
+        {!isUser && message.model && (
+          <span className="chat-message__watermark">{message.model}</span>
+        )}
         <div className="chat-message__content">
           {isUser ? (
             message.content

@@ -37,7 +37,6 @@ async def chat_stream_get(
     async def event_generator():
         async for kind, chunk in use_case.execute_stream(chat_request):
             yield {"event": kind, "data": chunk}
-        yield {"event": "done", "data": ""}
     return EventSourceResponse(event_generator())
 
 
@@ -52,5 +51,4 @@ async def chat_stream_post(
     async def event_generator():
         async for kind, chunk in use_case.execute_stream(chat_request):
             yield {"event": kind, "data": chunk}
-        yield {"event": "done", "data": ""}
     return EventSourceResponse(event_generator())

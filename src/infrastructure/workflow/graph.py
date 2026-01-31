@@ -10,7 +10,7 @@ from src.domain.entities.workflow_state import WorkflowState
 from src.domain.ports.llm import LLMPort
 from src.domain.ports.rag import RAGPort
 from src.domain.services.intent_detector import IntentDetector
-from src.domain.services.model_router import ModelRouter
+from src.domain.services.model_selector import ModelSelector
 from src.infrastructure.agents.coder import coder_node
 from src.infrastructure.agents.planner import planner_node
 from src.infrastructure.agents.researcher import researcher_node
@@ -28,7 +28,7 @@ def _should_skip_greeting(state: WorkflowState) -> Literal["end", "planner"]:
 
 def build_workflow_graph(
     llm: LLMPort,
-    model_router: ModelRouter,
+    model_selector: ModelSelector,
     on_chunk: Callable[[str, str], None] | None = None,
     rag: RAGPort | None = None,
 ) -> StateGraph:
@@ -39,7 +39,7 @@ def build_workflow_graph(
         """Detect intent, set template_response for greeting/help."""
         task = state.get("task", "")
         intent = intent_detector.detect(task)
-        model = model_router.select_model(task)
+        model, _ = await model_selector.select_model(task)
         return {
             **state,
             "intent_kind": intent.kind,

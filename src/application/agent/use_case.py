@@ -8,7 +8,7 @@ from src.application.agent.tool_parser import parse_all_tool_calls, parse_tool_c
 from src.application.agent.tools import AGENT_TOOLS_PROMPT, ToolExecutor
 from src.application.chat.dto import ChatRequest, ChatResponse
 from src.domain.ports.llm import LLMMessage, LLMPort
-from src.domain.services.model_router import ModelRouter
+from src.domain.services.model_selector import ModelSelector
 
 if TYPE_CHECKING:
     from src.domain.ports.rag import RAGPort
@@ -27,12 +27,12 @@ class AgentUseCase:
     def __init__(
         self,
         llm: LLMPort,
-        model_router: ModelRouter,
+        model_selector: ModelSelector,
         rag: "RAGPort | None" = None,
         max_iterations: int = 10,
     ) -> None:
         self._llm = llm
-        self._model_router = model_router
+        self._model_selector = model_selector
         self._rag = rag
         self._max_iterations = max_iterations
 
@@ -90,12 +90,13 @@ class AgentUseCase:
 
     async def execute(self, request: ChatRequest) -> ChatResponse:
         """Run agent loop until done or max iterations."""
-        model = request.model or self._model_router.select_model(request.message)
+        model, fallback = await self._model_selector.select_model(request.message)
+        model = request.model or model
         executor = ToolExecutor(workspace_path=None, rag=self._rag)
 
         if self._use_native_tools():
             return await self._execute_native(request, model, executor)
-        return await self._execute_prompt_based(request, model, executor)
+        return await self._execute_prompt_based(request, model, fallback, executor)
 
     async def _execute_native(
         self, request: ChatRequest, model: str, executor: ToolExecutor
@@ -137,7 +138,7 @@ class AgentUseCase:
         return ChatResponse(content=final, model=model, conversation_id=request.conversation_id)
 
     async def _execute_prompt_based(
-        self, request: ChatRequest, model: str, executor: ToolExecutor
+        self, request: ChatRequest, model: str, fallback: str, executor: ToolExecutor
     ) -> ChatResponse:
         """Prompt-based ReAct fallback."""
         rag_context, project_map = await self._get_agent_context(request.message)
@@ -145,7 +146,7 @@ class AgentUseCase:
         full_content: list[str] = []
 
         for _ in range(self._max_iterations):
-            response = await self._generate(messages, model)
+            response = await self._generate(messages, model, fallback)
             content = response.content
             full_content.append(content)
 
@@ -172,14 +173,15 @@ class AgentUseCase:
         self, request: ChatRequest
     ) -> AsyncIterator[tuple[str, str]]:
         """Stream agent response with tool_call and tool_result events."""
-        model = request.model or self._model_router.select_model(request.message)
+        model, fallback = await self._model_selector.select_model(request.message)
+        model = request.model or model
         executor = ToolExecutor(workspace_path=None, rag=self._rag)
 
         if self._use_native_tools():
             async for evt in self._execute_stream_native(request, model, executor):
                 yield evt
         else:
-            async for evt in self._execute_stream_prompt_based(request, model, executor):
+            async for evt in self._execute_stream_prompt_based(request, model, fallback, executor):
                 yield evt
 
     async def _execute_stream_native(
@@ -220,7 +222,7 @@ class AgentUseCase:
                 messages.append({"role": "tool", "tool_name": name, "content": obs})
 
     async def _execute_stream_prompt_based(
-        self, request: ChatRequest, model: str, executor: ToolExecutor
+        self, request: ChatRequest, model: str, fallback: str, executor: ToolExecutor
     ) -> AsyncIterator[tuple[str, str]]:
         """Stream with prompt-based ReAct fallback."""
         rag_context, project_map = await self._get_agent_context(request.message)
@@ -228,7 +230,7 @@ class AgentUseCase:
 
         for _ in range(self._max_iterations):
             chunk_buffer: list[str] = []
-            async for chunk in self._stream(messages, model):
+            async for chunk in self._stream(messages, model, fallback):
                 chunk_buffer.append(chunk)
                 yield ("content", chunk)
 
@@ -279,11 +281,11 @@ class AgentUseCase:
         return messages
 
     async def _generate(
-        self, messages: list[LLMMessage], model: str
+        self, messages: list[LLMMessage], model: str, fallback: str
     ):
-        fallback = [model, self._model_router.fallback_model]
+        fallback_chain = [model, fallback]
         last_err: Exception | None = None
-        for m in fallback:
+        for m in fallback_chain:
             try:
                 return await self._llm.generate(
                     messages=messages,
@@ -295,11 +297,11 @@ class AgentUseCase:
         raise last_err or RuntimeError("LLM failed")
 
     async def _stream(
-        self, messages: list[LLMMessage], model: str
+        self, messages: list[LLMMessage], model: str, fallback: str
     ) -> AsyncIterator[str]:
-        fallback = [model, self._model_router.fallback_model]
+        fallback_chain = [model, fallback]
         last_err: Exception | None = None
-        for m in fallback:
+        for m in fallback_chain:
             try:
                 async for chunk in self._llm.generate_stream(
                     messages=messages,

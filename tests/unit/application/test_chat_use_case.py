@@ -176,9 +176,10 @@ class TestChatUseCaseExecuteStream:
         async for kind, text in use_case.execute_stream(request):
             chunks.append((kind, text))
 
-        assert len(chunks) == 1
+        assert len(chunks) >= 2  # content + done
         assert chunks[0][0] == "content"
         assert chunks[0][1]  # Template text
+        assert chunks[-1][0] == "done"
 
     @pytest.mark.asyncio
     async def test_regular_message_streams(self, mock_llm_stream, model_router, mock_memory):
@@ -195,9 +196,11 @@ class TestChatUseCaseExecuteStream:
         async for kind, text in use_case.execute_stream(request):
             chunks.append((kind, text))
 
-        # Should have multiple content chunks
-        assert len(chunks) >= 1
-        assert all(k == "content" for k, _ in chunks)
+        # Should have content chunks + done event
+        assert len(chunks) >= 2
+        content_chunks = [(k, t) for k, t in chunks if k == "content"]
+        assert len(content_chunks) >= 1
+        assert chunks[-1][0] == "done"
 
 
 class TestChatUseCaseFallback:

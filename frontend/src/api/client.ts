@@ -16,6 +16,8 @@ export interface ChatMessage {
   thinking?: string
   /** Agent tool calls/results (inline in chat) */
   toolEvents?: Array<{ type: 'tool_call' | 'tool_result'; data: string }>
+  /** Model that processed this message (watermark) */
+  model?: string
 }
 
 export interface ContextFile {

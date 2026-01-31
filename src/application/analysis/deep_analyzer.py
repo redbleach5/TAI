@@ -21,7 +21,7 @@ from src.infrastructure.analyzer.report_generator import ReportGenerator
 
 if TYPE_CHECKING:
     from src.domain.ports.llm import LLMPort
-    from src.domain.services.model_router import ModelRouter
+    from src.domain.services.model_selector import ModelSelector
     from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 
 
@@ -339,11 +339,11 @@ class DeepAnalyzer:
     def __init__(
         self,
         llm: "LLMPort",
-        model_router: "ModelRouter",
+        model_selector: "ModelSelector",
         rag: "ChromaDBRAGAdapter | None" = None,
     ) -> None:
         self._llm = llm
-        self._model_router = model_router
+        self._model_selector = model_selector
         self._rag = rag
 
     async def analyze(self, path: str, multi_step: bool = True) -> str:
@@ -426,7 +426,7 @@ class DeepAnalyzer:
         ]
 
         try:
-            model = self._model_router.select_model(
+            model, _ = await self._model_selector.select_model(
                 "анализ архитектуры проекта рефакторинг рекомендации"
             )
             response = await self._llm.generate(
@@ -477,7 +477,7 @@ class DeepAnalyzer:
             LLMMessage(role="user", content=prompt),
         ]
         try:
-            model = self._model_router.select_model("анализ модулей")
+            model, _ = await self._model_selector.select_model("анализ модулей")
             response = await self._llm.generate(messages=messages, model=model, temperature=0.2)
             return _parse_step1_modules(response.content or "")
         except Exception:
