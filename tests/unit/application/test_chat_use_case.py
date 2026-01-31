@@ -5,9 +5,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 from src.application.chat.dto import ChatRequest, ChatResponse
 from src.application.chat.use_case import ChatUseCase
-from src.domain.ports.config import ModelConfig
+from src.domain.ports.config import AppConfig, ModelConfig
 from src.domain.ports.llm import LLMMessage, LLMResponse
 from src.domain.services.model_router import ModelRouter
+from src.domain.services.model_selector import ModelSelector
 
 
 @pytest.fixture
@@ -37,6 +38,21 @@ def mock_llm_stream():
 
 
 @pytest.fixture
+def model_selector():
+    """Model selector that returns fixed models."""
+    config = AppConfig()
+    config.models = ModelConfig(
+        simple="simple-model",
+        medium="medium-model",
+        complex="complex-model",
+        fallback="fallback-model",
+    )
+    selector = MagicMock(spec=ModelSelector)
+    selector.select_model = AsyncMock(return_value=("medium-model", "fallback-model"))
+    return selector
+
+
+@pytest.fixture
 def model_router():
     """Model router with default config."""
     config = ModelConfig(
@@ -58,11 +74,11 @@ def mock_memory():
 
 
 @pytest.fixture
-def use_case(mock_llm, model_router, mock_memory):
+def use_case(mock_llm, model_selector, mock_memory):
     """ChatUseCase with mocked dependencies."""
     return ChatUseCase(
         llm=mock_llm,
-        model_router=model_router,
+        model_selector=model_selector,
         max_context_messages=10,
         memory=mock_memory,
     )
@@ -117,11 +133,11 @@ class TestChatUseCaseExecute:
         assert len(messages) == 4  # system + 2 history + 1 current
 
     @pytest.mark.asyncio
-    async def test_respects_max_context(self, mock_llm, model_router, mock_memory):
+    async def test_respects_max_context(self, mock_llm, model_selector, mock_memory):
         """Truncates history to max_context_messages."""
         use_case = ChatUseCase(
             llm=mock_llm,
-            model_router=model_router,
+            model_selector=model_selector,
             max_context_messages=2,
             memory=mock_memory,
         )
@@ -182,11 +198,11 @@ class TestChatUseCaseExecuteStream:
         assert chunks[-1][0] == "done"
 
     @pytest.mark.asyncio
-    async def test_regular_message_streams(self, mock_llm_stream, model_router, mock_memory):
+    async def test_regular_message_streams(self, mock_llm_stream, model_selector, mock_memory):
         """Regular message streams chunks from LLM."""
         use_case = ChatUseCase(
             llm=mock_llm_stream,
-            model_router=model_router,
+            model_selector=model_selector,
             max_context_messages=10,
             memory=mock_memory,
         )
@@ -207,7 +223,7 @@ class TestChatUseCaseFallback:
     """Tests for fallback behavior."""
 
     @pytest.mark.asyncio
-    async def test_fallback_on_error(self, model_router, mock_memory):
+    async def test_fallback_on_error(self, model_selector, mock_memory):
         """Falls back to fallback model on error."""
         mock_llm = MagicMock()
         call_count = 0
@@ -223,7 +239,7 @@ class TestChatUseCaseFallback:
 
         use_case = ChatUseCase(
             llm=mock_llm,
-            model_router=model_router,
+            model_selector=model_selector,
             memory=mock_memory,
         )
         request = ChatRequest(message="test message")
@@ -234,14 +250,14 @@ class TestChatUseCaseFallback:
         assert call_count == 2  # First failed, second succeeded
 
     @pytest.mark.asyncio
-    async def test_raises_if_all_fail(self, model_router, mock_memory):
+    async def test_raises_if_all_fail(self, model_selector, mock_memory):
         """Raises if all models fail."""
         mock_llm = MagicMock()
         mock_llm.generate = AsyncMock(side_effect=Exception("All failed"))
 
         use_case = ChatUseCase(
             llm=mock_llm,
-            model_router=model_router,
+            model_selector=model_selector,
             memory=mock_memory,
         )
         request = ChatRequest(message="test message")
