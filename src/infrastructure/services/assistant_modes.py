@@ -7,6 +7,7 @@ from enum import Enum
 class AssistantMode(Enum):
     """Available assistant modes."""
     DEFAULT = "default"
+    AGENT = "agent"
     CODER = "coder"
     RESEARCHER = "researcher"
     WRITER = "writer"
@@ -41,6 +42,14 @@ When answering:
 - Ask clarifying questions when needed"""
     ),
     
+    AssistantMode.AGENT: ModeConfig(
+        id="agent",
+        name="Агент",
+        description="Автономный помощник — читает файлы, запускает команды, ищет по коду",
+        icon="◆",
+        temperature=0.3,
+        system_prompt="""You are an autonomous coding agent. You can read files, write files, search the codebase, run terminal commands, and list directories. Accomplish the user's task step by step using tools when needed. Use <tool_call>...</tool_call> format for tool invocations.""",
+    ),
     AssistantMode.CODER: ModeConfig(
         id="coder",
         name="Рефакторинг",

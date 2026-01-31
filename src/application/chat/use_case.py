@@ -14,6 +14,7 @@ from src.infrastructure.services.command_parser import parse_message
 from src.infrastructure.services.assistant_modes import get_mode
 
 if TYPE_CHECKING:
+    from src.application.agent.use_case import AgentUseCase
     from src.infrastructure.persistence.conversation_memory import ConversationMemory
 
 
@@ -28,6 +29,7 @@ class ChatUseCase:
         memory: "ConversationMemory | None" = None,
         rag: "RAGPort | None" = None,
         command_registry: CommandRegistry | None = None,
+        agent_use_case: "AgentUseCase | None" = None,
     ) -> None:
         self._llm = llm
         self._model_router = model_router
@@ -36,10 +38,15 @@ class ChatUseCase:
         self._rag = rag
         self._intent_detector = IntentDetector()
         self._command_registry = command_registry or get_default_registry()
+        self._agent_use_case = agent_use_case
 
     async def execute(self, request: ChatRequest) -> ChatResponse:
         """Process chat request: detect intent, process commands, call LLM."""
         request = self._resolve_history(request)
+
+        # Agent mode: delegate to AgentUseCase
+        if request.mode_id == "agent" and self._agent_use_case:
+            return await self._agent_use_case.execute(request)
         
         # Check for template intent (greetings, help, etc.)
         intent = self._intent_detector.detect(request.message)
@@ -61,6 +68,12 @@ class ChatUseCase:
     ) -> AsyncIterator[tuple[str, str]]:
         """Stream LLM response. Yields (kind, chunk)."""
         request = self._resolve_history(request)
+
+        # Agent mode: delegate to AgentUseCase
+        if request.mode_id == "agent" and self._agent_use_case:
+            async for kind, chunk in self._agent_use_case.execute_stream(request):
+                yield (kind, chunk)
+            return
         
         # Check for template intent
         intent = self._intent_detector.detect(request.message)

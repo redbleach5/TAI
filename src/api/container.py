@@ -10,6 +10,7 @@ from src.domain.services.model_router import ModelRouter
 from src.infrastructure.config import load_config
 
 if TYPE_CHECKING:
+    from src.application.agent.use_case import AgentUseCase
     from src.application.chat.use_case import ChatUseCase
     from src.application.workflow.use_case import WorkflowUseCase
     from src.application.improvement.use_case import SelfImprovementUseCase
@@ -94,6 +95,16 @@ class Container:
         )
     
     @cached_property
+    def agent_use_case(self) -> "AgentUseCase":
+        """Agent use case for autonomous tool execution."""
+        from src.application.agent.use_case import AgentUseCase
+        return AgentUseCase(
+            llm=self.llm,
+            model_router=self.model_router,
+            rag=self.rag,
+        )
+
+    @cached_property
     def chat_use_case(self) -> "ChatUseCase":
         """Chat use case with all dependencies."""
         from src.application.chat.use_case import ChatUseCase
@@ -103,6 +114,7 @@ class Container:
             max_context_messages=self.config.persistence.max_context_messages,
             memory=self.conversation_memory,
             rag=self.rag,
+            agent_use_case=self.agent_use_case,
         )
     
     @cached_property
