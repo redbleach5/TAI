@@ -7,6 +7,7 @@ from src.application.workflow.dto import WorkflowRequest, WorkflowResponse
 from src.application.workflow.use_case import WorkflowUseCase
 from src.domain.ports.config import ModelConfig
 from src.domain.services.model_router import ModelRouter
+from src.domain.services.model_selector import ModelSelector
 
 
 @pytest.fixture
@@ -22,15 +23,11 @@ def mock_llm():
 
 
 @pytest.fixture
-def model_router():
-    """Model router with default config."""
-    config = ModelConfig(
-        simple="simple-model",
-        medium="medium-model",
-        complex="complex-model",
-        fallback="fallback-model",
-    )
-    return ModelRouter(config, provider="ollama")
+def model_selector():
+    """Model selector that returns fixed models."""
+    selector = MagicMock(spec=ModelSelector)
+    selector.select_model = AsyncMock(return_value=("medium-model", "fallback-model"))
+    return selector
 
 
 @pytest.fixture
@@ -42,11 +39,11 @@ def mock_rag():
 
 
 @pytest.fixture
-def use_case(mock_llm, model_router, mock_rag):
+def use_case(mock_llm, model_selector, mock_rag):
     """WorkflowUseCase with mocked dependencies."""
     return WorkflowUseCase(
         llm=mock_llm,
-        model_router=model_router,
+        model_selector=model_selector,
         rag=mock_rag,
     )
 
@@ -128,12 +125,12 @@ class TestWorkflowUseCaseIntegration:
     """Integration tests for workflow use case."""
 
     @pytest.mark.asyncio
-    async def test_full_workflow_integration(self, mock_llm, model_router, mock_rag):
+    async def test_full_workflow_integration(self, mock_llm, model_selector, mock_rag):
         """Full workflow executes all steps."""
         # This test verifies the workflow graph runs without errors
         use_case = WorkflowUseCase(
             llm=mock_llm,
-            model_router=model_router,
+            model_selector=model_selector,
             rag=mock_rag,
         )
         

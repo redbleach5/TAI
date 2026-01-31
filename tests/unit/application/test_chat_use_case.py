@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from src.application.chat.dto import ChatRequest, ChatResponse
 from src.application.chat.use_case import ChatUseCase
-from src.domain.ports.config import AppConfig, ModelConfig
+from src.domain.ports.config import ModelConfig
 from src.domain.ports.llm import LLMMessage, LLMResponse
 from src.domain.services.model_router import ModelRouter
 from src.domain.services.model_selector import ModelSelector
@@ -40,13 +40,6 @@ def mock_llm_stream():
 @pytest.fixture
 def model_selector():
     """Model selector that returns fixed models."""
-    config = AppConfig()
-    config.models = ModelConfig(
-        simple="simple-model",
-        medium="medium-model",
-        complex="complex-model",
-        fallback="fallback-model",
-    )
     selector = MagicMock(spec=ModelSelector)
     selector.select_model = AsyncMock(return_value=("medium-model", "fallback-model"))
     return selector

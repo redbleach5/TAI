@@ -71,16 +71,16 @@ class TestDeepAnalyzer:
 
     @pytest.fixture
     def mock_model_selector(self):
-        router = MagicMock()
-        router.select_model = MagicMock(return_value="llama2")
-        return router
+        selector = MagicMock()
+        selector.select_model = AsyncMock(return_value=("llama2", "fallback"))
+        return selector
 
     @pytest.mark.asyncio
     async def test_analyze_single_pass(self, project_dir, mock_llm, mock_model_selector):
         """Single-pass analysis (multi_step=False) returns LLM report."""
         analyzer = DeepAnalyzer(
             llm=mock_llm,
-            model_router=mock_model_selector,
+            model_selector=mock_model_selector,
             rag=None,
         )
         result = await analyzer.analyze(project_dir, multi_step=False)
@@ -92,7 +92,7 @@ class TestDeepAnalyzer:
         """Invalid path raises ValueError."""
         analyzer = DeepAnalyzer(
             llm=mock_llm,
-            model_router=mock_model_selector,
+            model_selector=mock_model_selector,
             rag=None,
         )
         with pytest.raises(ValueError, match="Invalid project path"):

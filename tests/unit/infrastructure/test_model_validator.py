@@ -40,7 +40,8 @@ async def test_validate_missing_model_logs_warning(config, capsys):
 
     await validate_models_config(llm, config)
 
-    out = capsys.readouterr().out
+    out, err = capsys.readouterr()
+    out = out + err
     assert "configured_models_not_available" in out or "missing" in out.lower()
 
 
@@ -52,7 +53,8 @@ async def test_validate_llm_unreachable_skips(config, capsys):
 
     await validate_models_config(llm, config)
 
-    out = capsys.readouterr().out
+    out, err = capsys.readouterr()
+    out = out + err
     assert "models_validation_skipped" in out or "llm_unreachable" in out.lower()
 
 
