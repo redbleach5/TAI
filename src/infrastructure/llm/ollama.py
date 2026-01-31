@@ -1,6 +1,6 @@
 """Ollama adapter - implements LLMPort with Circuit Breaker."""
 
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 import httpx
 from ollama import AsyncClient
@@ -103,3 +103,81 @@ class OllamaAdapter:
             return [getattr(m, "model", getattr(m, "name", "")) for m in resp.models if getattr(m, "model", getattr(m, "name", ""))]
         except Exception:
             return []
+
+    async def chat_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict],
+        model: str | None = None,
+        temperature: float = 0.3,
+    ) -> tuple[str, list[dict]]:
+        """Chat with native tool calling. Returns (content, tool_calls)."""
+        model = model or "llama2"
+        try:
+            response = await self._client.chat(
+                model=model,
+                messages=messages,
+                tools=tools,
+                options={"temperature": temperature},
+            )
+            content = response.message.content if response.message else ""
+            tool_calls = getattr(response.message, "tool_calls", None) or []
+            # Convert to dict format: [{"name": "...", "arguments": {...}}]
+            calls = []
+            for tc in tool_calls:
+                fn = getattr(tc, "function", tc) if hasattr(tc, "function") else tc
+                name = getattr(fn, "name", fn.get("name", "")) if isinstance(fn, dict) else getattr(fn, "name", "")
+                args = getattr(fn, "arguments", fn.get("arguments", {})) if isinstance(fn, dict) else getattr(fn, "arguments", {})
+                if isinstance(args, str):
+                    import json
+                    try:
+                        args = json.loads(args) if args else {}
+                    except json.JSONDecodeError:
+                        args = {}
+                calls.append({"name": name, "arguments": args or {}})
+            return (content, calls)
+        except Exception:
+            return ("", [])
+
+    async def chat_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict],
+        model: str | None = None,
+        temperature: float = 0.3,
+    ) -> AsyncIterator[tuple[str, str | list[dict] | None]]:
+        """Stream chat with tools. Yields (kind, data): content chunks, then ("tool_calls", [...]) or ("done", None)."""
+        model = model or "llama2"
+        try:
+            stream = await self._client.chat(
+                model=model,
+                messages=messages,
+                tools=tools,
+                options={"temperature": temperature},
+                stream=True,
+            )
+            content_buf = ""
+            tool_calls: list[dict] = []
+            async for chunk in stream:
+                if chunk.message and chunk.message.content:
+                    content_buf += chunk.message.content
+                    yield ("content", chunk.message.content)
+                tcs = getattr(chunk.message, "tool_calls", None) if chunk.message else None
+                if tcs:
+                    for tc in tcs:
+                        fn = getattr(tc, "function", tc) if hasattr(tc, "function") else tc
+                        name = getattr(fn, "name", "") if not isinstance(fn, dict) else fn.get("name", "")
+                        args = getattr(fn, "arguments", {}) if not isinstance(fn, dict) else fn.get("arguments", {})
+                        if isinstance(args, str):
+                            import json
+                            try:
+                                args = json.loads(args) if args else {}
+                            except json.JSONDecodeError:
+                                args = {}
+                        tool_calls.append({"name": name, "arguments": args or {}})
+            if tool_calls:
+                yield ("tool_calls", tool_calls)
+            yield ("done", None)
+        except Exception:
+            yield ("content", "*Ошибка при вызове модели.*")
+            yield ("done", None)
