@@ -20,6 +20,7 @@ from src.application.improvement.dto import (
     TaskStatus,
 )
 from src.domain.ports.llm import LLMPort
+from src.domain.ports.rag import RAGPort
 from src.domain.services.model_router import ModelRouter
 from src.infrastructure.agents.analyzer import CodeAnalyzer, CodeIssue, ProjectAnalysis
 from src.infrastructure.agents.file_writer import FileWriter
@@ -50,12 +51,14 @@ class SelfImprovementUseCase:
         llm: LLMPort,
         model_router: ModelRouter,
         file_writer: FileWriter | None = None,
+        rag: RAGPort | None = None,
         checkpointer: MemorySaver | None = None,
         workspace_path_getter: Callable[[], str] | None = None,
     ) -> None:
         self._llm = llm
         self._model_router = model_router
         self._file_writer = file_writer or FileWriter()
+        self._rag = rag
         self._checkpointer = checkpointer or MemorySaver()
         self._analyzer = CodeAnalyzer(llm)
         self._workspace_path_getter = workspace_path_getter or (
@@ -188,6 +191,7 @@ class SelfImprovementUseCase:
                     model=model,
                     file_writer=self._file_writer,
                     on_chunk=on_chunk,
+                    rag=self._rag,
                 )
                 graph = compile_improvement_graph(builder, self._checkpointer)
                 

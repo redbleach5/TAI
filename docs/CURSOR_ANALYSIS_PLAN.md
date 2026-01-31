@@ -38,3 +38,7 @@
 ## Реализация
 
 - Phase 1–4 реализованы в `src/application/analysis/deep_analyzer.py`
+
+## Дальнейшие шаги
+
+Полный план выхода на уровень Cursor AI (анализ + написание кода): **`CURSOR_LEVEL_ROADMAP.md`**

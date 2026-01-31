@@ -1,14 +1,17 @@
-"""Self-Improvement Workflow - analyze → plan → code → validate → write with retry."""
+"""Self-Improvement Workflow - analyze → rag → plan → code → validate → write with retry."""
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal, TypedDict
+from typing import TYPE_CHECKING, Literal, TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
 from src.domain.ports.llm import LLMMessage, LLMPort
 from src.infrastructure.agents.file_writer import FileWriter
+
+if TYPE_CHECKING:
+    from src.domain.ports.rag import RAGPort
 
 
 class ImprovementState(TypedDict, total=False):
@@ -18,6 +21,9 @@ class ImprovementState(TypedDict, total=False):
     file_path: str
     issue: dict  # CodeIssue as dict
     original_code: str
+    
+    # RAG context (B1)
+    rag_context: str
     
     # Processing
     plan: str
@@ -70,8 +76,46 @@ async def _analyze_node(
         "original_code": result["content"],
         "retry_count": 0,
         "max_retries": 3,
-        "current_step": "plan",
+        "current_step": "rag",
     }
+
+
+async def _rag_node(
+    state: ImprovementState,
+    rag: "RAGPort | None",
+) -> ImprovementState:
+    """RAG search for relevant context (B1 - Cursor-like)."""
+    if not rag:
+        return {**state, "rag_context": "", "current_step": "plan"}
+    
+    file_path = state.get("file_path", "")
+    issue = state.get("issue", {})
+    original_code = state.get("original_code", "")[:500]
+    
+    query = f"{file_path} {issue.get('message', '')} {issue.get('suggestion', '')}".strip()
+    if not query:
+        return {**state, "rag_context": "", "current_step": "plan"}
+    
+    try:
+        chunks = await rag.search(query, limit=8, min_score=0.35)
+        if not chunks:
+            return {**state, "rag_context": "", "current_step": "plan"}
+        
+        parts = []
+        seen: set[str] = set()
+        for c in chunks:
+            src = c.metadata.get("source", "")
+            if src not in seen and src != file_path:
+                seen.add(src)
+                parts.append(f"### {src}\n```\n{c.content[:500]}\n```")
+            if len(parts) >= 5:
+                break
+        
+        rag_context = "\n\n".join(parts) if parts else ""
+    except Exception:
+        rag_context = ""
+    
+    return {**state, "rag_context": rag_context, "current_step": "plan"}
 
 
 async def _plan_node(
@@ -83,6 +127,15 @@ async def _plan_node(
     """Generate improvement plan."""
     issue = state.get("issue", {})
     original_code = state.get("original_code", "")
+    rag_context = state.get("rag_context", "")
+    
+    rag_section = ""
+    if rag_context:
+        rag_section = f"""
+Relevant code from project (follow similar patterns):
+{rag_context}
+
+"""
     
     prompt = f"""You need to improve this code to fix the following issue:
 
@@ -90,7 +143,7 @@ Issue: {issue.get('message', 'General improvement')}
 Severity: {issue.get('severity', 'medium')}
 Type: {issue.get('issue_type', 'refactor')}
 Suggestion: {issue.get('suggestion', 'Improve code quality')}
-
+{rag_section}
 Original code:
 ```python
 {original_code}
@@ -131,6 +184,7 @@ async def _code_node(
     issue = state.get("issue", {})
     original_code = state.get("original_code", "")
     plan = state.get("plan", "")
+    rag_context = state.get("rag_context", "")
     validation_output = state.get("validation_output", "")
     retry_count = state.get("retry_count", 0)
     
@@ -144,13 +198,21 @@ PREVIOUS ATTEMPT FAILED with error:
 Fix the issues and try again.
 """
     
+    rag_section = ""
+    if rag_context:
+        rag_section = f"""
+Project context (follow similar patterns):
+{rag_context[:2000]}
+
+"""
+    
     prompt = f"""Improve this Python code following the plan below.
 
 Issue to fix: {issue.get('message', 'General improvement')}
 
 Plan:
 {plan}
-
+{rag_section}
 Original code:
 ```python
 {original_code}
@@ -302,12 +364,16 @@ def build_improvement_graph(
     model: str = "qwen2.5-coder:32b",
     file_writer: FileWriter | None = None,
     on_chunk: Callable[[str, str], None] | None = None,
+    rag: "RAGPort | None" = None,
 ) -> StateGraph:
     """Build improvement workflow graph."""
     writer = file_writer or FileWriter()
     
     async def analyze_wrapper(state: ImprovementState) -> ImprovementState:
         return await _analyze_node(state, writer)
+    
+    async def rag_wrapper(state: ImprovementState) -> ImprovementState:
+        return await _rag_node(state, rag)
     
     async def plan_wrapper(state: ImprovementState) -> ImprovementState:
         return await _plan_node(state, llm, model, on_chunk)
@@ -321,6 +387,7 @@ def build_improvement_graph(
     builder = StateGraph(ImprovementState)
     
     builder.add_node("analyze", analyze_wrapper)
+    builder.add_node("rag", rag_wrapper)
     builder.add_node("plan", plan_wrapper)
     builder.add_node("code", code_wrapper)
     builder.add_node("validate", _validate_node)
@@ -330,7 +397,8 @@ def build_improvement_graph(
     
     # Flow
     builder.add_edge(START, "analyze")
-    builder.add_edge("analyze", "plan")
+    builder.add_edge("analyze", "rag")
+    builder.add_edge("rag", "plan")
     builder.add_edge("plan", "code")
     builder.add_edge("code", "validate")
     

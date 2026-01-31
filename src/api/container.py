@@ -134,6 +134,7 @@ class Container:
         return SelfImprovementUseCase(
             llm=self.llm,
             model_router=self.model_router,
+            rag=self.rag,
         )
     
     def reset(self) -> None:

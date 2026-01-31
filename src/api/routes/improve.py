@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.api.dependencies import get_llm_adapter, get_model_router, limiter
+from src.api.dependencies import get_llm_adapter, get_model_router, get_rag_adapter, limiter
 from src.api.routes.projects import get_store
 from src.application.improvement import (
     AnalyzeRequest,
@@ -17,6 +17,7 @@ from src.application.improvement import (
 from src.domain.ports.llm import LLMPort
 from src.domain.services.model_router import ModelRouter
 from src.infrastructure.agents.file_writer import FileWriter
+from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 
 router = APIRouter(prefix="/improve", tags=["improve"])
 
@@ -44,6 +45,7 @@ def get_improvement_use_case(
     llm: LLMPort = Depends(get_llm_adapter),
     model_router: ModelRouter = Depends(get_model_router),
     file_writer: FileWriter = Depends(get_file_writer),
+    rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
 ) -> SelfImprovementUseCase:
     """Get or create SelfImprovementUseCase."""
     global _use_case
@@ -52,6 +54,7 @@ def get_improvement_use_case(
             llm=llm,
             model_router=model_router,
             file_writer=file_writer,
+            rag=rag,
             workspace_path_getter=_get_workspace_path,
         )
     return _use_case
