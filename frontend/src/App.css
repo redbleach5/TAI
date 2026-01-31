@@ -865,6 +865,48 @@
   font-size: 0.82em;
 }
 
+.chat-message__tools {
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.chat-message__tools summary {
+  cursor: pointer;
+  color: var(--color-text-muted);
+}
+
+.chat-message__tools-list {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.chat-message__tool-event {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+}
+
+.chat-message__tool-event--tool_call {
+  border-left: 3px solid var(--color-accent);
+}
+
+.chat-message__tool-event--tool_result {
+  border-left: 3px solid var(--color-status-success);
+}
+
+.chat-message__tool-event pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  flex: 1;
+}
+
 .chat-message__thinking {
   margin-bottom: 0.5rem;
   font-size: 0.85rem;
@@ -1660,6 +1702,71 @@
 .chat-panel__action:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.chat-panel__action--active {
+  background: var(--color-accent-muted);
+  border-color: var(--color-accent);
+}
+
+.chat-panel__improve {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.chat-panel__improve-form {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 260px;
+}
+
+.chat-panel__improve-file {
+  font-size: 0.8rem;
+  color: var(--color-text-muted);
+  word-break: break-all;
+}
+
+.chat-panel__improve-input {
+  padding: 0.4rem 0.6rem;
+  font-size: 0.85rem;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+}
+
+.chat-panel__improve-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.chat-panel__improve-run {
+  margin-top: var(--spacing-xs);
+}
+
+.chat-panel__improve-hint {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: var(--spacing-xs);
+  padding: var(--spacing-sm);
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  z-index: 10;
 }
 
 .chat-panel__generate {

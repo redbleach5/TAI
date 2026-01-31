@@ -71,12 +71,13 @@ export function useChat(options: UseChatOptions = {}) {
           const decoder = new TextDecoder()
           let content = ''
           let thinking = ''
-          setMessages((prev) => [...prev, { role: 'assistant', content: '', thinking: '' }])
+          const toolEvents: Array<{ type: 'tool_call' | 'tool_result'; data: string }> = []
+          setMessages((prev) => [...prev, { role: 'assistant', content: '', thinking: '', toolEvents: [] }])
 
           const updateMessage = () => {
             setMessages((prev) => {
               const next = [...prev]
-              next[next.length - 1] = { role: 'assistant', content, thinking }
+              next[next.length - 1] = { role: 'assistant', content, thinking, toolEvents: [...toolEvents] }
               return next
             })
           }
@@ -97,8 +98,13 @@ export function useChat(options: UseChatOptions = {}) {
               }
               if (eventType === 'content' && data) content += data
               else if (eventType === 'thinking' && data) thinking += data
-              else if (eventType === 'tool_call' && data) onToolCall?.(data)
-              else if (eventType === 'tool_result' && data) onToolResult?.(data)
+              else if (eventType === 'tool_call' && data) {
+                toolEvents.push({ type: 'tool_call', data })
+                onToolCall?.(data)
+              } else if (eventType === 'tool_result' && data) {
+                toolEvents.push({ type: 'tool_result', data })
+                onToolResult?.(data)
+              }
               updateMessage()
               if (eventType === 'done') break
             }
@@ -124,7 +130,7 @@ export function useChat(options: UseChatOptions = {}) {
         setStreaming(false)
       }
     },
-    [messages, loading, conversationId, getContextFiles]
+    [messages, loading, conversationId, getContextFiles, onToolCall, onToolResult, onAnalyzeRequest]
   )
 
   const clear = useCallback(() => {

@@ -1,8 +1,8 @@
 /**
- * Chat panel — Cursor-like: modes, Analyze, Generate inline.
+ * Chat panel — Cursor-like: modes, Analyze, Improve, Generate inline.
  */
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Plus, Globe, Code, Search, Wand2, Workflow, Loader2, Bot } from 'lucide-react'
+import { Plus, Globe, Code, Search, Wand2, Workflow, Loader2, Bot, Sparkles } from 'lucide-react'
 import { useChat, isAnalyzeIntent } from './useChat'
 import { ChatMessage } from './ChatMessage'
 import { ChatInput } from './ChatInput'
@@ -13,6 +13,7 @@ import { TemplateSelector } from '../assistant/TemplateSelector'
 import { useWorkspace } from '../workspace/useWorkspace'
 import { useOpenFilesContext } from '../editor/OpenFilesContext'
 import { useToast } from '../toast/ToastContext'
+import { postImprove } from '../../api/client'
 
 interface ChatPanelProps {
   hasEditorContext?: boolean
@@ -27,12 +28,20 @@ export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
   const [analyzing, setAnalyzing] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [generateTask, setGenerateTask] = useState('')
+  const [improving, setImproving] = useState(false)
+  const [showImproveForm, setShowImproveForm] = useState(false)
+  const [improveIssue, setImproveIssue] = useState('')
+  const [improveRelatedFiles, setImproveRelatedFiles] = useState('')
 
-  const handleAnalyzeRef = useRef<(skipUserMessage?: boolean) => Promise<void>>()
+  const handleAnalyzeRef = useRef<((skipUserMessage?: boolean) => Promise<void>) | null>(null)
   const { messages, loading, streaming, error, send, clear, addMessage, updateLastAssistant } = useChat({
     getContextFiles,
     onToolCall: (toolAndArgs) => showToast(`Агент: ${toolAndArgs}`, 'info'),
-    onAnalyzeRequest: (skipUserMessage?: boolean) => handleAnalyzeRef.current?.(skipUserMessage),
+    onAnalyzeRequest: (skipUserMessage?: boolean) => {
+      const fn = handleAnalyzeRef.current
+      if (fn) return fn(skipUserMessage ?? false)
+      return Promise.resolve()
+    },
   })
 
   const handleAnalyze = useCallback(async (skipUserMessage?: boolean) => {
@@ -82,6 +91,46 @@ export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
     if (full?.content) send(full.content, useStream, currentMode, model || undefined)
     setShowTemplates(false)
   }
+
+  const handleImprove = useCallback(async () => {
+    const activeFile = openFilesCtx?.getActiveFile?.()
+    if (!activeFile?.path) {
+      showToast('Откройте файл для улучшения', 'error')
+      return
+    }
+    if (improving) return
+    setImproving(true)
+    const issueMsg = improveIssue.trim() || 'Общее улучшение кода'
+    addMessage('user', `Улучшить ${activeFile.path}: ${issueMsg}`)
+    try {
+      const related = improveRelatedFiles
+        .split(/[,\s]+/)
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .filter((p) => p !== activeFile.path)
+      const result = await postImprove({
+        file_path: activeFile.path,
+        issue: { message: issueMsg, severity: 'medium', issue_type: 'refactor' },
+        related_files: related,
+      })
+      if (result.success) {
+        addMessage('assistant', `Готово. Файл обновлён: ${result.file_path}${result.backup_path ? ` (бэкап: ${result.backup_path})` : ''}`)
+        showToast('Улучшение применено', 'success')
+        setShowImproveForm(false)
+        setImproveIssue('')
+        setImproveRelatedFiles('')
+        window.dispatchEvent(new CustomEvent('file-updated', { detail: { path: result.file_path } }))
+      } else {
+        addMessage('assistant', `Ошибка: ${result.error || 'Не удалось применить изменения'}`)
+        showToast(result.error || 'Ошибка улучшения', 'error')
+      }
+    } catch (e) {
+      addMessage('assistant', `Ошибка: ${e instanceof Error ? e.message : 'Unknown'}`)
+      showToast('Ошибка улучшения', 'error')
+    } finally {
+      setImproving(false)
+    }
+  }, [openFilesCtx, improving, improveIssue, improveRelatedFiles, addMessage, showToast])
 
   const handleGenerate = async () => {
     const task = generateTask.trim() || 'Напиши функцию hello world на Python'
@@ -142,7 +191,7 @@ export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
     }
   }
 
-  const busy = loading || analyzing || generating
+  const busy = loading || analyzing || generating || improving
 
   return (
     <div className="chat-panel">
@@ -170,13 +219,60 @@ export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
             <button
               type="button"
               className="chat-panel__action"
-              onClick={handleAnalyze}
+              onClick={() => handleAnalyze()}
               disabled={busy}
               title="Анализ кода"
             >
               {analyzing ? <Loader2 size={14} className="icon-spin" /> : <Wand2 size={14} />}
               <span>Анализ</span>
             </button>
+            <div className="chat-panel__improve">
+              <button
+                type="button"
+                className={`chat-panel__action ${showImproveForm ? 'chat-panel__action--active' : ''}`}
+                onClick={() => setShowImproveForm((v) => !v)}
+                disabled={busy}
+                title="Улучшить открытый файл"
+              >
+                {improving ? <Loader2 size={14} className="icon-spin" /> : <Sparkles size={14} />}
+                <span>Improve</span>
+              </button>
+              {showImproveForm && openFilesCtx?.getActiveFile?.() && (
+                <div className="chat-panel__improve-form">
+                  <div className="chat-panel__improve-file">
+                    Файл: {openFilesCtx.getActiveFile()?.path}
+                  </div>
+                  <input
+                    type="text"
+                    className="chat-panel__improve-input"
+                    placeholder="Проблема или задача (опционально)"
+                    value={improveIssue}
+                    onChange={(e) => setImproveIssue(e.target.value)}
+                    disabled={improving}
+                  />
+                  <input
+                    type="text"
+                    className="chat-panel__improve-input"
+                    placeholder="Связанные файлы через запятую (опционально)"
+                    value={improveRelatedFiles}
+                    onChange={(e) => setImproveRelatedFiles(e.target.value)}
+                    disabled={improving}
+                  />
+                  <button
+                    type="button"
+                    className="chat-panel__action chat-panel__action--primary chat-panel__improve-run"
+                    onClick={handleImprove}
+                    disabled={improving}
+                  >
+                    {improving ? <Loader2 size={14} className="icon-spin" /> : <Sparkles size={14} />}
+                    Запустить
+                  </button>
+                </div>
+              )}
+              {showImproveForm && !openFilesCtx?.getActiveFile?.() && (
+                <div className="chat-panel__improve-hint">Откройте файл в редакторе</div>
+              )}
+            </div>
             <div className="chat-panel__generate">
               <input
                 type="text"

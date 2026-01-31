@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 
 export interface OpenFile {
   path: string
@@ -154,6 +154,18 @@ export function useOpenFiles() {
   const getActiveFile = useCallback(() => {
     return activeFile ? files.get(activeFile) : null
   }, [files, activeFile])
+
+  // Reload file when improvement updates it
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const path = (e as CustomEvent<{ path: string }>).detail?.path
+      if (path && files.has(path)) {
+        openFile(path)
+      }
+    }
+    window.addEventListener('file-updated', handler)
+    return () => window.removeEventListener('file-updated', handler)
+  }, [files, openFile])
 
   const hasDirtyFiles = useCallback(() => {
     return Array.from(files.values()).some((f) => f.isDirty)

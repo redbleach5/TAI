@@ -14,6 +14,8 @@ export interface ChatMessage {
   content: string
   /** Reasoning/thinking from <think> blocks (reasoning models). */
   thinking?: string
+  /** Agent tool calls/results (inline in chat) */
+  toolEvents?: Array<{ type: 'tool_call' | 'tool_result'; data: string }>
 }
 
 export interface ContextFile {
@@ -142,6 +144,34 @@ export async function postWorkflow(request: WorkflowRequest): Promise<WorkflowRe
     body: JSON.stringify(request),
   })
   if (!res.ok) throw new Error(`Workflow failed: ${res.status}`)
+  return res.json()
+}
+
+// Improvement API
+export interface ImprovementRequest {
+  file_path: string
+  issue?: { message?: string; severity?: string; issue_type?: string }
+  auto_write?: boolean
+  max_retries?: number
+  related_files?: string[]
+}
+
+export interface ImprovementResponse {
+  success: boolean
+  file_path: string
+  backup_path?: string | null
+  validation_output?: string | null
+  error?: string | null
+  retries: number
+}
+
+export async function postImprove(request: ImprovementRequest): Promise<ImprovementResponse> {
+  const res = await fetch(`${API_BASE}/improve/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+  if (!res.ok) throw new Error(await res.text().catch(() => `Improve failed: ${res.status}`))
   return res.json()
 }
 

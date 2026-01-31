@@ -79,8 +79,8 @@
 - [x] read_file: при чтении — предлагать связанные (по импортам)
 
 ### Phase C2: Agent — multi-file write (приоритет: средний)
-- [ ] Парсинг нескольких `<tool_call>` write_file в одном ответе
-- [ ] Batch write с подтверждением: "Записать 3 файла?"
+- [x] Парсинг нескольких `<tool_call>` write_file в одном ответе
+- [ ] Batch write с подтверждением: "Записать 3 файла?" (требует backend)
 
 ### Phase C3: Streaming улучшений (приоритет: низкий)
 - [ ] Improvement: стриминг plan → code по мере генерации
@@ -126,8 +126,8 @@
 | B4 | `chat/use_case.py`, `_build_messages` |
 | C1 | `agent/use_case.py`, `_build_initial_messages` |
 | A1 | `deep_analyzer.py` |
-| B3 | `agent/tools.py`, `improvement/use_case.py`, API |
+| B3 | `agent/tools.py`, `improvement/use_case.py`, API, **UI**: Improve форма + related_files |
 | A2 | Новый `dependency_graph.py`, `deep_analyzer.py` |
 | B5 | `improvement_graph.py` |
 | A3 | `deep_analyzer.py`, git commands |
-| C2 | `agent/tool_parser.py`, `use_case.py` |
+| C2 | `agent/tool_parser.py`, `use_case.py` (парсинг готов, подтверждение — backend) |
