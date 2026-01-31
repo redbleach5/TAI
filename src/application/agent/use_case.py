@@ -40,15 +40,45 @@ class AgentUseCase:
         """Check if LLM supports native tool calling (Ollama)."""
         return hasattr(self._llm, "chat_with_tools") and callable(getattr(self._llm, "chat_with_tools"))
 
-    def _build_ollama_messages(self, request: ChatRequest) -> list[dict[str, Any]]:
+    async def _get_agent_context(self, message: str) -> tuple[str, str]:
+        """C1: RAG search + project map for agent context."""
+        rag_context = ""
+        project_map = ""
+        if not self._rag or not message.strip():
+            return rag_context, project_map
+        try:
+            chunks = await self._rag.search(message.strip(), limit=6, min_score=0.4)
+            if chunks:
+                parts = [f"### {c.metadata.get('source', '?')}\n```\n{c.content[:500]}\n```" for c in chunks[:5]]
+                rag_context = "[Relevant code]\n\n" + "\n\n".join(parts)
+        except Exception:
+            pass
+        if self._rag and hasattr(self._rag, "get_project_map_markdown"):
+            try:
+                map_md = self._rag.get_project_map_markdown()
+                if map_md:
+                    project_map = map_md[:2000]
+            except Exception:
+                pass
+        return rag_context, project_map
+
+    def _build_ollama_messages(
+        self,
+        request: ChatRequest,
+        rag_context: str = "",
+        project_map: str = "",
+    ) -> list[dict[str, Any]]:
         """Build messages in Ollama format for native tools."""
-        msgs: list[dict[str, Any]] = [
-            {"role": "system", "content": AGENT_SYSTEM_PROMPT_NATIVE},
-        ]
+        system = AGENT_SYSTEM_PROMPT_NATIVE
+        if project_map:
+            system = f"[Project structure]\n{project_map}\n\n---\n\n{system}"
+        msgs: list[dict[str, Any]] = [{"role": "system", "content": system}]
         if request.history:
             for m in request.history[-15:]:
                 msgs.append({"role": m.role, "content": m.content})
         user_content = request.message
+        if rag_context:
+            user_content = f"{rag_context}\n\n---\n\n{user_content}"
         if request.context_files:
             file_ctx = "\n\n".join(
                 f"[file: {f.path}]\n```\n{f.content[:2000]}\n```"
@@ -71,7 +101,8 @@ class AgentUseCase:
         self, request: ChatRequest, model: str, executor: ToolExecutor
     ) -> ChatResponse:
         """Native Ollama tool calling."""
-        messages = self._build_ollama_messages(request)
+        rag_context, project_map = await self._get_agent_context(request.message)
+        messages = self._build_ollama_messages(request, rag_context=rag_context, project_map=project_map)
         full_content: list[str] = []
 
         for _ in range(self._max_iterations):
@@ -109,7 +140,8 @@ class AgentUseCase:
         self, request: ChatRequest, model: str, executor: ToolExecutor
     ) -> ChatResponse:
         """Prompt-based ReAct fallback."""
-        messages = self._build_initial_messages(request)
+        rag_context, project_map = await self._get_agent_context(request.message)
+        messages = self._build_initial_messages(request, rag_context=rag_context, project_map=project_map)
         full_content: list[str] = []
 
         for _ in range(self._max_iterations):
@@ -150,7 +182,8 @@ class AgentUseCase:
         self, request: ChatRequest, model: str, executor: ToolExecutor
     ) -> AsyncIterator[tuple[str, str]]:
         """Stream with native Ollama tools."""
-        messages = self._build_ollama_messages(request)
+        rag_context, project_map = await self._get_agent_context(request.message)
+        messages = self._build_ollama_messages(request, rag_context=rag_context, project_map=project_map)
 
         for _ in range(self._max_iterations):
             content_buf = ""
@@ -186,7 +219,8 @@ class AgentUseCase:
         self, request: ChatRequest, model: str, executor: ToolExecutor
     ) -> AsyncIterator[tuple[str, str]]:
         """Stream with prompt-based ReAct fallback."""
-        messages = self._build_initial_messages(request)
+        rag_context, project_map = await self._get_agent_context(request.message)
+        messages = self._build_initial_messages(request, rag_context=rag_context, project_map=project_map)
 
         for _ in range(self._max_iterations):
             chunk_buffer: list[str] = []
@@ -211,13 +245,21 @@ class AgentUseCase:
             messages.append(LLMMessage(role="user", content=f"Observation:\n{obs}"))
 
 
-    def _build_initial_messages(self, request: ChatRequest) -> list[LLMMessage]:
-        messages: list[LLMMessage] = [
-            LLMMessage(role="system", content=AGENT_SYSTEM_PROMPT),
-        ]
+    def _build_initial_messages(
+        self,
+        request: ChatRequest,
+        rag_context: str = "",
+        project_map: str = "",
+    ) -> list[LLMMessage]:
+        system = AGENT_SYSTEM_PROMPT
+        if project_map:
+            system = f"[Project structure]\n{project_map}\n\n---\n\n{system}"
+        messages: list[LLMMessage] = [LLMMessage(role="system", content=system)]
         if request.history:
             messages.extend(request.history[-15:])
         user_content = request.message
+        if rag_context:
+            user_content = f"{rag_context}\n\n---\n\n{user_content}"
         if request.context_files:
             file_ctx = "\n\n".join(
                 f"[file: {f.path}]\n```\n{f.content[:2000]}\n```"
