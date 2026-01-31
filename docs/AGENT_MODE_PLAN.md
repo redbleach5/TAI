@@ -49,3 +49,10 @@
 - read_file/write_file: только в пределах workspace
 - run_terminal: whitelist команд (как TerminalService)
 - write_file: по умолчанию требует подтверждения (auto_apply=false)
+
+## Реализовано (2026-01-31)
+
+- **Phase 1:** `src/application/agent/tools.py` — ToolExecutor, 5 инструментов
+- **Phase 2:** `src/application/agent/use_case.py` — AgentUseCase, ReAct-цикл
+- **Phase 3:** ChatUseCase делегирует mode_id=agent в AgentUseCase
+- **Phase 4:** Frontend — onToolCall toast, режим Агент в ModeSelector

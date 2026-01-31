@@ -45,10 +45,13 @@ function formatAnalysisResult(data: {
 export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
   const openFilesCtx = useOpenFilesContext()
   const getContextFiles = (hasEditorContext && openFilesCtx) ? openFilesCtx.getContextFiles : () => []
-  const { messages, loading, streaming, error, send, clear, addMessage, updateLastAssistant } = useChat({ getContextFiles })
+  const { show: showToast } = useToast()
+  const { messages, loading, streaming, error, send, clear, addMessage, updateLastAssistant } = useChat({
+    getContextFiles,
+    onToolCall: (toolAndArgs) => showToast(`Агент: ${toolAndArgs}`, 'info'),
+  })
   const { modes, templates, categories, currentMode, setCurrentMode, getTemplate } = useAssistant()
   const { workspace } = useWorkspace()
-  const { show: showToast } = useToast()
   const [useStream, setUseStream] = useState(true)
   const [model, setModel] = useState('')
   const [searchWeb, setSearchWeb] = useState(false)

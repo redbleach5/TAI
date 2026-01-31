@@ -4,10 +4,14 @@ import { postChat, postChatStream, type ChatMessage } from '../../api/client'
 export interface UseChatOptions {
   /** Get open files to include as context (Cursor-like) */
   getContextFiles?: () => Array<{ path: string; content: string }>
+  /** Callback when agent executes a tool (mode=agent) */
+  onToolCall?: (toolAndArgs: string) => void
+  /** Callback when agent receives tool result */
+  onToolResult?: (result: string) => void
 }
 
 export function useChat(options: UseChatOptions = {}) {
-  const { getContextFiles } = options
+  const { getContextFiles, onToolCall, onToolResult } = options
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,6 +72,8 @@ export function useChat(options: UseChatOptions = {}) {
               }
               if (eventType === 'content' && data) content += data
               else if (eventType === 'thinking' && data) thinking += data
+              else if (eventType === 'tool_call' && data) onToolCall?.(data)
+              else if (eventType === 'tool_result' && data) onToolResult?.(data)
               updateMessage()
               if (eventType === 'done') break
             }
