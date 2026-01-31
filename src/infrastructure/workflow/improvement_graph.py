@@ -22,8 +22,9 @@ class ImprovementState(TypedDict, total=False):
     issue: dict  # CodeIssue as dict
     original_code: str
     
-    # RAG context (B1)
+    # RAG context (B1) + project map (B2)
     rag_context: str
+    project_map: str
     
     # Processing
     plan: str
@@ -84,9 +85,9 @@ async def _rag_node(
     state: ImprovementState,
     rag: "RAGPort | None",
 ) -> ImprovementState:
-    """RAG search for relevant context (B1 - Cursor-like)."""
+    """RAG search + project map (B1, B2 - Cursor-like)."""
     if not rag:
-        return {**state, "rag_context": "", "current_step": "plan"}
+        return {**state, "rag_context": "", "project_map": "", "current_step": "plan"}
     
     file_path = state.get("file_path", "")
     issue = state.get("issue", {})
@@ -94,28 +95,37 @@ async def _rag_node(
     
     query = f"{file_path} {issue.get('message', '')} {issue.get('suggestion', '')}".strip()
     if not query:
-        return {**state, "rag_context": "", "current_step": "plan"}
+        return {**state, "rag_context": "", "project_map": "", "current_step": "plan"}
     
     try:
         chunks = await rag.search(query, limit=8, min_score=0.35)
         if not chunks:
-            return {**state, "rag_context": "", "current_step": "plan"}
-        
-        parts = []
-        seen: set[str] = set()
-        for c in chunks:
-            src = c.metadata.get("source", "")
-            if src not in seen and src != file_path:
-                seen.add(src)
-                parts.append(f"### {src}\n```\n{c.content[:500]}\n```")
-            if len(parts) >= 5:
-                break
-        
-        rag_context = "\n\n".join(parts) if parts else ""
+            rag_context = ""
+        else:
+            parts = []
+            seen: set[str] = set()
+            for c in chunks:
+                src = c.metadata.get("source", "")
+                if src not in seen and src != file_path:
+                    seen.add(src)
+                    parts.append(f"### {src}\n```\n{c.content[:500]}\n```")
+                if len(parts) >= 5:
+                    break
+            rag_context = "\n\n".join(parts) if parts else ""
     except Exception:
         rag_context = ""
     
-    return {**state, "rag_context": rag_context, "current_step": "plan"}
+    # B2: Project map
+    project_map = ""
+    if rag and hasattr(rag, "get_project_map_markdown"):
+        try:
+            map_md = rag.get_project_map_markdown()
+            if map_md:
+                project_map = map_md[:2500]
+        except Exception:
+            pass
+    
+    return {**state, "rag_context": rag_context, "project_map": project_map, "current_step": "plan"}
 
 
 async def _plan_node(
@@ -128,10 +138,13 @@ async def _plan_node(
     issue = state.get("issue", {})
     original_code = state.get("original_code", "")
     rag_context = state.get("rag_context", "")
+    project_map = state.get("project_map", "")
     
     rag_section = ""
+    if project_map:
+        rag_section += f"\nProject structure:\n{project_map[:1500]}\n\n"
     if rag_context:
-        rag_section = f"""
+        rag_section += f"""
 Relevant code from project (follow similar patterns):
 {rag_context}
 
@@ -185,6 +198,7 @@ async def _code_node(
     original_code = state.get("original_code", "")
     plan = state.get("plan", "")
     rag_context = state.get("rag_context", "")
+    project_map = state.get("project_map", "")
     validation_output = state.get("validation_output", "")
     retry_count = state.get("retry_count", 0)
     
@@ -199,8 +213,10 @@ Fix the issues and try again.
 """
     
     rag_section = ""
+    if project_map:
+        rag_section += f"\nProject structure:\n{project_map[:1200]}\n\n"
     if rag_context:
-        rag_section = f"""
+        rag_section += f"""
 Project context (follow similar patterns):
 {rag_context[:2000]}
 

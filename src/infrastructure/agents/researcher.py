@@ -27,14 +27,14 @@ async def researcher_node(
         min_score: Minimum relevance score (default 0.35)
     """
     if rag is None:
-        return {**state, "context": "", "current_step": "researcher"}
+        return {**state, "context": "", "project_map": "", "current_step": "researcher"}
     
     task = state.get("task", "")
     plan = state.get("plan", "")
     query = f"{task}\n{plan}".strip()
     
     if not query:
-        return {**state, "context": "", "current_step": "researcher"}
+        return {**state, "context": "", "project_map": "", "current_step": "researcher"}
     
     try:
         chunks = await rag.search(
@@ -45,7 +45,15 @@ async def researcher_node(
         )
         
         if not chunks:
-            return {**state, "context": "", "current_step": "researcher"}
+            project_map = ""
+            if hasattr(rag, "get_project_map_markdown"):
+                try:
+                    map_md = rag.get_project_map_markdown()
+                    if map_md:
+                        project_map = map_md[:3000]
+                except Exception:
+                    pass
+            return {**state, "context": "", "project_map": project_map, "current_step": "researcher"}
         
         # Group chunks by source file for better context
         files_context: dict[str, list[str]] = {}
@@ -70,4 +78,14 @@ async def researcher_node(
     except Exception as e:
         context = f"[RAG error: {e}]"
     
-    return {**state, "context": context, "current_step": "researcher"}
+    # B2: Project map (structure overview)
+    project_map = ""
+    if rag and hasattr(rag, "get_project_map_markdown"):
+        try:
+            map_md = rag.get_project_map_markdown()
+            if map_md:
+                project_map = map_md[:3000]  # Limit size
+        except Exception:
+            pass
+    
+    return {**state, "context": context, "project_map": project_map, "current_step": "researcher"}

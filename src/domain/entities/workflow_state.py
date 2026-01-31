@@ -13,7 +13,8 @@ class WorkflowState(TypedDict, total=False):
 
     # Steps
     plan: str
-    context: str  # From researcher (RAG in Phase 4)
+    context: str  # From researcher (RAG)
+    project_map: str  # B2: Structure overview (classes, functions)
     tests: str
     code: str
     validation_passed: bool

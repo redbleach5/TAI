@@ -18,7 +18,10 @@ async def coder_node(
     plan = state.get("plan", "")
     tests = state.get("tests", "")
     context = state.get("context", "")
+    project_map = state.get("project_map", "")
     user_content = f"Task: {task}\n\nPlan: {plan}\n\nTests to pass:\n{tests}\n\n"
+    if project_map:
+        user_content += f"Project structure (follow conventions):\n{project_map}\n\n"
     if context:
         user_content += f"Relevant code from project:\n{context}\n\n"
     user_content += "Write the implementation."
