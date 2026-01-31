@@ -44,7 +44,8 @@ Available tools:
 5. list_files(path?) - List files in directory. path: optional, default "."
 
 Rules:
-- Use ONE tool call per response. If you need multiple tools, call one, wait for result, then call next.
+- You can use multiple tool calls in one response when editing several files (e.g. several write_file blocks).
+- For other tools (read_file, search_rag, etc.), use one at a time, wait for result, then call next.
 - After receiving tool result (Observation), analyze it and either call another tool or give final answer.
 - For write_file: only suggest safe changes. Do not overwrite critical files without explicit user request.
 - For run_terminal: use simple commands. Avoid destructive commands (rm -rf, etc).

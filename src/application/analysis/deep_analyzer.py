@@ -384,8 +384,12 @@ class DeepAnalyzer:
                 rag_context = "Ошибка поиска по индексу."
 
         # 5. Multi-step: targeted RAG per module (A1)
-        targeted_rag = ""
-        if multi_step and self._rag and rag_context != "Не доступен. Выполните индексацию workspace.":
+        used_multi_step = False
+        fallback_reason: str | None = None
+        if multi_step and self._rag and rag_context not in (
+            "Не доступен. Выполните индексацию workspace.",
+            "Ошибка поиска по индексу.",
+        ):
             modules = await self._step1_identify_modules(
                 key_files=key_files,
                 static_report=static_report,
@@ -395,7 +399,17 @@ class DeepAnalyzer:
             if modules:
                 targeted_rag = await self._step2_targeted_rag(modules)
                 if targeted_rag:
+                    used_multi_step = True
                     rag_context = f"{rag_context}\n\n---\n\n### Углублённый контекст по проблемным модулям\n{targeted_rag}"
+                else:
+                    fallback_reason = "углублённый контекст по модулям не получен"
+            else:
+                fallback_reason = "не удалось выделить проблемные модули"
+        elif multi_step:
+            if not self._rag:
+                fallback_reason = "RAG недоступен (индексация workspace не выполнена)"
+            else:
+                fallback_reason = "ошибка поиска по индексу или индексация не выполнена"
 
         # 6. LLM synthesis (framework-specific prompt)
         prompt_template = PROMPTS_BY_FRAMEWORK.get(framework, DEEP_ANALYSIS_PROMPT_GENERIC)
@@ -420,7 +434,10 @@ class DeepAnalyzer:
                 model=model,
                 temperature=0.3,
             )
-            return response.content or static_report
+            result = response.content or static_report
+            if fallback_reason:
+                result = f"**Примечание:** Использован одношаговый режим ({fallback_reason}).\n\n---\n\n{result}"
+            return result
         except Exception as e:
             return f"{static_report}\n\n---\n\n**Примечание:** LLM-анализ недоступен ({e}). Показан только статический отчёт."
 

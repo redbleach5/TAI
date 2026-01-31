@@ -206,6 +206,7 @@ class SelfImprovementUseCase:
                         "issue_type": "refactor",
                     },
                     "max_retries": request.max_retries,
+                    "related_files": request.related_files,
                 }
                 
                 final = await graph.ainvoke(initial, config=config)

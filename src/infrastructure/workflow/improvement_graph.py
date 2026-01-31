@@ -21,6 +21,8 @@ class ImprovementState(TypedDict, total=False):
     file_path: str
     issue: dict  # CodeIssue as dict
     original_code: str
+    related_files: list[str]  # B3: paths for context (imports, tests)
+    related_files_context: str  # B3: content of related files
     
     # RAG context (B1) + project map (B2)
     rag_context: str
@@ -61,7 +63,7 @@ async def _analyze_node(
     state: ImprovementState,
     file_writer: FileWriter,
 ) -> ImprovementState:
-    """Read original file for improvement."""
+    """Read original file and related files (B3) for improvement."""
     file_path = state.get("file_path", "")
     result = file_writer.read_file(file_path)
     
@@ -72,11 +74,22 @@ async def _analyze_node(
             "current_step": "error",
         }
     
+    # B3: Read related files (imports, tests) for context
+    related_files_context = ""
+    related_files = state.get("related_files") or []
+    for rel_path in related_files[:5]:  # Limit to 5 files
+        if not rel_path or rel_path == file_path:
+            continue
+        r = file_writer.read_file(rel_path)
+        if r.get("success") and r.get("content"):
+            related_files_context += f"\n### {rel_path}\n```\n{r['content'][:1500]}\n```\n"
+    
     return {
         **state,
         "original_code": result["content"],
+        "related_files_context": related_files_context[:6000] if related_files_context else "",
         "retry_count": 0,
-        "max_retries": 3,
+        "max_retries": state.get("max_retries", 3),
         "current_step": "rag",
     }
 
@@ -139,6 +152,7 @@ async def _plan_node(
     original_code = state.get("original_code", "")
     rag_context = state.get("rag_context", "")
     project_map = state.get("project_map", "")
+    related_files_context = state.get("related_files_context", "")
     
     rag_section = ""
     if project_map:
@@ -147,6 +161,12 @@ async def _plan_node(
         rag_section += f"""
 Relevant code from project (follow similar patterns):
 {rag_context}
+
+"""
+    if related_files_context:
+        rag_section += f"""
+Related files (imports, tests - consider when planning):
+{related_files_context}
 
 """
     
@@ -199,6 +219,7 @@ async def _code_node(
     plan = state.get("plan", "")
     rag_context = state.get("rag_context", "")
     project_map = state.get("project_map", "")
+    related_files_context = state.get("related_files_context", "")
     validation_output = state.get("validation_output", "")
     retry_count = state.get("retry_count", 0)
     
@@ -219,6 +240,12 @@ Fix the issues and try again.
         rag_section += f"""
 Project context (follow similar patterns):
 {rag_context[:2000]}
+
+"""
+    if related_files_context:
+        rag_section += f"""
+Related files (preserve imports, consider callers/tests):
+{related_files_context[:2000]}
 
 """
     

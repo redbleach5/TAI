@@ -75,6 +75,7 @@ class ImprovementRequestModel(BaseModel):
     issue: dict | None = None
     auto_write: bool = True
     max_retries: int = 3
+    related_files: list[str] = []  # B3: imports, tests for context
 
 
 class AddTaskRequestModel(BaseModel):
@@ -154,6 +155,7 @@ async def run_improvement(
         issue=body.issue,
         auto_write=body.auto_write,
         max_retries=body.max_retries,
+        related_files=body.related_files,
     )
     result = await use_case.improve_file(req)
     
@@ -180,6 +182,7 @@ async def run_improvement_stream(
         issue=body.issue,
         auto_write=body.auto_write,
         max_retries=body.max_retries,
+        related_files=body.related_files,
     )
     
     async def generate() -> AsyncIterator[str]:

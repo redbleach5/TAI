@@ -71,6 +71,7 @@ class ImprovementRequest:
     issue: dict | None = None  # If None, general improvement
     auto_write: bool = True
     max_retries: int = 3
+    related_files: list[str] = field(default_factory=list)  # B3: imports, tests for context
 
 
 @dataclass

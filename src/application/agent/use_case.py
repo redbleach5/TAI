@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
 from src.application.agent.ollama_tools import AGENT_SYSTEM_PROMPT_NATIVE, OLLAMA_TOOLS
-from src.application.agent.tool_parser import parse_tool_call, strip_tool_call_from_content
+from src.application.agent.tool_parser import parse_all_tool_calls, parse_tool_call, strip_tool_call_from_content
 from src.application.agent.tools import AGENT_TOOLS_PROMPT, ToolExecutor
 from src.application.chat.dto import ChatRequest, ChatResponse
 from src.domain.ports.llm import LLMMessage, LLMPort
@@ -149,15 +149,19 @@ class AgentUseCase:
             content = response.content
             full_content.append(content)
 
-            tool_call = parse_tool_call(content)
-            if not tool_call:
+            tool_calls = parse_all_tool_calls(content)
+            if not tool_calls:
                 text = strip_tool_call_from_content(content)
                 if text:
                     full_content[-1] = text
                 break
 
-            result = await executor.execute(tool_call.tool, tool_call.args)
-            obs = result.content if result.success else f"Error: {result.error}"
+            # B3: Execute all tool calls (multi-file write support)
+            obs_parts: list[str] = []
+            for i, tc in enumerate(tool_calls, 1):
+                result = await executor.execute(tc.tool, tc.args)
+                obs_parts.append(f"[{i}] {tc.tool}: {result.content if result.success else f'Error: {result.error}'}")
+            obs = "\n".join(obs_parts)
             messages.append(LLMMessage(role="assistant", content=content))
             messages.append(LLMMessage(role="user", content=f"Observation:\n{obs}"))
 
@@ -229,17 +233,22 @@ class AgentUseCase:
                 yield ("content", chunk)
 
             content = "".join(chunk_buffer)
-            tool_call = parse_tool_call(content)
-            if not tool_call:
+            tool_calls = parse_all_tool_calls(content)
+            if not tool_calls:
                 if not content.strip():
                     fallback = "*Модель не вернула ответ. Для режима Агент нужна модель с поддержкой tool-calling (Qwen 2.5, Llama 3.1+).*"
                     yield ("content", fallback)
                 break
 
-            yield ("tool_call", f"{tool_call.tool}: {tool_call.args}")
-            result = await executor.execute(tool_call.tool, tool_call.args)
-            obs = result.content if result.success else f"Error: {result.error}"
-            yield ("tool_result", obs[:500] + ("..." if len(obs) > 500 else ""))
+            # B3: Execute all tool calls (multi-file write support)
+            obs_parts: list[str] = []
+            for tc in tool_calls:
+                yield ("tool_call", f"{tc.tool}: {tc.args}")
+                result = await executor.execute(tc.tool, tc.args)
+                obs_text = result.content if result.success else f"Error: {result.error}"
+                obs_parts.append(obs_text)
+                yield ("tool_result", obs_text[:500] + ("..." if len(obs_text) > 500 else ""))
+            obs = "\n".join(obs_parts)
 
             messages.append(LLMMessage(role="assistant", content=content))
             messages.append(LLMMessage(role="user", content=f"Observation:\n{obs}"))
