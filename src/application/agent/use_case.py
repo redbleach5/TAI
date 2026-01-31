@@ -87,6 +87,11 @@ class AgentUseCase:
 
             tool_call = parse_tool_call(content)
             if not tool_call:
+                # Пустой ответ — показываем подсказку
+                if not content.strip():
+                    fallback = "*Модель не вернула ответ. Для режима Агент нужна модель с поддержкой tool-calling (Qwen 2.5, Llama 3.1+).*"
+                    full_content[-1] = fallback
+                    yield ("content", fallback)
                 break
 
             yield ("tool_call", f"{tool_call.tool}: {tool_call.args}")
@@ -98,7 +103,6 @@ class AgentUseCase:
             messages.append(LLMMessage(role="assistant", content=content))
             messages.append(LLMMessage(role="user", content=f"Observation:\n{obs}"))
 
-        yield ("done", "")
 
     def _build_initial_messages(self, request: ChatRequest) -> list[LLMMessage]:
         messages: list[LLMMessage] = [
