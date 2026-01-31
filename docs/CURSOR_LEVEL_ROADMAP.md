@@ -6,8 +6,8 @@
 |---------|-------------|---------|
 | **Анализ** | DeepAnalyzer: многошаговость (A1), RAG 8 запросов, targeted RAG | Граф зависимостей, Git |
 | **Чат** | context_files, @rag, @web, @code | Авто-RAG по запросу |
-| **Agent** | read_file, write_file, search_rag, run_terminal, list_files | Multi-file edits, лучший контекст |
-| **Improvement** | plan → code → validate → retry | Только один файл, без RAG |
+| **Agent** | read_file, write_file (multi-file B3), search_rag, run_terminal, list_files | — |
+| **Improvement** | plan → code → validate → retry, RAG, related_files (B3) | — |
 | **Workflow** | planner → researcher → tests → coder | RAG по task, без project_map |
 
 ---
@@ -50,9 +50,9 @@
 - [x] Промпт: "Следуй структуре проекта: ..."
 
 ### Phase B3: Multi-file edits (приоритет: высокий)
-- [ ] Agent: поддержка write_file для нескольких файлов за один ответ
-- [ ] Improvement: опция "затронуть связанные файлы" (импорты, тесты)
-- [ ] API: `improve_file` принимает `related_files: list[str]`
+- [x] Agent: поддержка write_file для нескольких файлов за один ответ
+- [x] Improvement: опция "затронуть связанные файлы" (импорты, тесты)
+- [x] API: `improve_file` принимает `related_files: list[str]`
 
 ### Phase B4: Авто-RAG в чат (приоритет: средний)
 - [x] При отправке сообщения: автоматический RAG search по запросу
