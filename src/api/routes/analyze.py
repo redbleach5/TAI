@@ -3,13 +3,17 @@
 import asyncio
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
-from src.api.dependencies import limiter
+from src.api.dependencies import get_llm_adapter, get_model_router, get_rag_adapter, limiter
+from src.application.analysis.deep_analyzer import DeepAnalyzer
+from src.domain.ports.llm import LLMPort
+from src.domain.services.model_router import ModelRouter
 from src.infrastructure.analyzer.project_analyzer import get_analyzer, ProjectAnalysis
 from src.infrastructure.analyzer.report_generator import ReportGenerator
+from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
@@ -221,6 +225,37 @@ async def get_project_report(request: Request, body: AnalyzeRequest) -> str:
     
     generator = ReportGenerator()
     return generator.generate_markdown(analysis)
+
+
+class DeepAnalyzeRequest(BaseModel):
+    """Запрос на глубокий анализ (Cursor-like)."""
+    path: str
+
+
+@router.post("/project/deep", response_class=PlainTextResponse)
+@limiter.limit("3/minute")
+async def get_project_deep_report(
+    request: Request,
+    body: DeepAnalyzeRequest,
+    llm: LLMPort = Depends(get_llm_adapter),
+    model_router: ModelRouter = Depends(get_model_router),
+    rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
+) -> str:
+    """Глубокий анализ уровня Cursor AI: статика + RAG + LLM.
+    
+    Требует: LLM (Ollama/LM Studio), опционально RAG (индексация workspace).
+    Возвращает приоритизированные рекомендации с конкретными ссылками.
+    """
+    path = Path(body.path).expanduser().resolve()
+    
+    if not path.exists():
+        raise HTTPException(status_code=404, detail=f"Path not found: {body.path}")
+    
+    if not path.is_dir():
+        raise HTTPException(status_code=400, detail="Path must be a directory")
+    
+    deep_analyzer = DeepAnalyzer(llm=llm, model_router=model_router, rag=rag)
+    return await deep_analyzer.analyze(str(path))
 
 
 @router.post("/security")

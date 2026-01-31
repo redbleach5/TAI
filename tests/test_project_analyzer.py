@@ -202,10 +202,10 @@ class TestReportGenerator:
             generator = ReportGenerator()
             report = generator.generate_markdown(analysis)
             
-            assert "# 📊 Project Analysis Report" in report
-            assert "Executive Summary" in report
-            assert "Security" in report
-            assert "Quality" in report
+            assert "# 📊 Отчёт анализа проекта" in report
+            assert "Краткое резюме" in report
+            assert "Безопасность" in report
+            assert "Качество" in report
             assert analysis.project_name in report
 
     def test_save_report(self):
@@ -224,7 +224,7 @@ class TestReportGenerator:
             
             assert result.exists()
             content = result.read_text()
-            assert "Project Analysis Report" in content
+            assert "Отчёт анализа проекта" in content
 
     def test_report_contains_scores(self):
         """Report should contain scores."""
@@ -237,8 +237,8 @@ class TestReportGenerator:
             generator = ReportGenerator()
             report = generator.generate_markdown(analysis)
             
-            assert "Security" in report
-            assert "Quality" in report
+            assert "Безопасность" in report
+            assert "Качество" in report
             assert "/100" in report
 
     def test_report_handles_empty_project(self):
@@ -251,7 +251,7 @@ class TestReportGenerator:
             report = generator.generate_markdown(analysis)
             
             # Should not crash
-            assert "Project Analysis Report" in report
+            assert "Отчёт анализа проекта" in report
 
 
 class TestFileMetrics:

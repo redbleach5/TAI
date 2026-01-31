@@ -127,33 +127,33 @@ class ProjectAnalyzer:
     # Паттерны безопасности (используем word boundaries для точности)
     SECURITY_PATTERNS = [
         # Critical - только реальные вызовы функций, не строки/комментарии
-        (r"(?<!['\"\w])eval\s*\([^)]+\)", "critical", "eval() execution", "Avoid eval(), use ast.literal_eval() or safe alternatives"),
-        (r"(?<![\w.])exec\s*\([^)]+\)", "critical", "exec() execution", "Avoid exec(), restructure code to avoid dynamic execution"),
-        (r"subprocess\.(call|run|Popen).*shell\s*=\s*True", "critical", "Shell injection risk", "Use shell=False and pass args as list"),
-        (r"os\.system\s*\([^)]+\)", "critical", "OS command execution", "Use subprocess with shell=False instead"),
+        (r"(?<!['\"\w])eval\s*\([^)]+\)", "critical", "Вызов eval()", "Использовать ast.literal_eval() или безопасные альтернативы"),
+        (r"(?<![\w.])exec\s*\([^)]+\)", "critical", "Вызов exec()", "Переструктурировать код, избегать динамического выполнения"),
+        (r"subprocess\.(call|run|Popen).*shell\s*=\s*True", "critical", "Риск shell injection", "Использовать shell=False и передавать аргументы списком"),
+        (r"os\.system\s*\([^)]+\)", "critical", "Выполнение OS-команд", "Использовать subprocess с shell=False"),
         
         # High
-        (r"pickle\.loads?\s*\(", "high", "Pickle deserialization", "Use JSON or safe serialization format"),
-        (r"yaml\.load\s*\([^)]*Loader\s*=\s*None", "high", "Unsafe YAML loading", "Use yaml.safe_load()"),
-        (r"(?<!['\"\w])__import__\s*\(", "high", "Dynamic import", "Use static imports when possible"),
-        (r"password\s*=\s*['\"][a-zA-Z0-9]{8,}['\"]", "high", "Hardcoded password", "Use environment variables or secrets manager"),
-        (r"api[_-]?key\s*=\s*['\"][a-zA-Z0-9]{16,}['\"]", "high", "Hardcoded API key", "Use environment variables"),
+        (r"pickle\.loads?\s*\(", "high", "Десериализация pickle", "Использовать JSON или безопасный формат"),
+        (r"yaml\.load\s*\([^)]*Loader\s*=\s*None", "high", "Небезопасная загрузка YAML", "Использовать yaml.safe_load()"),
+        (r"(?<!['\"\w])__import__\s*\(", "high", "Динамический импорт", "Использовать статические импорты"),
+        (r"password\s*=\s*['\"][a-zA-Z0-9]{8,}['\"]", "high", "Пароль в коде", "Использовать переменные окружения или secrets manager"),
+        (r"api[_-]?key\s*=\s*['\"][a-zA-Z0-9]{16,}['\"]", "high", "API-ключ в коде", "Использовать переменные окружения"),
         
         # Medium - отключаем слишком шумные паттерны
-        (r"verify\s*=\s*False", "medium", "SSL verification disabled", "Enable SSL verification"),
+        (r"verify\s*=\s*False", "medium", "Отключена проверка SSL", "Включить проверку SSL"),
         
         # Low
-        (r"\b(TODO|FIXME|HACK|XXX)\b:", "low", "Code TODO/FIXME marker", "Address pending issues"),
+        (r"\b(TODO|FIXME|HACK|XXX)\b:", "low", "Маркер TODO/FIXME", "Исправить отложенные задачи"),
     ]
     
     # Code smells
     CODE_SMELL_PATTERNS = [
-        (r"def\s+\w+\([^)]{100,}\)", "Long parameter list (>5 params)"),
-        (r"if\s+.*:\s*\n\s+if\s+.*:\s*\n\s+if", "Deep nesting (3+ levels)"),
-        (r"except\s*:", "Bare except clause"),
-        (r"from\s+\w+\s+import\s+\*", "Star import"),
-        (r"global\s+\w+", "Global variable usage"),
-        (r"#.*type:\s*ignore", "Type ignore comment"),
+        (r"def\s+\w+\([^)]{100,}\)", "Длинный список параметров (>5)"),
+        (r"if\s+.*:\s*\n\s+if\s+.*:\s*\n\s+if", "Глубокая вложенность (3+ уровня)"),
+        (r"except\s*:", "Пустой except"),
+        (r"from\s+\w+\s+import\s+\*", "Импорт через *"),
+        (r"global\s+\w+", "Использование global"),
+        (r"#.*type:\s*ignore", "Комментарий type: ignore"),
     ]
     
     def __init__(self, max_file_size: int = 1024 * 1024):
@@ -555,30 +555,30 @@ class ProjectAnalyzer:
         # Security
         critical_issues = [i for i in analysis.security_issues if i.severity == "critical"]
         if critical_issues:
-            recs.append(f"🔴 CRITICAL: Fix {len(critical_issues)} critical security issues immediately")
+            recs.append(f"🔴 КРИТИЧНО: Исправить {len(critical_issues)} критических проблем безопасности")
         
         high_issues = [i for i in analysis.security_issues if i.severity == "high"]
         if high_issues:
-            recs.append(f"🟠 HIGH: Address {len(high_issues)} high-severity security issues")
+            recs.append(f"🟠 ВЫСОКИЙ: Устранить {len(high_issues)} проблем безопасности высокой степени")
         
         # Quality
         if len(analysis.code_smells) > 5:
-            recs.append(f"♻️ Refactor: Found {len(analysis.code_smells)} code smells")
+            recs.append(f"♻️ Рефакторинг: Обнаружено {len(analysis.code_smells)} code smells")
         
         # Structure
         large_files = [f for f in analysis.file_metrics if f.lines_code > 500]
         if large_files:
-            recs.append(f"📦 Split large files: {len(large_files)} files exceed 500 lines")
+            recs.append(f"📦 Разбить большие файлы: {len(large_files)} файлов превышают 500 строк")
         
         # Tests
         test_files = [f for f in analysis.file_metrics if "test" in f.path.lower()]
         if not test_files:
-            recs.append("🧪 Add tests: No test files found")
+            recs.append("🧪 Добавить тесты: Тестовые файлы не найдены")
         
         # Documentation
         doc_files = [f for f in analysis.file_metrics if f.path.endswith(".md")]
         if not doc_files:
-            recs.append("📝 Add documentation: No markdown files found")
+            recs.append("📝 Добавить документацию: Markdown-файлы не найдены")
         
         return recs[:10]
     
@@ -587,23 +587,23 @@ class ProjectAnalyzer:
         strengths = []
         
         if analysis.security_score >= 80:
-            strengths.append("✅ Good security practices")
+            strengths.append("✅ Хорошие практики безопасности")
         
         if analysis.quality_score >= 70:
-            strengths.append("✅ Decent code quality")
+            strengths.append("✅ Приемлемое качество кода")
         
         if len(analysis.languages) > 1:
-            strengths.append(f"✅ Multi-language project ({', '.join(analysis.languages.keys())})")
+            strengths.append(f"✅ Мультиязычный проект ({', '.join(analysis.languages.keys())})")
         
         if "tests" in str(analysis.architecture.layers.keys()):
-            strengths.append("✅ Has dedicated test directory")
+            strengths.append("✅ Есть отдельная директория для тестов")
         
         if len(analysis.architecture.entry_points) > 0:
-            strengths.append("✅ Clear entry points defined")
+            strengths.append("✅ Определены точки входа")
         
         avg_complexity = sum(f.complexity for f in analysis.file_metrics) / max(1, len(analysis.file_metrics))
         if avg_complexity < 10:
-            strengths.append("✅ Low average complexity")
+            strengths.append("✅ Низкая средняя сложность")
         
         return strengths
     
@@ -612,24 +612,24 @@ class ProjectAnalyzer:
         weaknesses = []
         
         if analysis.security_score < 50:
-            weaknesses.append("❌ Critical security issues")
+            weaknesses.append("❌ Критические проблемы безопасности")
         elif analysis.security_score < 80:
-            weaknesses.append("⚠️ Security needs improvement")
+            weaknesses.append("⚠️ Безопасность требует улучшения")
         
         if analysis.quality_score < 50:
-            weaknesses.append("❌ Poor code quality")
+            weaknesses.append("❌ Низкое качество кода")
         elif analysis.quality_score < 70:
-            weaknesses.append("⚠️ Quality needs improvement")
+            weaknesses.append("⚠️ Качество требует улучшения")
         
         if len(analysis.code_smells) > 10:
-            weaknesses.append("⚠️ Many code smells detected")
+            weaknesses.append("⚠️ Обнаружено много code smells")
         
         large_files = [f for f in analysis.file_metrics if f.lines_code > 500]
         if large_files:
-            weaknesses.append(f"⚠️ {len(large_files)} files are too large")
+            weaknesses.append(f"⚠️ {len(large_files)} файлов слишком большие")
         
         if not analysis.architecture.entry_points:
-            weaknesses.append("⚠️ No clear entry points")
+            weaknesses.append("⚠️ Нет явных точек входа")
         
         return weaknesses
 

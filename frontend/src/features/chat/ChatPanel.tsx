@@ -1,9 +1,9 @@
 /**
  * Chat panel — Cursor-like: modes, Analyze, Generate inline.
  */
-import { useRef, useEffect, useState } from 'react'
+import { useRef, useEffect, useState, useCallback } from 'react'
 import { Plus, Globe, Code, Search, Wand2, Workflow, Loader2, Bot } from 'lucide-react'
-import { useChat } from './useChat'
+import { useChat, isAnalyzeIntent } from './useChat'
 import { ChatMessage } from './ChatMessage'
 import { ChatInput } from './ChatInput'
 import { useAssistant } from '../assistant/useAssistant'
@@ -18,47 +18,54 @@ interface ChatPanelProps {
   hasEditorContext?: boolean
 }
 
-function formatAnalysisResult(data: {
-  total_files?: number
-  total_lines?: number
-  total_functions?: number
-  avg_complexity?: number
-  issues?: Array<{ file: string; line: number | null; type: string; severity: string; message: string }>
-  suggestions?: Array<{ priority: number; title: string; description: string }>
-}) {
-  const lines: string[] = []
-  lines.push(`**Статистика:** ${data.total_files ?? 0} файлов, ${data.total_lines ?? 0} строк, ${data.total_functions ?? 0} функций. Сложность: ${(data.avg_complexity ?? 0).toFixed(1)}`)
-  if (data.issues && data.issues.length > 0) {
-    lines.push(`\n**Проблемы (${data.issues.length}):**`)
-    data.issues.slice(0, 15).forEach((i) => {
-      lines.push(`- [${i.severity}] \`${i.file}\`${i.line ? `:${i.line}` : ''} — ${i.message}`)
-    })
-    if (data.issues.length > 15) lines.push(`... и ещё ${data.issues.length - 15}`)
-  }
-  if (data.suggestions && data.suggestions.length > 0) {
-    lines.push(`\n**Рекомендации:**`)
-    data.suggestions.forEach((s) => lines.push(`- #${s.priority} ${s.title}: ${s.description}`))
-  }
-  return lines.join('\n')
-}
-
 export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
   const openFilesCtx = useOpenFilesContext()
   const getContextFiles = (hasEditorContext && openFilesCtx) ? openFilesCtx.getContextFiles : () => []
   const { show: showToast } = useToast()
+  const { workspace } = useWorkspace()
+  const { modes, templates, categories, currentMode, setCurrentMode, getTemplate } = useAssistant()
+  const [analyzing, setAnalyzing] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [generateTask, setGenerateTask] = useState('')
+
+  const handleAnalyzeRef = useRef<(skipUserMessage?: boolean) => Promise<void>>()
   const { messages, loading, streaming, error, send, clear, addMessage, updateLastAssistant } = useChat({
     getContextFiles,
     onToolCall: (toolAndArgs) => showToast(`Агент: ${toolAndArgs}`, 'info'),
+    onAnalyzeRequest: (skipUserMessage?: boolean) => handleAnalyzeRef.current?.(skipUserMessage),
   })
-  const { modes, templates, categories, currentMode, setCurrentMode, getTemplate } = useAssistant()
-  const { workspace } = useWorkspace()
+
+  const handleAnalyze = useCallback(async (skipUserMessage?: boolean) => {
+    if (analyzing) return
+    if (!workspace) {
+      addMessage('assistant', 'Откройте рабочую папку для анализа проекта.')
+      showToast('Сначала откройте папку', 'error')
+      return
+    }
+    setAnalyzing(true)
+    if (!skipUserMessage) addMessage('user', 'Проанализировать проект')
+    try {
+      const res = await fetch('/api/analyze/project/deep', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: workspace.path }),
+      })
+      if (!res.ok) throw new Error(await res.text().catch(() => `${res.status}`))
+      const report = await res.text()
+      addMessage('assistant', report)
+      showToast('Анализ завершён', 'success')
+    } catch (e) {
+      addMessage('assistant', `Ошибка анализа: ${e instanceof Error ? e.message : 'Unknown'}`)
+      showToast('Ошибка анализа', 'error')
+    } finally {
+      setAnalyzing(false)
+    }
+  }, [workspace, analyzing, addMessage, showToast])
+  handleAnalyzeRef.current = handleAnalyze
   const [useStream, setUseStream] = useState(true)
   const [model, setModel] = useState('')
   const [searchWeb, setSearchWeb] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
-  const [analyzing, setAnalyzing] = useState(false)
-  const [generating, setGenerating] = useState(false)
-  const [generateTask, setGenerateTask] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -74,27 +81,6 @@ export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
     const full = await getTemplate(template.id)
     if (full?.content) send(full.content, useStream, currentMode, model || undefined)
     setShowTemplates(false)
-  }
-
-  const handleAnalyze = async () => {
-    if (!workspace || analyzing) return
-    setAnalyzing(true)
-    addMessage('user', 'Проанализировать проект')
-    try {
-      const res = await fetch('/api/improve/analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ path: '.', include_linter: true, use_llm: false }),
-      })
-      const data = await res.json()
-      addMessage('assistant', formatAnalysisResult(data))
-      showToast(`Анализ: ${data.issues?.length ?? 0} проблем`, 'success')
-    } catch (e) {
-      addMessage('assistant', `Ошибка анализа: ${e instanceof Error ? e.message : 'Unknown'}`)
-      showToast('Ошибка анализа', 'error')
-    } finally {
-      setAnalyzing(false)
-    }
   }
 
   const handleGenerate = async () => {
@@ -198,13 +184,31 @@ export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
                 placeholder="Чем помочь?"
                 value={generateTask}
                 onChange={(e) => setGenerateTask(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    if (isAnalyzeIntent(generateTask)) {
+                      addMessage('user', generateTask.trim())
+                      handleAnalyze(true)
+                      setGenerateTask('')
+                    } else {
+                      handleGenerate()
+                    }
+                  }
+                }}
                 disabled={busy}
               />
               <button
                 type="button"
                 className="chat-panel__action chat-panel__action--primary"
-                onClick={handleGenerate}
+                onClick={() => {
+                  if (isAnalyzeIntent(generateTask)) {
+                    addMessage('user', generateTask.trim())
+                    handleAnalyze(true)
+                    setGenerateTask('')
+                  } else {
+                    handleGenerate()
+                  }
+                }}
                 disabled={busy}
                 title="Сгенерировать код"
               >

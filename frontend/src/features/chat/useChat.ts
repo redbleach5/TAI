@@ -1,6 +1,16 @@
 import { useState, useCallback } from 'react'
 import { postChat, postChatStream, type ChatMessage } from '../../api/client'
 
+export const ANALYZE_PATTERNS = [
+  'проанализируй', 'проанализировать', 'анализ проекта', 'анализируй проект',
+  'analyze project', 'analyze the project', 'проанализируйте',
+]
+
+export function isAnalyzeIntent(text: string): boolean {
+  const lower = text.trim().toLowerCase()
+  return ANALYZE_PATTERNS.some((p) => lower.includes(p))
+}
+
 export interface UseChatOptions {
   /** Get open files to include as context (Cursor-like) */
   getContextFiles?: () => Array<{ path: string; content: string }>
@@ -8,10 +18,12 @@ export interface UseChatOptions {
   onToolCall?: (toolAndArgs: string) => void
   /** Callback when agent receives tool result */
   onToolResult?: (result: string) => void
+  /** Callback to trigger analysis (when user says "проанализируй проект"). skipUserMessage=true when useChat already added the message. */
+  onAnalyzeRequest?: (skipUserMessage?: boolean) => Promise<void>
 }
 
 export function useChat(options: UseChatOptions = {}) {
-  const { getContextFiles, onToolCall, onToolResult } = options
+  const { getContextFiles, onToolCall, onToolResult, onAnalyzeRequest } = options
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -21,6 +33,19 @@ export function useChat(options: UseChatOptions = {}) {
   const send = useCallback(
     async (text: string, useStream = false, modeId = 'default', model?: string) => {
       if (!text.trim() || loading) return
+
+      // "Проанализируй проект" → запуск анализа
+      if (isAnalyzeIntent(text) && onAnalyzeRequest) {
+        const userMessage: ChatMessage = { role: 'user', content: text.trim() }
+        setMessages((prev) => [...prev, userMessage])
+        setLoading(true)
+        try {
+          await onAnalyzeRequest(true)
+        } finally {
+          setLoading(false)
+        }
+        return
+      }
 
       const contextFiles = getContextFiles?.() ?? []
       const userMessage: ChatMessage = { role: 'user', content: text.trim() }

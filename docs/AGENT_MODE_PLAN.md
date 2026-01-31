@@ -56,3 +56,9 @@
 - **Phase 2:** `src/application/agent/use_case.py` — AgentUseCase, ReAct-цикл
 - **Phase 3:** ChatUseCase делегирует mode_id=agent в AgentUseCase
 - **Phase 4:** Frontend — onToolCall toast, режим Агент в ModeSelector
+
+## Native Ollama Tools (2026-01-31)
+
+- **OllamaAdapter** — `chat_with_tools`, `chat_with_tools_stream` для native tool calling
+- **ollama_tools.py** — OLLAMA_TOOLS schema (read_file, write_file, search_rag, run_terminal, list_files)
+- **AgentUseCase** — при Ollama использует native tools (GLM 4.7 Flash, Qwen, Llama 3.1+), иначе fallback на prompt-based
