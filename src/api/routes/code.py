@@ -2,6 +2,7 @@
 
 import asyncio
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 
@@ -44,10 +45,10 @@ def _run_code_sync(code: str, tests: str | None, timeout: int) -> tuple[bool, st
             # Ensure tests can import code
             test_content = "import sys\nsys.path.insert(0, '.')\nfrom code import *\n\n" + tests
             test_file.write_text(test_content, encoding="utf-8")
-            cmd = ["python", "-m", "pytest", "test_code.py", "-v", "--tb=short"]
+            cmd = [sys.executable, "-m", "pytest", "test_code.py", "-v", "--tb=short"]
         else:
-            # Just run the code
-            cmd = ["python", "code.py"]
+            # Just run the code (use sys.executable for cross-platform)
+            cmd = [sys.executable, "code.py"]
 
         try:
             result = subprocess.run(

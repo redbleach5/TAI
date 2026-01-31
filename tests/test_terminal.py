@@ -79,10 +79,10 @@ class TestTerminalExec:
         assert data["success"] is False
 
     def test_exec_python_version(self):
-        """Test executing python command."""
+        """Test executing python version command (python3 for macOS compatibility)."""
         response = client.post(
             "/terminal/exec",
-            json={"command": "python --version"}
+            json={"command": "python3 --version"}
         )
         assert response.status_code == 200
         data = response.json()

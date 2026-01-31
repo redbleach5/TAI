@@ -100,9 +100,12 @@ class TestOllamaAdapter:
     @pytest.mark.asyncio
     async def test_list_models(self, adapter):
         """list_models returns model names."""
+        # ollama package uses 'model' attr (newer) or 'name' (legacy)
         model1 = MagicMock()
+        model1.model = "llama2"
         model1.name = "llama2"
         model2 = MagicMock()
+        model2.model = "codellama"
         model2.name = "codellama"
         mock_response = MagicMock()
         mock_response.models = [model1, model2]
