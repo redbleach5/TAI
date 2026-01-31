@@ -1,161 +1,180 @@
-import { useState } from 'react'
-import { useProjects } from './useProjects'
-import type { Project } from './useProjects'
+import { useState, useRef, useEffect } from 'react'
+import { FolderOpen, Loader2, Database, ChevronDown, RotateCcw, Trash2 } from 'lucide-react'
+import { useWorkspace } from '../workspace/useWorkspace'
+import { FolderPicker } from '../workspace/FolderPicker'
 import { useToast } from '../toast/ToastContext'
 
 export function ProjectSelector() {
   const { show: showToast } = useToast()
   const {
-    projects,
-    currentProject,
+    workspace,
     loading,
-    addProject,
-    removeProject,
-    selectProject,
-    indexProject,
-  } = useProjects()
+    fetchWorkspace,
+    openFolder,
+    indexWorkspaceStream,
+    clearIndex,
+  } = useWorkspace()
 
-  const [showAddForm, setShowAddForm] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [newPath, setNewPath] = useState('')
-  const [indexingId, setIndexingId] = useState<string | null>(null)
+  const [showPicker, setShowPicker] = useState(false)
+  const [showIndexMenu, setShowIndexMenu] = useState(false)
+  const [indexing, setIndexing] = useState(false)
+  const [indexProgress, setIndexProgress] = useState<number | null>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
 
-  const handleAdd = async () => {
-    if (!newName.trim() || !newPath.trim()) {
-      showToast('Name and path are required', 'error')
-      return
+  useEffect(() => {
+    if (!showIndexMenu) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setShowIndexMenu(false)
+      }
     }
-    const result = await addProject(newName.trim(), newPath.trim())
-    if (result.success) {
-      showToast(`Added project: ${newName}`, 'success')
-      setShowAddForm(false)
-      setNewName('')
-      setNewPath('')
-    } else {
-      showToast(result.error || 'Failed to add project', 'error')
-    }
-  }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showIndexMenu])
 
-  const handleSelect = async (project: Project) => {
-    const result = await selectProject(project.id)
-    if (result.success) {
-      showToast(`Selected: ${project.name}`, 'success')
-    } else {
-      showToast(result.error || 'Failed to select', 'error')
-    }
-  }
-
-  const handleIndex = async (project: Project) => {
-    setIndexingId(project.id)
-    showToast(`Indexing ${project.name}...`, 'info')
-    const result = await indexProject(project.id)
-    setIndexingId(null)
-    if (result.success) {
-      const stats = result.stats
-      showToast(
-        `Indexed ${stats?.files_found || 0} files, ${stats?.total_chunks || 0} chunks`,
-        'success'
-      )
-    } else {
-      showToast(result.error || 'Indexing failed', 'error')
+  const handleOpenFolder = async (path: string) => {
+    setShowPicker(false)
+    try {
+      await openFolder(path)
+      showToast(`Открыта папка: ${path.split('/').pop() || path}`, 'success')
+      fetchWorkspace()
+      window.dispatchEvent(new CustomEvent('workspace-changed'))
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Что-то пошло не так', 'error')
     }
   }
 
-  const handleRemove = async (project: Project) => {
-    if (!confirm(`Remove project "${project.name}"?`)) return
-    const result = await removeProject(project.id)
-    if (result.success) {
-      showToast(`Removed: ${project.name}`, 'success')
-    } else {
-      showToast(result.error || 'Failed to remove', 'error')
+  const runIndex = async (incremental: boolean) => {
+    setShowIndexMenu(false)
+    setIndexing(true)
+    setIndexProgress(0)
+    try {
+      const result = await indexWorkspaceStream((progress) => {
+        setIndexProgress(progress)
+      }, incremental)
+      setIndexProgress(100)
+      const stats = result?.stats ?? {}
+      const inc = stats?.incremental
+      const msg = inc
+        ? `Индекс: +${stats?.files_added ?? 0} новых, ~${stats?.files_updated ?? 0} изменённых, -${stats?.files_deleted ?? 0} удалённых. Всего: ${stats?.total_chunks ?? 0} чанков`
+        : `Полная переиндексация: ${stats?.files_found ?? 0} файлов, ${stats?.total_chunks ?? 0} чанков`
+      showToast(msg, 'success')
+      fetchWorkspace()
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Что-то пошло не так', 'error')
+    } finally {
+      setIndexing(false)
+      setIndexProgress(null)
+    }
+  }
+
+  const handleIndex = () => runIndex(true)
+
+  const handleFullReindex = () => runIndex(false)
+
+  const handleClear = async () => {
+    setShowIndexMenu(false)
+    try {
+      await clearIndex()
+      showToast('Индекс очищен', 'success')
+      fetchWorkspace()
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Что-то пошло не так', 'error')
     }
   }
 
   return (
     <div className="project-selector">
       <div className="project-selector__header">
-        <h3>Projects</h3>
-        <button
-          className="project-selector__add-btn"
-          onClick={() => setShowAddForm(!showAddForm)}
-        >
-          {showAddForm ? 'Cancel' : '+ Add'}
-        </button>
+        <span className="project-selector__title">Index</span>
+        <div className="project-selector__actions" ref={menuRef}>
+          <button
+            type="button"
+            className="project-selector__action"
+            onClick={() => {
+              setShowIndexMenu(false)
+              setShowPicker(true)
+            }}
+            title="Открыть папку"
+          >
+            <FolderOpen size={14} />
+          </button>
+          <button
+            type="button"
+            className="project-selector__action"
+            onClick={handleIndex}
+            disabled={indexing}
+            title="Обновить индекс (инкрементально)"
+          >
+            {indexing ? (
+              <Loader2 size={14} className="icon-spin" />
+            ) : (
+              <Database size={14} />
+            )}
+          </button>
+          <button
+            type="button"
+            className="project-selector__action project-selector__action--menu"
+            onClick={() => setShowIndexMenu((v) => !v)}
+            disabled={indexing}
+            title="Дополнительные действия"
+          >
+            <ChevronDown size={14} />
+          </button>
+          {showIndexMenu && (
+            <div className="project-selector__dropdown">
+              <button
+                type="button"
+                className="project-selector__dropdown-item"
+                onClick={handleFullReindex}
+              >
+                <RotateCcw size={14} />
+                Полная переиндексация
+              </button>
+              <button
+                type="button"
+                className="project-selector__dropdown-item project-selector__dropdown-item--danger"
+                onClick={handleClear}
+              >
+                <Trash2 size={14} />
+                Очистить индекс
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-      {showAddForm && (
-        <div className="project-selector__form">
-          <input
-            type="text"
-            placeholder="Project name"
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-          />
-          <input
-            type="text"
-            placeholder="Path (e.g., /Users/me/project)"
-            value={newPath}
-            onChange={(e) => setNewPath(e.target.value)}
-          />
-          <button onClick={handleAdd} disabled={loading}>
-            Add Project
-          </button>
+      {indexing && indexProgress !== null && (
+        <div className="project-selector__progress">
+          <div className="project-selector__progress-bar">
+            <div
+              className="project-selector__progress-fill"
+              style={{ width: `${indexProgress}%` }}
+            />
+          </div>
+          <span className="project-selector__progress-text">{indexProgress}%</span>
         </div>
       )}
-
-      <div className="project-selector__list">
-        {projects.length === 0 ? (
-          <div className="project-selector__empty">
-            No projects. Add one to get started.
+      <div className="project-selector__content">
+        {loading ? (
+          <div className="project-selector__loading">Загрузка...</div>
+        ) : workspace ? (
+          <div className="project-selector__workspace">
+            <div className="project-selector__name">{workspace.name}</div>
+            <div className="project-selector__path">{workspace.path}</div>
           </div>
         ) : (
-          projects.map((project) => (
-            <div
-              key={project.id}
-              className={`project-item ${currentProject?.id === project.id ? 'project-item--current' : ''}`}
-            >
-              <div className="project-item__info" onClick={() => handleSelect(project)}>
-                <div className="project-item__name">
-                  {project.name}
-                  {currentProject?.id === project.id && (
-                    <span className="project-item__current-badge">current</span>
-                  )}
-                </div>
-                <div className="project-item__path">{project.path}</div>
-                {project.indexed && (
-                  <div className="project-item__stats">
-                    {project.files_count} files indexed
-                    {project.last_indexed && (
-                      <span> · {new Date(project.last_indexed).toLocaleDateString()}</span>
-                    )}
-                  </div>
-                )}
-              </div>
-              <div className="project-item__actions">
-                <button
-                  onClick={() => handleIndex(project)}
-                  disabled={indexingId === project.id}
-                  title="Index project"
-                >
-                  {indexingId === project.id ? '...' : '⟳'}
-                </button>
-                <button
-                  onClick={() => handleRemove(project)}
-                  className="project-item__remove"
-                  title="Remove"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-          ))
+          <div className="project-selector__empty">
+            Откройте папку для индексации RAG
+          </div>
         )}
       </div>
 
-      {currentProject && (
-        <div className="project-selector__current">
-          <strong>Active:</strong> {currentProject.name}
-        </div>
+      {showPicker && (
+        <FolderPicker
+          onSelect={handleOpenFolder}
+          onCancel={() => setShowPicker(false)}
+        />
       )}
     </div>
   )

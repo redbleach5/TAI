@@ -97,6 +97,9 @@ class OllamaAdapter:
         """List available models from Ollama."""
         try:
             resp = await self._client.list()
-            return [m.name for m in resp.models] if resp.models else []
+            if not resp.models:
+                return []
+            # ollama package: Model has 'model' attr (newer) or 'name' (legacy)
+            return [getattr(m, "model", getattr(m, "name", "")) for m in resp.models if getattr(m, "model", getattr(m, "name", ""))]
         except Exception:
             return []

@@ -75,7 +75,7 @@ def _to_toml_structure(updates: dict) -> dict:
         models_section: dict = {}
         if "defaults" in m:
             models_section.update(m["defaults"])
-        if "lm_studio" in m:
+        if "lm_studio" in m and m["lm_studio"] is not None:
             models_section["lm_studio"] = m["lm_studio"]
         if models_section:
             result["models"] = models_section
@@ -84,7 +84,7 @@ def _to_toml_structure(updates: dict) -> dict:
 
 @router.patch("")
 async def patch_config_route(updates: ConfigPatch):
-    """Update development.toml with partial config. Requires backend restart to apply."""
+    """Update development.toml with partial config. Changes apply immediately."""
     updates_dict = updates.model_dump(exclude_none=True)
     toml_updates = _to_toml_structure(updates_dict)
     if not toml_updates:
@@ -111,4 +111,10 @@ async def patch_config_route(updates: ConfigPatch):
         tomli_w.dump(merged, f)
 
     reset_container()
-    return {"ok": True, "message": "Config saved. Restart backend to apply changes."}
+
+    if "logging" in updates_dict and "level" in updates_dict.get("logging", {}):
+        from src.shared.logging import setup_logging
+
+        setup_logging(updates_dict["logging"]["level"])
+
+    return {"ok": True, "message": "Config saved."}

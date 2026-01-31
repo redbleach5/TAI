@@ -23,21 +23,34 @@ async def chat(
 
 @router.get("/stream")
 @limiter.limit("60/minute")
-async def chat_stream(
+async def chat_stream_get(
     request: Request,
     message: str,
     conversation_id: str | None = None,
     use_case: ChatUseCase = Depends(get_chat_use_case),
 ):
-    """Stream LLM response via SSE."""
+    """Stream LLM response via SSE (GET - no context_files)."""
     chat_request = ChatRequest(
         message=message,
         conversation_id=conversation_id,
     )
-
     async def event_generator():
         async for kind, chunk in use_case.execute_stream(chat_request):
             yield {"event": kind, "data": chunk}
         yield {"event": "done", "data": ""}
+    return EventSourceResponse(event_generator())
 
+
+@router.post("/stream")
+@limiter.limit("60/minute")
+async def chat_stream_post(
+    request: Request,
+    chat_request: ChatRequest,
+    use_case: ChatUseCase = Depends(get_chat_use_case),
+):
+    """Stream LLM response via SSE (POST - supports context_files from IDE)."""
+    async def event_generator():
+        async for kind, chunk in use_case.execute_stream(chat_request):
+            yield {"event": kind, "data": chunk}
+        yield {"event": "done", "data": ""}
     return EventSourceResponse(event_generator())

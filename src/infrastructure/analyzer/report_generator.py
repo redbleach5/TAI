@@ -1,18 +1,46 @@
 """Report Generator - генерация отчётов анализа.
 
 Создаёт Markdown отчёты с визуализацией результатов.
+
+Production-ready with:
+- Markdown special character escaping
+- Null/empty safety checks
 """
 
+import re
 from datetime import datetime
 from pathlib import Path
 
 from src.infrastructure.analyzer.project_analyzer import ProjectAnalysis
 
 
+def escape_markdown(text: str | None) -> str:
+    """Escape markdown special characters in text.
+    
+    Escapes: | ` * _ [ ] ( ) # + - . !
+    """
+    if not text:
+        return ""
+    # Escape pipe (most important for tables)
+    text = text.replace("|", "\\|")
+    # Escape backticks
+    text = text.replace("`", "\\`")
+    # Escape asterisks and underscores (but not when used for emphasis)
+    # Only escape at word boundaries to avoid breaking formatting
+    text = re.sub(r'(\*+)(?=\S)', r'\\\1', text)
+    text = re.sub(r'(?<=\S)(\*+)', r'\\\1', text)
+    return text
+
+
+def safe_str(value: str | None, default: str = "") -> str:
+    """Return value if not None/empty, else default."""
+    return value if value else default
+
+
 class ReportGenerator:
     """Генератор отчётов анализа проекта."""
     
-    def generate_markdown(self, analysis: ProjectAnalysis) -> str:
+    def generate_markdown(self, analysis: ProjectAnalysis | None) -> str:
         """Генерирует Markdown отчёт.
         
         Args:
@@ -21,6 +49,9 @@ class ReportGenerator:
         Returns:
             Markdown строка с отчётом
         """
+        if analysis is None:
+            return "# Project Analysis Report\n\n**Error:** No analysis data available."
+        
         sections = [
             self._header(analysis),
             self._executive_summary(analysis),
@@ -35,22 +66,31 @@ class ReportGenerator:
             self._footer(analysis),
         ]
         
+        # Filter out empty sections
+        sections = [s for s in sections if s and s.strip()]
+        
         return "\n\n".join(sections)
     
     def _header(self, analysis: ProjectAnalysis) -> str:
         """Заголовок отчёта."""
+        project_name = safe_str(analysis.project_name, "Unknown")
+        project_path = safe_str(analysis.project_path, "Unknown")
+        analyzed_at = safe_str(analysis.analyzed_at, datetime.now().isoformat())
+        
         return f"""# 📊 Project Analysis Report
 
-**Project:** `{analysis.project_name}`  
-**Path:** `{analysis.project_path}`  
-**Analyzed:** {analysis.analyzed_at}
+**Project:** `{escape_markdown(project_name)}`  
+**Path:** `{escape_markdown(project_path)}`  
+**Analyzed:** {analyzed_at}
 
 ---"""
     
     def _executive_summary(self, analysis: ProjectAnalysis) -> str:
         """Executive Summary."""
         # Определяем общую оценку
-        overall = (analysis.security_score + analysis.quality_score) // 2
+        security_score = analysis.security_score if analysis.security_score is not None else 0
+        quality_score = analysis.quality_score if analysis.quality_score is not None else 0
+        overall = (security_score + quality_score) // 2
         
         if overall >= 80:
             status = "🟢 **HEALTHY**"
@@ -62,8 +102,15 @@ class ReportGenerator:
             status = "🔴 **CRITICAL**"
             emoji = "❌"
         
-        strengths_str = "\n".join(f"- {s}" for s in analysis.strengths[:5]) or "- None identified"
-        weaknesses_str = "\n".join(f"- {w}" for w in analysis.weaknesses[:5]) or "- None identified"
+        strengths = analysis.strengths if analysis.strengths else []
+        weaknesses = analysis.weaknesses if analysis.weaknesses else []
+        
+        strengths_str = "\n".join(
+            f"- {escape_markdown(s)}" for s in strengths[:5] if s
+        ) or "- None identified"
+        weaknesses_str = "\n".join(
+            f"- {escape_markdown(w)}" for w in weaknesses[:5] if w
+        ) or "- None identified"
         
         return f"""## 📋 Executive Summary
 
@@ -71,8 +118,8 @@ class ReportGenerator:
 
 | Metric | Score | Status |
 |--------|-------|--------|
-| Security | {analysis.security_score}/100 | {self._score_emoji(analysis.security_score)} |
-| Quality | {analysis.quality_score}/100 | {self._score_emoji(analysis.quality_score)} |
+| Security | {security_score}/100 | {self._score_emoji(security_score)} |
+| Quality | {quality_score}/100 | {self._score_emoji(quality_score)} |
 | **Overall** | **{overall}/100** | {emoji} |
 
 ### Strengths
@@ -142,12 +189,20 @@ class ReportGenerator:
             return ""
         
         total = sum(analysis.languages.values())
+        if total == 0:
+            return ""
+        
         rows = []
         
         for lang, count in sorted(analysis.languages.items(), key=lambda x: -x[1]):
+            if not lang:
+                continue
             pct = round(count / total * 100, 1)
             bar = "█" * int(pct / 5)
-            rows.append(f"| {lang} | {count} | {pct}% | {bar} |")
+            rows.append(f"| {escape_markdown(lang)} | {count} | {pct}% | {bar} |")
+        
+        if not rows:
+            return ""
         
         return f"""## 🌐 Languages
 
@@ -183,8 +238,11 @@ class ReportGenerator:
                 sections.append("| File | Line | Issue | Recommendation |")
                 sections.append("|------|------|-------|----------------|")
                 for issue in issues[:10]:  # Limit to 10 per severity
+                    file_path = escape_markdown(safe_str(issue.file, "unknown"))
+                    issue_text = escape_markdown(safe_str(issue.issue, ""))
+                    rec_text = escape_markdown(safe_str(issue.recommendation, ""))
                     sections.append(
-                        f"| `{issue.file}` | {issue.line} | {issue.issue} | {issue.recommendation} |"
+                        f"| `{file_path}` | {issue.line} | {issue_text} | {rec_text} |"
                     )
         
         return "\n".join(sections)
@@ -196,7 +254,16 @@ class ReportGenerator:
 
 ✅ **No major code smells detected!**"""
         
-        smells_list = "\n".join(f"- `{smell}`" for smell in analysis.code_smells[:15])
+        smells_list = "\n".join(
+            f"- `{escape_markdown(smell)}`" 
+            for smell in analysis.code_smells[:15] 
+            if smell
+        )
+        
+        if not smells_list:
+            return """## 🎯 Code Quality
+
+✅ **No major code smells detected!**"""
         
         return f"""## 🎯 Code Quality
 
@@ -207,27 +274,40 @@ class ReportGenerator:
     def _architecture_section(self, analysis: ProjectAnalysis) -> str:
         """Секция архитектуры."""
         arch = analysis.architecture
+        if not arch:
+            return "## 🏗️ Architecture\n\nNo architecture information available."
         
         # Структура директорий
         layers = ""
         if arch.layers:
             layers = "### Directory Structure\n\n```\n"
             for layer, files in sorted(arch.layers.items()):
-                layers += f"📁 {layer}/ ({len(files)} files)\n"
+                # No escaping needed inside code blocks
+                safe_layer = safe_str(layer, "unknown")
+                file_count = len(files) if files else 0
+                layers += f"📁 {safe_layer}/ ({file_count} files)\n"
             layers += "```\n"
         
         # Entry points
         entries = ""
         if arch.entry_points:
             entries = "### Entry Points\n\n"
-            entries += "\n".join(f"- `{e}`" for e in arch.entry_points)
+            entries += "\n".join(
+                f"- `{escape_markdown(safe_str(e, ''))}`" 
+                for e in arch.entry_points 
+                if e
+            )
             entries += "\n"
         
         # Config files
         configs = ""
         if arch.config_files:
             configs = "### Configuration Files\n\n"
-            configs += "\n".join(f"- `{c}`" for c in arch.config_files[:10])
+            configs += "\n".join(
+                f"- `{escape_markdown(safe_str(c, ''))}`" 
+                for c in arch.config_files[:10] 
+                if c
+            )
             configs += "\n"
         
         return f"""## 🏗️ Architecture
@@ -243,7 +323,16 @@ class ReportGenerator:
 
 ✅ **No critical recommendations. Good job!**"""
         
-        recs = "\n".join(f"{i+1}. {rec}" for i, rec in enumerate(analysis.recommendations))
+        recs = "\n".join(
+            f"{i+1}. {escape_markdown(rec)}" 
+            for i, rec in enumerate(analysis.recommendations) 
+            if rec
+        )
+        
+        if not recs:
+            return """## 💡 Recommendations
+
+✅ **No critical recommendations. Good job!**"""
         
         return f"""## 💡 Recommendations
 
@@ -257,19 +346,24 @@ class ReportGenerator:
         # Top by lines
         by_lines = sorted(analysis.file_metrics, key=lambda f: -f.lines_code)[:5]
         lines_rows = [
-            f"| `{f.path}` | {f.lines_code} | {f.functions} | {f.classes} |"
+            f"| `{escape_markdown(safe_str(f.path, 'unknown'))}` | {f.lines_code} | {f.functions} | {f.classes} |"
             for f in by_lines
+            if f and f.path
         ]
         
         # Top by complexity (only Python)
         by_complexity = sorted(
-            [f for f in analysis.file_metrics if f.complexity > 0],
+            [f for f in analysis.file_metrics if f and f.complexity > 0],
             key=lambda f: -f.complexity
         )[:5]
         complexity_rows = [
-            f"| `{f.path}` | {f.complexity} |"
+            f"| `{escape_markdown(safe_str(f.path, 'unknown'))}` | {f.complexity} |"
             for f in by_complexity
+            if f and f.path
         ]
+        
+        lines_content = chr(10).join(lines_rows) if lines_rows else "| No files | - | - | - |"
+        complexity_content = chr(10).join(complexity_rows) if complexity_rows else "| No files | - |"
         
         return f"""## 📁 Top Files
 
@@ -277,13 +371,13 @@ class ReportGenerator:
 
 | File | Lines | Functions | Classes |
 |------|-------|-----------|---------|
-{chr(10).join(lines_rows)}
+{lines_content}
 
 ### By Complexity (Python)
 
 | File | Complexity |
 |------|------------|
-{chr(10).join(complexity_rows)}"""
+{complexity_content}"""
     
     def _footer(self, analysis: ProjectAnalysis) -> str:
         """Футер отчёта."""

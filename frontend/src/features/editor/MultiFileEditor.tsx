@@ -1,6 +1,7 @@
-import { useEffect, useCallback, useState } from 'react'
+import { useEffect, useCallback, useState, useRef } from 'react'
 import Editor from '@monaco-editor/react'
 import { useToast } from '../toast/ToastContext'
+import { useOpenFilesContext } from './OpenFilesContext'
 import { useOpenFiles } from './useOpenFiles'
 import { EditorTabs } from './EditorTabs'
 
@@ -11,6 +12,8 @@ interface MultiFileEditorProps {
 
 export function MultiFileEditor({ externalOpenFile }: MultiFileEditorProps) {
   const { show: showToast } = useToast()
+  const ctx = useOpenFilesContext()
+  const fallback = useOpenFiles()
   const {
     files,
     activeFile,
@@ -20,17 +23,20 @@ export function MultiFileEditor({ externalOpenFile }: MultiFileEditorProps) {
     updateContent,
     saveFile,
     getActiveFile,
-  } = useOpenFiles()
+  } = ctx ?? fallback
 
   const [output, setOutput] = useState<string | null>(null)
   const [running, setRunning] = useState(false)
+  const openFileRef = useRef(openFile)
+  openFileRef.current = openFile
 
-  // Open file when requested externally
+  // Open file when user selects from sidebar — only when externalOpenFile CHANGES.
+  // Must NOT depend on openFile: it changes when files change (e.g. on close), which would re-open the closed file.
   useEffect(() => {
     if (externalOpenFile) {
-      openFile(externalOpenFile)
+      openFileRef.current(externalOpenFile)
     }
-  }, [externalOpenFile, openFile])
+  }, [externalOpenFile])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -65,16 +71,16 @@ export function MultiFileEditor({ externalOpenFile }: MultiFileEditorProps) {
     if (!activeFile) return
     const result = await saveFile(activeFile)
     if (result.success) {
-      showToast('Saved', 'success')
+      showToast('Готово', 'success')
     } else {
-      showToast(result.error || 'Save failed', 'error')
+      showToast(result.error || 'Что-то пошло не так', 'error')
     }
   }
 
   const handleRun = async () => {
     const file = getActiveFile()
     if (!file || file.language !== 'python') {
-      showToast('Only Python files can be run', 'error')
+      showToast('Только Python-файлы можно запустить', 'error')
       return
     }
 
@@ -90,13 +96,13 @@ export function MultiFileEditor({ externalOpenFile }: MultiFileEditorProps) {
       const data = await res.json()
       setOutput(data.output || data.error || 'Done')
       if (data.success) {
-        showToast('Executed successfully', 'success')
+        showToast('Готово', 'success')
       } else {
-        showToast('Execution failed', 'error')
+        showToast('Что-то пошло не так', 'error')
       }
     } catch (e) {
       setOutput(`Error: ${e instanceof Error ? e.message : 'Unknown'}`)
-      showToast('Execution failed', 'error')
+      showToast('Что-то пошло не так', 'error')
     } finally {
       setRunning(false)
     }
@@ -108,9 +114,9 @@ export function MultiFileEditor({ externalOpenFile }: MultiFileEditorProps) {
     
     try {
       await navigator.clipboard.writeText(file.content)
-      showToast('Copied to clipboard', 'success')
+      showToast('Скопировано в буфер обмена', 'success')
     } catch {
-      showToast('Copy failed', 'error')
+      showToast('Не удалось скопировать', 'error')
     }
   }
 
@@ -206,9 +212,9 @@ export function MultiFileEditor({ externalOpenFile }: MultiFileEditorProps) {
           />
         ) : (
           <div className="multi-editor__empty">
-            <p>Select a file from the sidebar to edit</p>
+            <p>Открой файл или начни с подсказки</p>
             <p className="multi-editor__hint">
-              Double-click a file to open it
+              Двойной клик по файлу в боковой панели
             </p>
           </div>
         )}

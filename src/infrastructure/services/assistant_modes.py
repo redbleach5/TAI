@@ -22,16 +22,16 @@ class ModeConfig:
     description: str
     system_prompt: str
     temperature: float = 0.7
-    icon: str = "🤖"
+    icon: str = "◎"
 
 
-# Mode definitions
+# Mode definitions - using monochrome unicode icons
 MODES: dict[AssistantMode, ModeConfig] = {
     AssistantMode.DEFAULT: ModeConfig(
         id="default",
-        name="Default",
-        description="General-purpose assistant",
-        icon="🤖",
+        name="Обсуждение",
+        description="Общий помощник",
+        icon="◎",
         temperature=0.7,
         system_prompt="""You are a helpful AI assistant. Be concise and accurate.
 When answering:
@@ -43,9 +43,9 @@ When answering:
     
     AssistantMode.CODER: ModeConfig(
         id="coder",
-        name="Coder",
-        description="Expert programmer for coding tasks",
-        icon="💻",
+        name="Рефакторинг",
+        description="Эксперт по коду и рефакторингу",
+        icon="◇",
         temperature=0.3,
         system_prompt="""You are an expert programmer and software architect.
 
@@ -65,9 +65,9 @@ When reviewing code:
     
     AssistantMode.RESEARCHER: ModeConfig(
         id="researcher",
-        name="Researcher",
-        description="Deep analysis and investigation",
-        icon="🔍",
+        name="Исследование",
+        description="Глубокий анализ и поиск информации",
+        icon="◈",
         temperature=0.5,
         system_prompt="""You are a thorough researcher and analyst.
 
@@ -86,9 +86,9 @@ When uncertain:
     
     AssistantMode.WRITER: ModeConfig(
         id="writer",
-        name="Writer",
-        description="Content creation and editing",
-        icon="✍️",
+        name="Текст",
+        description="Создание и редактирование текста",
+        icon="¶",
         temperature=0.8,
         system_prompt="""You are a skilled writer and editor.
 
@@ -108,9 +108,9 @@ For editing:
     
     AssistantMode.ANALYST: ModeConfig(
         id="analyst",
-        name="Analyst",
-        description="Data analysis and insights",
-        icon="📊",
+        name="Анализ",
+        description="Анализ данных и инсайты",
+        icon="▦",
         temperature=0.4,
         system_prompt="""You are a data analyst and business intelligence expert.
 
@@ -130,9 +130,9 @@ Format:
     
     AssistantMode.REVIEWER: ModeConfig(
         id="reviewer",
-        name="Code Reviewer",
-        description="Thorough code review and feedback",
-        icon="👀",
+        name="Отладка",
+        description="Ревью кода и поиск ошибок",
+        icon="◉",
         temperature=0.3,
         system_prompt="""You are an experienced code reviewer.
 

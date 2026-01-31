@@ -1,8 +1,10 @@
 """Self-improvement use case - orchestrates analysis and improvement."""
 
 import asyncio
+import os
 import uuid
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
+from pathlib import Path
 from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -49,12 +51,17 @@ class SelfImprovementUseCase:
         model_router: ModelRouter,
         file_writer: FileWriter | None = None,
         checkpointer: MemorySaver | None = None,
+        workspace_path_getter: Callable[[], str] | None = None,
     ) -> None:
         self._llm = llm
         self._model_router = model_router
         self._file_writer = file_writer or FileWriter()
         self._checkpointer = checkpointer or MemorySaver()
         self._analyzer = CodeAnalyzer(llm)
+        self._workspace_path_getter = workspace_path_getter or (
+            lambda: str(Path.cwd().resolve())
+        )
+        self._workspace_lock = asyncio.Lock()
         
         # Task queue
         self._tasks: dict[str, ImprovementTask] = {}
@@ -63,32 +70,42 @@ class SelfImprovementUseCase:
         self._running = False
 
     async def analyze(self, request: AnalyzeRequest) -> AnalyzeResponse:
-        """Analyze project and return issues with suggestions."""
-        # Static analysis
-        analysis = self._analyzer.analyze_project(request.path)
+        """Analyze project and return issues with suggestions.
         
-        # Add linter issues
-        if request.include_linter:
-            linter_issues = self._analyzer.run_linter(request.path)
-            analysis.issues.extend(linter_issues)
-        
-        # Get LLM suggestions
-        suggestions = []
-        if request.use_llm:
-            suggestions = await self._analyzer.suggest_improvements(analysis)
-        else:
-            # Basic suggestions based on analysis
-            suggestions = self._generate_basic_suggestions(analysis)
-        
-        return AnalyzeResponse(
-            total_files=analysis.total_files,
-            total_lines=analysis.total_lines,
-            total_functions=analysis.total_functions,
-            total_classes=analysis.total_classes,
-            avg_complexity=analysis.avg_complexity,
-            issues=[_issue_to_dto(i) for i in analysis.issues],
-            suggestions=suggestions,
-        )
+        Uses workspace path from getter; chdirs to workspace for analysis.
+        """
+        workspace_path = self._workspace_path_getter()
+        original_cwd = os.getcwd()
+        async with self._workspace_lock:
+            try:
+                os.chdir(workspace_path)
+                # Static analysis
+                analysis = self._analyzer.analyze_project(request.path)
+                
+                # Add linter issues
+                if request.include_linter:
+                    linter_issues = self._analyzer.run_linter(request.path)
+                    analysis.issues.extend(linter_issues)
+                
+                # Get LLM suggestions
+                suggestions = []
+                if request.use_llm:
+                    suggestions = await self._analyzer.suggest_improvements(analysis)
+                else:
+                    # Basic suggestions based on analysis
+                    suggestions = self._generate_basic_suggestions(analysis)
+                
+                return AnalyzeResponse(
+                    total_files=analysis.total_files,
+                    total_lines=analysis.total_lines,
+                    total_functions=analysis.total_functions,
+                    total_classes=analysis.total_classes,
+                    avg_complexity=analysis.avg_complexity,
+                    issues=[_issue_to_dto(i) for i in analysis.issues],
+                    suggestions=suggestions,
+                )
+            finally:
+                os.chdir(original_cwd)
 
     def _generate_basic_suggestions(self, analysis: ProjectAnalysis) -> list[dict]:
         """Generate basic suggestions without LLM."""
@@ -150,48 +167,58 @@ class SelfImprovementUseCase:
         request: ImprovementRequest,
         on_chunk: Any = None,
     ) -> ImprovementResponse:
-        """Improve single file using LLM workflow."""
-        # Select model based on complexity
-        model = self._model_router.select_model(
-            request.issue.get("message", "") if request.issue else "complex refactoring"
-        )
-        # For improvements, prefer complex model
-        model = self._model_router._models.complex
+        """Improve single file using LLM workflow.
         
-        builder = build_improvement_graph(
-            llm=self._llm,
-            model=model,
-            file_writer=self._file_writer,
-            on_chunk=on_chunk,
-        )
-        graph = compile_improvement_graph(builder, self._checkpointer)
-        
-        session_id = str(uuid.uuid4())
-        config = {"configurable": {"thread_id": session_id}, "recursion_limit": 20}
-        
-        initial: ImprovementState = {
-            "file_path": request.file_path,
-            "issue": request.issue or {
-                "message": "General code improvement",
-                "severity": "medium",
-                "issue_type": "refactor",
-            },
-            "max_retries": request.max_retries,
-        }
-        
-        final = await graph.ainvoke(initial, config=config)
-        
-        write_result = final.get("write_result", {})
-        
-        return ImprovementResponse(
-            success=final.get("validation_passed", False) and write_result.get("success", False),
-            file_path=request.file_path,
-            backup_path=write_result.get("backup_path"),
-            improved_code=final.get("improved_code"),
-            validation_output=final.get("validation_output"),
-            error=final.get("error"),
-            retries=final.get("retry_count", 0),
-        )
+        Uses workspace path from getter; chdirs to workspace for file ops.
+        """
+        workspace_path = self._workspace_path_getter()
+        original_cwd = os.getcwd()
+        async with self._workspace_lock:
+            try:
+                os.chdir(workspace_path)
+                # Select model based on complexity
+                model = self._model_router.select_model(
+                    request.issue.get("message", "") if request.issue else "complex refactoring"
+                )
+                # For improvements, prefer complex model
+                model = self._model_router._models.complex
+                
+                builder = build_improvement_graph(
+                    llm=self._llm,
+                    model=model,
+                    file_writer=self._file_writer,
+                    on_chunk=on_chunk,
+                )
+                graph = compile_improvement_graph(builder, self._checkpointer)
+                
+                session_id = str(uuid.uuid4())
+                config = {"configurable": {"thread_id": session_id}, "recursion_limit": 20}
+                
+                initial: ImprovementState = {
+                    "file_path": request.file_path,
+                    "issue": request.issue or {
+                        "message": "General code improvement",
+                        "severity": "medium",
+                        "issue_type": "refactor",
+                    },
+                    "max_retries": request.max_retries,
+                }
+                
+                final = await graph.ainvoke(initial, config=config)
+                
+                write_result = final.get("write_result", {})
+                
+                return ImprovementResponse(
+                    success=final.get("validation_passed", False) and write_result.get("success", False),
+                    file_path=request.file_path,
+                    backup_path=write_result.get("backup_path"),
+                    improved_code=final.get("improved_code"),
+                    validation_output=final.get("validation_output"),
+                    error=final.get("error"),
+                    retries=final.get("retry_count", 0),
+                )
+            finally:
+                os.chdir(original_cwd)
 
     async def improve_file_stream(
         self,

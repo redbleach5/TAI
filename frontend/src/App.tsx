@@ -1,5 +1,5 @@
+import { Sparkles } from 'lucide-react'
 import { HealthStatus } from './features/health/HealthStatus'
-import { WorkflowCodeProvider } from './features/ide/WorkflowCodeContext'
 import { Layout } from './features/layout/Layout'
 import { ToastProvider } from './features/toast/ToastContext'
 import './App.css'
@@ -9,14 +9,17 @@ function App() {
     <ToastProvider>
       <div className="app">
         <header className="header">
-          <h1>TAi</h1>
-          <p className="tagline">Локальная генерация кода на ИИ — альтернатива Cursor</p>
+          <div className="header__left">
+            <div className="header__logo">
+              <Sparkles className="header__logo-icon" size={20} />
+              <h1 className="header__title">TAi</h1>
+            </div>
+            <span className="tagline">AI Code Assistant</span>
+          </div>
           <HealthStatus />
         </header>
         <main className="main">
-          <WorkflowCodeProvider>
-            <Layout />
-          </WorkflowCodeProvider>
+          <Layout />
         </main>
       </div>
     </ToastProvider>

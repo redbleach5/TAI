@@ -9,7 +9,7 @@ port = 8000
 provider = "ollama"  # "ollama" | "lm_studio"
 
 [ollama]
-host = "http://localhost:11434"
+host = "http://192.168.178.126:11434"
 timeout = 120
 pool_size = 4
 
@@ -21,10 +21,11 @@ timeout = 120
 # Model identifiers by task complexity. Defaults for Ollama.
 # Per-provider overrides: [models.lm_studio], [models.ollama], etc.
 # LM Studio IDs: "local" for loaded model, or exact ID from GET /v1/models.
+# Use models that exist in Ollama; override in Settings or development.toml.
 [models]
 simple = "qwen2.5-coder:7b"
 medium = "qwen2.5-coder:7b"
-complex = "qwen2.5-coder:32b"
+complex = "qwen2.5-coder:7b"
 fallback = "qwen2.5-coder:7b"
 
 # Per-provider overrides. Add [models.<provider>] for any provider.

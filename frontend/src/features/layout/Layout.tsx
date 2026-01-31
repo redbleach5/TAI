@@ -1,168 +1,149 @@
+/**
+ * Cursor-like layout: IDE + Chat always visible.
+ * Sidebar | Editor | Chat — no tab switching.
+ */
 import { useState } from 'react'
+import {
+  Settings,
+  FolderTree,
+  GitBranch,
+  Database,
+  FolderOpen,
+} from 'lucide-react'
 import { ChatPanel } from '../chat/ChatPanel'
-import { IDEPanel } from '../ide/IDEPanel'
-import { ImprovementPanel } from '../improve/ImprovementPanel'
 import { SettingsPanel } from '../settings/SettingsPanel'
-import { WorkflowPanel } from '../workflow/WorkflowPanel'
 import { FileBrowser } from '../files/FileBrowser'
+import { ProjectSelector } from '../projects/ProjectSelector'
+import { FolderPicker } from '../workspace/FolderPicker'
+import { useWorkspace } from '../workspace/useWorkspace'
 import { MultiFileEditor } from '../editor/MultiFileEditor'
+import { OpenFilesProvider } from '../editor/OpenFilesContext'
 import { TerminalPanel } from '../terminal/TerminalPanel'
 import { GitPanel } from '../git/GitPanel'
 import { useGitStatus } from '../git/useGitStatus'
+import { useToast } from '../toast/ToastContext'
 
-type LayoutMode = 'chat' | 'workflow' | 'ide' | 'editor' | 'split' | 'improve' | 'settings'
-type SidebarTab = 'files' | 'git'
+type SidebarTab = 'files' | 'git' | 'projects'
 
 export function Layout() {
-  const [mode, setMode] = useState<LayoutMode>('chat')
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('files')
   const [terminalCollapsed, setTerminalCollapsed] = useState(true)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [showFolderPicker, setShowFolderPicker] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const { fileStatusMap } = useGitStatus()
+  const { show: showToast } = useToast()
+  const { workspace, openFolder } = useWorkspace()
 
-  const handleFileSelect = (path: string) => {
-    setSelectedFile(path)
+  const handleFileSelect = (path: string) => setSelectedFile(path)
+
+  const handleOpenFolder = async (path: string) => {
+    setShowFolderPicker(false)
+    try {
+      await openFolder(path)
+      showToast(`Открыта папка: ${path.split('/').pop() || path}`, 'success')
+      window.dispatchEvent(new CustomEvent('workspace-changed'))
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Что-то пошло не так', 'error')
+    }
   }
 
   return (
-    <div className={`layout layout--${mode}`}>
-      <div className="layout__tabs">
+    <div className="layout layout--ide">
+      <div className="layout__workspace-bar">
         <button
           type="button"
-          className={`layout__tab ${mode === 'chat' ? 'layout__tab--active' : ''}`}
-          onClick={() => setMode('chat')}
+          className="layout__workspace-btn"
+          onClick={() => setShowFolderPicker(true)}
+          title={workspace ? workspace.path : 'Открыть папку'}
         >
-          Чат
+          <FolderOpen size={14} />
+          <span>{workspace ? workspace.name : 'Открыть папку...'}</span>
         </button>
         <button
           type="button"
-          className={`layout__tab ${mode === 'workflow' ? 'layout__tab--active' : ''}`}
-          onClick={() => setMode('workflow')}
+          className="layout__settings-btn"
+          onClick={() => setShowSettings(!showSettings)}
+          title="Настройки"
         >
-          Workflow
-        </button>
-        <button
-          type="button"
-          className={`layout__tab ${mode === 'editor' ? 'layout__tab--active' : ''}`}
-          onClick={() => setMode('editor')}
-        >
-          IDE
-        </button>
-        <button
-          type="button"
-          className={`layout__tab ${mode === 'ide' ? 'layout__tab--active' : ''}`}
-          onClick={() => setMode('ide')}
-        >
-          Результат
-        </button>
-        <button
-          type="button"
-          className={`layout__tab ${mode === 'split' ? 'layout__tab--active' : ''}`}
-          onClick={() => setMode('split')}
-        >
-          Раздельно
-        </button>
-        <button
-          type="button"
-          className={`layout__tab ${mode === 'improve' ? 'layout__tab--active' : ''}`}
-          onClick={() => setMode('improve')}
-        >
-          Улучшение
-        </button>
-        <button
-          type="button"
-          className={`layout__tab ${mode === 'settings' ? 'layout__tab--active' : ''}`}
-          onClick={() => setMode('settings')}
-        >
-          Настройки
+          <Settings size={14} />
         </button>
       </div>
 
       <div className="layout__content">
-        {/* Chat Mode */}
-        {(mode === 'chat' || mode === 'split') && (
-          <div className="layout__chat">
-            <ChatPanel />
+        {showSettings ? (
+          <div className="layout__settings-overlay">
+            <SettingsPanel onClose={() => setShowSettings(false)} />
           </div>
-        )}
-
-        {/* Workflow Mode */}
-        {mode === 'workflow' && (
-          <div className="layout__workflow">
-            <WorkflowPanel />
-          </div>
-        )}
-
-        {/* Full IDE Mode with sidebar, editor, terminal */}
-        {mode === 'editor' && (
-          <div className="layout__full-editor">
-            {/* Sidebar */}
-            <div className="layout__sidebar">
-              <div className="layout__sidebar-tabs">
-                <button
-                  className={`layout__sidebar-tab ${sidebarTab === 'files' ? 'layout__sidebar-tab--active' : ''}`}
-                  onClick={() => setSidebarTab('files')}
-                  title="Files"
-                >
-                  📁
-                </button>
-                <button
-                  className={`layout__sidebar-tab ${sidebarTab === 'git' ? 'layout__sidebar-tab--active' : ''}`}
-                  onClick={() => setSidebarTab('git')}
-                  title="Source Control"
-                >
-                  🔀
-                </button>
+        ) : (
+          <OpenFilesProvider>
+            <div className="layout__main">
+              {/* Sidebar */}
+              <div className="layout__sidebar">
+                <div className="layout__sidebar-tabs">
+                  <button
+                    className={`layout__sidebar-tab ${sidebarTab === 'files' ? 'layout__sidebar-tab--active' : ''}`}
+                    onClick={() => setSidebarTab('files')}
+                    title="Файлы"
+                  >
+                    <FolderTree size={18} />
+                  </button>
+                  <button
+                    className={`layout__sidebar-tab ${sidebarTab === 'git' ? 'layout__sidebar-tab--active' : ''}`}
+                    onClick={() => setSidebarTab('git')}
+                    title="Git"
+                  >
+                    <GitBranch size={18} />
+                  </button>
+                  <button
+                    className={`layout__sidebar-tab ${sidebarTab === 'projects' ? 'layout__sidebar-tab--active' : ''}`}
+                    onClick={() => setSidebarTab('projects')}
+                    title="RAG индекс"
+                  >
+                    <Database size={18} />
+                  </button>
+                </div>
+                <div className="layout__sidebar-content">
+                  {sidebarTab === 'files' && (
+                    <FileBrowser
+                      onFileSelect={handleFileSelect}
+                      gitStatus={fileStatusMap()}
+                      onOpenFolder={() => setShowFolderPicker(true)}
+                    />
+                  )}
+                  {sidebarTab === 'git' && <GitPanel onFileClick={handleFileSelect} />}
+                  {sidebarTab === 'projects' && <ProjectSelector />}
+                </div>
               </div>
-              <div className="layout__sidebar-content">
-                {sidebarTab === 'files' && (
-                  <FileBrowser
-                    onFileSelect={handleFileSelect}
-                    gitStatus={fileStatusMap()}
+
+              {/* Editor + Terminal */}
+              <div className="layout__editor-main">
+                <div className="layout__editor-area">
+                  <MultiFileEditor externalOpenFile={selectedFile} />
+                </div>
+                <div className={`layout__terminal ${terminalCollapsed ? 'layout__terminal--collapsed' : ''}`}>
+                  <TerminalPanel
+                    collapsed={terminalCollapsed}
+                    onToggle={() => setTerminalCollapsed(!terminalCollapsed)}
                   />
-                )}
-                {sidebarTab === 'git' && (
-                  <GitPanel onFileClick={handleFileSelect} />
-                )}
+                </div>
+              </div>
+
+              {/* Chat — Cursor-like, always visible */}
+              <div className="layout__chat-panel">
+                <ChatPanel hasEditorContext />
               </div>
             </div>
-
-            {/* Main editor area */}
-            <div className="layout__editor-main">
-              <div className="layout__editor-area">
-                <MultiFileEditor externalOpenFile={selectedFile} />
-              </div>
-              <div className={`layout__terminal ${terminalCollapsed ? 'layout__terminal--collapsed' : ''}`}>
-                <TerminalPanel
-                  collapsed={terminalCollapsed}
-                  onToggle={() => setTerminalCollapsed(!terminalCollapsed)}
-                />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Improvement Mode */}
-        {mode === 'improve' && (
-          <div className="layout__improve">
-            <ImprovementPanel />
-          </div>
-        )}
-
-        {/* Settings Mode */}
-        {mode === 'settings' && (
-          <div className="layout__settings">
-            <SettingsPanel />
-          </div>
-        )}
-
-        {/* Old IDE for workflow results */}
-        {(mode === 'ide' || mode === 'split') && (
-          <div className="layout__ide">
-            <IDEPanel />
-          </div>
+          </OpenFilesProvider>
         )}
       </div>
+
+      {showFolderPicker && (
+        <FolderPicker
+          onSelect={handleOpenFolder}
+          onCancel={() => setShowFolderPicker(false)}
+        />
+      )}
     </div>
   )
 }

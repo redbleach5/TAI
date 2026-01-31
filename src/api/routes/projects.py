@@ -196,23 +196,23 @@ async def select_project(
 async def index_project(
     request: Request,
     project_id: str,
+    incremental: bool = True,
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
 ):
-    """Index a project for RAG search."""
+    """Index a project for RAG search.
+
+    incremental: If True (default), only index new/changed files. If False, full reindex.
+    """
     store = get_store()
     project = store.get_project(project_id)
-    
+
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
-    
-    # Clear existing index and reindex
-    rag.clear()
-    
-    # Change to project directory temporarily
+
     original_cwd = os.getcwd()
     try:
         os.chdir(project.path)
-        stats = await rag.index_path(".")
+        stats = await rag.index_path(".", incremental=incremental)
         
         # Update project info
         from datetime import datetime

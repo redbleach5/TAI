@@ -1,12 +1,14 @@
 """Self-improvement API routes."""
 
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from src.api.dependencies import get_llm_adapter, get_model_router, limiter
+from src.api.routes.projects import get_store
 from src.application.improvement import (
     AnalyzeRequest,
     ImprovementRequest,
@@ -31,6 +33,13 @@ def get_file_writer() -> FileWriter:
     return _file_writer
 
 
+def _get_workspace_path() -> str:
+    """Get current workspace path (current project or cwd)."""
+    store = get_store()
+    current = store.get_current()
+    return current.path if current else str(Path.cwd().resolve())
+
+
 def get_improvement_use_case(
     llm: LLMPort = Depends(get_llm_adapter),
     model_router: ModelRouter = Depends(get_model_router),
@@ -43,6 +52,7 @@ def get_improvement_use_case(
             llm=llm,
             model_router=model_router,
             file_writer=file_writer,
+            workspace_path_getter=_get_workspace_path,
         )
     return _use_case
 
@@ -80,6 +90,8 @@ async def analyze_project(
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
 ):
     """Analyze project for issues and improvement suggestions.
+    
+    Uses current workspace path. Runs analysis in workspace directory.
     
     Returns:
         - total_files, total_lines, total_functions, total_classes
@@ -123,6 +135,8 @@ async def run_improvement(
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
 ):
     """Run improvement on single file.
+    
+    Uses current workspace path. Runs improvement in workspace directory.
     
     This endpoint runs the full improvement workflow:
     1. Read original file

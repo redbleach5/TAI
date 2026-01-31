@@ -1,70 +1,226 @@
+/**
+ * Chat panel — Cursor-like: modes, Analyze, Generate inline.
+ */
 import { useRef, useEffect, useState } from 'react'
+import { Plus, Globe, Code, Search, Wand2, Workflow, Loader2, Bot } from 'lucide-react'
 import { useChat } from './useChat'
 import { ChatMessage } from './ChatMessage'
 import { ChatInput } from './ChatInput'
 import { useAssistant } from '../assistant/useAssistant'
 import { ModeSelector } from '../assistant/ModeSelector'
+import { ModelSelector } from './ModelSelector'
 import { TemplateSelector } from '../assistant/TemplateSelector'
+import { useWorkspace } from '../workspace/useWorkspace'
+import { useOpenFilesContext } from '../editor/OpenFilesContext'
+import { useToast } from '../toast/ToastContext'
 
-export function ChatPanel() {
-  const { messages, loading, streaming, error, send, clear } = useChat()
+interface ChatPanelProps {
+  hasEditorContext?: boolean
+}
+
+function formatAnalysisResult(data: {
+  total_files?: number
+  total_lines?: number
+  total_functions?: number
+  avg_complexity?: number
+  issues?: Array<{ file: string; line: number | null; type: string; severity: string; message: string }>
+  suggestions?: Array<{ priority: number; title: string; description: string }>
+}) {
+  const lines: string[] = []
+  lines.push(`**Статистика:** ${data.total_files ?? 0} файлов, ${data.total_lines ?? 0} строк, ${data.total_functions ?? 0} функций. Сложность: ${(data.avg_complexity ?? 0).toFixed(1)}`)
+  if (data.issues && data.issues.length > 0) {
+    lines.push(`\n**Проблемы (${data.issues.length}):**`)
+    data.issues.slice(0, 15).forEach((i) => {
+      lines.push(`- [${i.severity}] \`${i.file}\`${i.line ? `:${i.line}` : ''} — ${i.message}`)
+    })
+    if (data.issues.length > 15) lines.push(`... и ещё ${data.issues.length - 15}`)
+  }
+  if (data.suggestions && data.suggestions.length > 0) {
+    lines.push(`\n**Рекомендации:**`)
+    data.suggestions.forEach((s) => lines.push(`- #${s.priority} ${s.title}: ${s.description}`))
+  }
+  return lines.join('\n')
+}
+
+export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
+  const openFilesCtx = useOpenFilesContext()
+  const getContextFiles = (hasEditorContext && openFilesCtx) ? openFilesCtx.getContextFiles : () => []
+  const { messages, loading, streaming, error, send, clear, addMessage, updateLastAssistant } = useChat({ getContextFiles })
   const { modes, templates, categories, currentMode, setCurrentMode, getTemplate } = useAssistant()
+  const { workspace } = useWorkspace()
+  const { show: showToast } = useToast()
   const [useStream, setUseStream] = useState(true)
+  const [model, setModel] = useState('')
+  const [searchWeb, setSearchWeb] = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
+  const [analyzing, setAnalyzing] = useState(false)
+  const [generating, setGenerating] = useState(false)
+  const [generateTask, setGenerateTask] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
   }, [messages])
 
-  const handleSend = (text: string, stream?: boolean, modeId?: string) => {
-    send(text, stream, modeId || currentMode)
+  const handleSend = (text: string, stream?: boolean, modeId?: string, modelId?: string) => {
+    const m = (modelId ?? model) || undefined
+    send(text, stream ?? useStream, modeId ?? currentMode, m)
   }
 
   const handleTemplateSelect = async (template: { id: string; name: string }) => {
     const full = await getTemplate(template.id)
-    if (full?.content) {
-      // Send template as message (user can edit it in chat)
-      send(full.content, useStream, currentMode)
-    }
+    if (full?.content) send(full.content, useStream, currentMode, model || undefined)
     setShowTemplates(false)
   }
+
+  const handleAnalyze = async () => {
+    if (!workspace || analyzing) return
+    setAnalyzing(true)
+    addMessage('user', 'Проанализировать проект')
+    try {
+      const res = await fetch('/api/improve/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: '.', include_linter: true, use_llm: false }),
+      })
+      const data = await res.json()
+      addMessage('assistant', formatAnalysisResult(data))
+      showToast(`Анализ: ${data.issues?.length ?? 0} проблем`, 'success')
+    } catch (e) {
+      addMessage('assistant', `Ошибка анализа: ${e instanceof Error ? e.message : 'Unknown'}`)
+      showToast('Ошибка анализа', 'error')
+    } finally {
+      setAnalyzing(false)
+    }
+  }
+
+  const handleGenerate = async () => {
+    const task = generateTask.trim() || 'Напиши функцию hello world на Python'
+    if (generating) return
+    setGenerating(true)
+    setGenerateTask('')
+    addMessage('user', `Сгенерировать: ${task}`)
+    try {
+      const res = await fetch('/api/workflow?stream=true', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ task }),
+      })
+      if (!res.ok || !res.body) throw new Error('Workflow failed')
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let content = ''
+      let buffer = ''
+      addMessage('assistant', '')
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const blocks = buffer.split(/\r?\n\r?\n/)
+        buffer = blocks.pop() ?? ''
+        for (const block of blocks) {
+          let eventType = ''
+          let data = ''
+          for (const line of block.split(/\r?\n/)) {
+            if (line.startsWith('event: ')) eventType = line.slice(7).trim()
+            if (line.startsWith('data: ')) data = line.slice(6).trim()
+          }
+          if (data) {
+            try {
+              const evt = JSON.parse(data)
+              const chunk = evt.chunk ?? ''
+              if (chunk && ['plan', 'tests', 'code'].includes(evt.event_type ?? eventType)) {
+                content += chunk
+                updateLastAssistant(content)
+              }
+              if (evt.payload?.code) {
+                content = [evt.payload.plan, evt.payload.tests, evt.payload.code].filter(Boolean).join('\n\n')
+                updateLastAssistant(content)
+              }
+            } catch {
+              // skip
+            }
+          }
+        }
+      }
+      if (!content) updateLastAssistant('(Пустой ответ)')
+      showToast('Код сгенерирован', 'success')
+    } catch (e) {
+      addMessage('assistant', `Ошибка: ${e instanceof Error ? e.message : 'Unknown'}`)
+      showToast('Ошибка генерации', 'error')
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const busy = loading || analyzing || generating
 
   return (
     <div className="chat-panel">
       <div className="chat-panel__header">
-        <span className="chat-panel__title">Chat</span>
-        <div className="chat-panel__header-actions">
-          {messages.length > 0 && (
-            <button
-              type="button"
-              className="chat-panel__new-btn"
-              onClick={clear}
-              title="New chat"
-            >
-              + New
-            </button>
+        <span className="chat-panel__title">
+          Помощник
+          {hasEditorContext && openFilesCtx && openFilesCtx.files.size > 0 && (
+            <span className="chat-panel__context-hint" title="AI видит открытые файлы">
+              {openFilesCtx.files.size}
+            </span>
           )}
-        </div>
+        </span>
+        {messages.length > 0 && (
+          <button type="button" className="chat-panel__new-btn" onClick={clear} title="Новый разговор">
+            <Plus size={14} />
+            <span>Новый</span>
+          </button>
+        )}
       </div>
 
-      <ModeSelector 
-        modes={modes} 
-        currentMode={currentMode} 
-        onSelect={setCurrentMode} 
-      />
+      {/* Quick actions — Cursor-like, refined */}
+      {workspace && (
+        <div className="chat-panel__actions">
+          <div className="chat-panel__actions-row">
+            <button
+              type="button"
+              className="chat-panel__action"
+              onClick={handleAnalyze}
+              disabled={busy}
+              title="Анализ кода"
+            >
+              {analyzing ? <Loader2 size={14} className="icon-spin" /> : <Wand2 size={14} />}
+              <span>Анализ</span>
+            </button>
+            <div className="chat-panel__generate">
+              <input
+                type="text"
+                className="chat-panel__generate-input"
+                placeholder="Чем помочь?"
+                value={generateTask}
+                onChange={(e) => setGenerateTask(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleGenerate()}
+                disabled={busy}
+              />
+              <button
+                type="button"
+                className="chat-panel__action chat-panel__action--primary"
+                onClick={handleGenerate}
+                disabled={busy}
+                title="Сгенерировать код"
+              >
+                {generating ? <Loader2 size={14} className="icon-spin" /> : <Workflow size={14} />}
+                <span>Generate</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="chat-panel__messages" ref={scrollRef}>
         {messages.length === 0 && (
           <div className="chat-panel__empty">
-            <p className="chat-panel__empty-title">Start a conversation</p>
-            <p className="chat-panel__empty-hint">
-              Try: @web search, @code file.py, or ask a question
-            </p>
+            <p className="chat-panel__empty-title">Чем помочь?</p>
             <div className="chat-panel__empty-commands">
-              <code>@web</code> web search
-              <code>@code</code> include file
-              <code>@rag</code> search codebase
+              <span className="chat-panel__empty-command"><Globe size={14} /><code>@web</code> поиск</span>
+              <span className="chat-panel__empty-command"><Code size={14} /><code>@code</code> файл</span>
+              <span className="chat-panel__empty-command"><Search size={14} /><code>@rag</code> код</span>
             </div>
           </div>
         )}
@@ -73,11 +229,14 @@ export function ChatPanel() {
         ))}
         {loading && !streaming && (
           <div className="chat-message chat-message--assistant">
-            <span className="chat-message__role">AI</span>
-            <div className="chat-message__content chat-message__content--loading">
-              <span className="chat-loading-dots">
-                <span></span><span></span><span></span>
-              </span>
+            <div className="chat-message__avatar">
+              <Bot size={12} />
+            </div>
+            <div className="chat-message__body">
+              <span className="chat-message__role">AI</span>
+              <div className="chat-message__content chat-message__content--loading">
+                <span className="chat-loading-dots"><span></span><span></span><span></span></span>
+              </div>
             </div>
           </div>
         )}
@@ -96,11 +255,16 @@ export function ChatPanel() {
 
       <ChatInput
         onSend={handleSend}
-        disabled={loading}
+        disabled={busy}
         useStream={useStream}
         onUseStreamChange={setUseStream}
         modeId={currentMode}
+        modelId={model}
+        searchWeb={searchWeb}
+        onSearchWebChange={setSearchWeb}
         onInsertTemplate={() => setShowTemplates(true)}
+        modeSelector={<ModeSelector modes={modes} currentMode={currentMode} onSelect={setCurrentMode} compact />}
+        modelSelector={<ModelSelector value={model} onChange={setModel} />}
       />
     </div>
   )

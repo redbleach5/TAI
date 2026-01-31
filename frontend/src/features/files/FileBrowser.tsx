@@ -1,4 +1,22 @@
 import { useEffect, useState, useCallback } from 'react'
+import { 
+  File, 
+  FileCode, 
+  FileText, 
+  FileJson,
+  Folder, 
+  FolderOpen, 
+  ChevronRight, 
+  ChevronDown,
+  RefreshCw,
+  FilePlus,
+  FolderPlus,
+  Pencil,
+  Trash2,
+  Settings,
+  Palette,
+  Terminal as TerminalIcon
+} from 'lucide-react'
 import { useFileTree } from './useFileTree'
 import type { FileNode } from './useFileTree'
 import { useToast } from '../toast/ToastContext'
@@ -6,24 +24,26 @@ import { useToast } from '../toast/ToastContext'
 interface FileBrowserProps {
   onFileSelect: (path: string) => void
   gitStatus?: Record<string, string>  // path -> status (M, A, ?, etc.)
+  onOpenFolder?: () => void
 }
 
-const FILE_ICONS: Record<string, string> = {
-  py: '🐍',
-  ts: '📘',
-  tsx: '⚛️',
-  js: '📜',
-  jsx: '⚛️',
-  json: '📋',
-  md: '📝',
-  toml: '⚙️',
-  yaml: '⚙️',
-  yml: '⚙️',
-  css: '🎨',
-  html: '🌐',
-  txt: '📄',
-  sh: '🖥️',
-  default: '📄',
+// File extension to icon component mapping with colors
+const FILE_ICON_CONFIG: Record<string, { icon: typeof File; color?: string }> = {
+  py: { icon: FileCode, color: '#f7df1e' },      // Python - yellow
+  ts: { icon: FileCode, color: '#3178c6' },      // TypeScript - blue
+  tsx: { icon: FileCode, color: '#61dafb' },     // TSX - React blue
+  js: { icon: FileCode, color: '#f7df1e' },      // JavaScript - yellow
+  jsx: { icon: FileCode, color: '#61dafb' },     // JSX - React blue
+  json: { icon: FileJson, color: '#cbcb41' },    // JSON
+  md: { icon: FileText, color: '#519aba' },      // Markdown
+  toml: { icon: Settings, color: '#9b9b9b' },    // Config
+  yaml: { icon: Settings, color: '#9b9b9b' },    // Config
+  yml: { icon: Settings, color: '#9b9b9b' },     // Config
+  css: { icon: Palette, color: '#563d7c' },      // CSS - purple
+  html: { icon: FileCode, color: '#e34c26' },    // HTML - orange
+  txt: { icon: FileText },                        // Text
+  sh: { icon: TerminalIcon, color: '#4eaa25' },  // Shell - green
+  default: { icon: File },                        // Default file
 }
 
 const GIT_STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -35,9 +55,9 @@ const GIT_STATUS_LABELS: Record<string, { label: string; color: string }> = {
   'U': { label: 'C', color: '#f14c4c' },  // Conflict
 }
 
-function getFileIcon(node: FileNode): string {
-  if (node.type === 'directory') return '📁'
-  return FILE_ICONS[node.extension || ''] || FILE_ICONS.default
+function getFileIconConfig(node: FileNode) {
+  const config = FILE_ICON_CONFIG[node.extension || ''] || FILE_ICON_CONFIG.default
+  return config
 }
 
 interface TreeNodeProps {
@@ -80,6 +100,10 @@ function TreeNode({
     }
   }
 
+  const iconConfig = getFileIconConfig(node)
+  const IconComponent = iconConfig.icon
+  const FolderIcon = isExpanded ? FolderOpen : Folder
+
   return (
     <div className="tree-node">
       <div 
@@ -91,10 +115,16 @@ function TreeNode({
       >
         {isDir && (
           <span className="tree-node__chevron">
-            {isExpanded ? '▼' : '▶'}
+            {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           </span>
         )}
-        <span className="tree-node__icon">{getFileIcon(node)}</span>
+        <span className="tree-node__icon">
+          {isDir ? (
+            <FolderIcon size={16} style={{ color: '#dcb67a' }} />
+          ) : (
+            <IconComponent size={16} style={{ color: iconConfig.color }} />
+          )}
+        </span>
         <span className="tree-node__name">{node.name}</span>
         {statusInfo && (
           <span 
@@ -132,7 +162,7 @@ interface ContextMenu {
   node: FileNode
 }
 
-export function FileBrowser({ onFileSelect, gitStatus }: FileBrowserProps) {
+export function FileBrowser({ onFileSelect, gitStatus, onOpenFolder }: FileBrowserProps) {
   const { tree, loading, error, fetchTree, createFile, deleteFile, renameFile } = useFileTree()
   const { show: showToast } = useToast()
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set(['.']))
@@ -143,6 +173,12 @@ export function FileBrowser({ onFileSelect, gitStatus }: FileBrowserProps) {
 
   useEffect(() => {
     fetchTree()
+  }, [fetchTree])
+
+  useEffect(() => {
+    const onWorkspaceChanged = () => fetchTree()
+    window.addEventListener('workspace-changed', onWorkspaceChanged)
+    return () => window.removeEventListener('workspace-changed', onWorkspaceChanged)
   }, [fetchTree])
 
   const handleToggle = useCallback((path: string) => {
@@ -204,13 +240,13 @@ export function FileBrowser({ onFileSelect, gitStatus }: FileBrowserProps) {
     const node = contextMenu.node
     closeContextMenu()
     
-    if (!confirm(`Delete ${node.name}?`)) return
+    if (!confirm(`Удалить ${node.name}?`)) return
     
     const result = await deleteFile(node.path)
     if (result.success) {
-      showToast(`Deleted ${node.name}`, 'success')
+      showToast('Удалено', 'success')
     } else {
-      showToast(result.error || 'Delete failed', 'error')
+      showToast(result.error || 'Что-то пошло не так', 'error')
     }
   }
 
@@ -222,11 +258,11 @@ export function FileBrowser({ onFileSelect, gitStatus }: FileBrowserProps) {
     
     const result = await createFile(path, creating.isDir)
     if (result.success) {
-      showToast(`Created ${newName}`, 'success')
+      showToast('Создано', 'success')
       // Expand parent folder
       setExpandedPaths((prev) => new Set([...prev, creating.parentPath]))
     } else {
-      showToast(result.error || 'Create failed', 'error')
+      showToast(result.error || 'Что-то пошло не так', 'error')
     }
     setCreating(null)
     setNewName('')
@@ -241,9 +277,9 @@ export function FileBrowser({ onFileSelect, gitStatus }: FileBrowserProps) {
     
     const result = await renameFile(renaming.path, newPath)
     if (result.success) {
-      showToast(`Renamed to ${newName}`, 'success')
+      showToast('Переименовано', 'success')
     } else {
-      showToast(result.error || 'Rename failed', 'error')
+      showToast(result.error || 'Что-то пошло не так', 'error')
     }
     setRenaming(null)
     setNewName('')
@@ -256,18 +292,31 @@ export function FileBrowser({ onFileSelect, gitStatus }: FileBrowserProps) {
   return (
     <div className="file-browser">
       <div className="file-browser__header">
-        <span className="file-browser__title">Files</span>
-        <button 
-          className="file-browser__refresh" 
-          onClick={handleRefresh}
-          title="Refresh"
-        >
-          ↻
-        </button>
+        <span className="file-browser__title">Explorer</span>
+        <div className="file-browser__actions">
+          {onOpenFolder && (
+            <button
+              type="button"
+              className="file-browser__action"
+              onClick={onOpenFolder}
+              title="Открыть папку"
+            >
+              <FolderOpen size={14} />
+            </button>
+          )}
+          <button
+            type="button"
+            className="file-browser__action"
+            onClick={handleRefresh}
+            title="Обновить"
+          >
+            <RefreshCw size={14} />
+          </button>
+        </div>
       </div>
       
       <div className="file-browser__content">
-        {loading && <div className="file-browser__loading">Loading...</div>}
+        {loading && <div className="file-browser__loading">Загрузка...</div>}
         {error && <div className="file-browser__error">{error}</div>}
         {tree && (
           <TreeNode
@@ -288,10 +337,22 @@ export function FileBrowser({ onFileSelect, gitStatus }: FileBrowserProps) {
           className="context-menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <button onClick={handleNewFile}>New File</button>
-          <button onClick={handleNewFolder}>New Folder</button>
-          <button onClick={handleRename}>Rename</button>
-          <button onClick={handleDelete} className="context-menu__delete">Delete</button>
+          <button onClick={handleNewFile}>
+            <FilePlus size={14} />
+            <span>Новый файл</span>
+          </button>
+          <button onClick={handleNewFolder}>
+            <FolderPlus size={14} />
+            <span>Новая папка</span>
+          </button>
+          <button onClick={handleRename}>
+            <Pencil size={14} />
+            <span>Переименовать</span>
+          </button>
+          <button onClick={handleDelete} className="context-menu__delete">
+            <Trash2 size={14} />
+            <span>Удалить</span>
+          </button>
         </div>
       )}
 
@@ -299,7 +360,7 @@ export function FileBrowser({ onFileSelect, gitStatus }: FileBrowserProps) {
       {creating && (
         <div className="file-browser__dialog-overlay">
           <div className="file-browser__dialog">
-            <h4>{creating.isDir ? 'New Folder' : 'New File'}</h4>
+            <h4>{creating.isDir ? 'Новая папка' : 'Новый файл'}</h4>
             <input
               type="text"
               value={newName}
@@ -312,8 +373,8 @@ export function FileBrowser({ onFileSelect, gitStatus }: FileBrowserProps) {
               }}
             />
             <div className="file-browser__dialog-actions">
-              <button onClick={() => setCreating(null)}>Cancel</button>
-              <button onClick={submitCreate} className="primary">Create</button>
+              <button onClick={() => setCreating(null)}>Отмена</button>
+              <button onClick={submitCreate} className="primary">Создать</button>
             </div>
           </div>
         </div>
@@ -323,7 +384,7 @@ export function FileBrowser({ onFileSelect, gitStatus }: FileBrowserProps) {
       {renaming && (
         <div className="file-browser__dialog-overlay">
           <div className="file-browser__dialog">
-            <h4>Rename</h4>
+            <h4>Переименовать</h4>
             <input
               type="text"
               value={newName}
@@ -335,8 +396,8 @@ export function FileBrowser({ onFileSelect, gitStatus }: FileBrowserProps) {
               }}
             />
             <div className="file-browser__dialog-actions">
-              <button onClick={() => setRenaming(null)}>Cancel</button>
-              <button onClick={submitRename} className="primary">Rename</button>
+              <button onClick={() => setRenaming(null)}>Отмена</button>
+              <button onClick={submitRename} className="primary">Переименовать</button>
             </div>
           </div>
         </div>

@@ -40,6 +40,11 @@ export function useOpenFiles() {
   const [activeFile, setActiveFile] = useState<string | null>(null)
 
   const openFile = useCallback(async (path: string) => {
+    // Skip if path is empty, a dot, or a directory path
+    if (!path || path === '.' || path === './' || path.endsWith('/')) {
+      return
+    }
+
     // If already open, just activate
     if (files.has(path)) {
       setActiveFile(path)
@@ -48,7 +53,11 @@ export function useOpenFiles() {
 
     // Fetch file content
     try {
-      const res = await fetch(`/api/files/read?path=${encodeURIComponent(path)}`)
+      const res = await fetch('/api/files/read', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+      })
       const data = await res.json()
       
       if (!data.success) {
@@ -82,8 +91,6 @@ export function useOpenFiles() {
       next.delete(path)
       return next
     })
-    
-    // If closing active file, switch to another
     if (activeFile === path) {
       const remaining = Array.from(files.keys()).filter((p) => p !== path)
       setActiveFile(remaining.length > 0 ? remaining[remaining.length - 1] : null)

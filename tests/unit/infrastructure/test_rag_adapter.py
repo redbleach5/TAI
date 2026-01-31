@@ -8,7 +8,12 @@ import os
 
 from src.domain.ports.config import RAGConfig
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
-from src.infrastructure.rag.file_collector import chunk_text, collect_code_files
+from src.infrastructure.rag.file_collector import (
+    chunk_text,
+    collect_code_files,
+    collect_code_files_with_stats,
+)
+from src.infrastructure.rag.index_state import IndexState
 
 
 class TestChunkText:
@@ -131,6 +136,56 @@ class TestCollectCodeFiles:
         assert result == []
 
 
+class TestCollectCodeFilesWithStats:
+    """Tests for collect_code_files_with_stats helper."""
+
+    def test_returns_mtime_and_size(self):
+        """Returns mtime and size for each file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            py_file = Path(tmpdir) / "test.py"
+            py_file.write_text("print('hello')")
+
+            result = collect_code_files_with_stats(Path(tmpdir))
+            assert len(result) == 1
+            rel, content, mtime, size = result[0]
+            assert rel == "test.py"
+            assert "hello" in content
+            assert isinstance(mtime, (int, float))
+            assert size > 0
+
+
+class TestIndexState:
+    """Tests for IndexState."""
+
+    def test_diff_new_changed_deleted(self):
+        """IndexState.diff_files returns new, changed, deleted."""
+        current = {
+            "a.py": {"mtime": 1.0, "size": 10},
+            "b.py": {"mtime": 2.0, "size": 20},
+            "c.py": {"mtime": 3.0, "size": 30},
+        }
+        indexed = {
+            "a.py": {"mtime": 1.0, "size": 10},
+            "b.py": {"mtime": 1.5, "size": 20},
+            "d.py": {"mtime": 4.0, "size": 40},
+        }
+        new, changed, deleted = IndexState.diff_files(current, indexed)
+        assert set(new) == {"c.py"}
+        assert set(changed) == {"b.py"}
+        assert set(deleted) == {"d.py"}
+
+    def test_persists_and_loads(self):
+        """IndexState persists and loads state."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            proj_path = str(Path(tmpdir).resolve())
+            state = IndexState(tmpdir)
+            state.update_state(proj_path, {"a.py": {"mtime": 1.0, "size": 10}})
+
+            state2 = IndexState(tmpdir)
+            files = state2.get_indexed_files(proj_path)
+            assert files == {"a.py": {"mtime": 1.0, "size": 10}}
+
+
 class TestChromaDBRAGAdapter:
     """Tests for ChromaDBRAGAdapter."""
 
@@ -199,10 +254,62 @@ class TestChromaDBRAGAdapter:
             embeddings=[[0.1, 0.2, 0.3]],
             metadatas=[{"source": "test.py", "chunk": 0}],
         )
-        
+
         result = await adapter.search("test query", limit=5)
-        
+
         assert len(result) == 1
         assert result[0].content == "test document content"
         assert result[0].metadata["source"] == "test.py"
         assert 0 <= result[0].score <= 1
+
+    @pytest.mark.asyncio
+    async def test_incremental_indexing_skips_unchanged(self, adapter, config):
+        """Incremental indexing skips unchanged files on second run."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            py_file = Path(tmpdir) / "code.py"
+            py_file.write_text("def hello(): pass")
+
+            # First index - full
+            stats1 = await adapter.index_path(tmpdir, incremental=False)
+            assert stats1["files_found"] == 1
+            assert stats1["incremental"] is False
+
+            # Second index - incremental, no changes
+            stats2 = await adapter.index_path(tmpdir, incremental=True)
+            assert stats2["incremental"] is True
+            assert stats2["files_added"] == 0
+            assert stats2["files_updated"] == 0
+            assert stats2["files_deleted"] == 0
+            assert stats2["files_unchanged"] == 1
+
+    @pytest.mark.asyncio
+    async def test_incremental_indexing_detects_changes(self, adapter):
+        """Incremental indexing detects changed files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            py_file = Path(tmpdir) / "code.py"
+            py_file.write_text("def hello(): pass")
+
+            await adapter.index_path(tmpdir, incremental=False)
+
+            # Modify file
+            py_file.write_text("def hello(): return 'world'")
+
+            stats = await adapter.index_path(tmpdir, incremental=True)
+            assert stats["files_updated"] == 1
+            assert stats["files_added"] == 0
+
+    @pytest.mark.asyncio
+    async def test_incremental_indexing_detects_deleted(self, adapter):
+        """Incremental indexing removes chunks for deleted files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            (Path(tmpdir) / "a.py").write_text("a")
+            (Path(tmpdir) / "b.py").write_text("b")
+
+            await adapter.index_path(tmpdir, incremental=False)
+            assert adapter._collection.count() >= 2
+
+            # Delete one file
+            (Path(tmpdir) / "b.py").unlink()
+
+            stats = await adapter.index_path(tmpdir, incremental=True)
+            assert stats["files_deleted"] == 1

@@ -1,4 +1,4 @@
-"""Structured logging setup."""
+"""Structured logging setup with stdlib integration."""
 
 import logging
 import sys
@@ -7,25 +7,49 @@ import structlog
 
 
 def setup_logging(level: str = "INFO") -> None:
-    """Configure structlog with JSON output and request context."""
+    """Configure structlog integrated with standard library logging.
+
+    Both structlog.get_logger() and logging.getLogger() outputs are formatted
+    consistently. Level from config is applied to all loggers.
+    """
     log_level = getattr(logging, level.upper(), logging.INFO)
     use_json = level.upper() != "DEBUG"
-    processors = [
-        structlog.contextvars.merge_contextvars,
-        structlog.processors.add_log_level,
+
+    shared_processors = [
+        structlog.stdlib.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
-        structlog.processors.TimeStamper(fmt="iso"),
     ]
-    if use_json:
-        processors.append(structlog.processors.JSONRenderer())
-    else:
-        processors.append(structlog.dev.ConsoleRenderer())
 
     structlog.configure(
-        processors=processors,
-        wrapper_class=structlog.make_filtering_bound_logger(log_level),
-        context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
+        processors=[
+            structlog.stdlib.filter_by_level,
+            *shared_processors,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
+
+    if use_json:
+        renderer = structlog.processors.JSONRenderer()
+    else:
+        renderer = structlog.dev.ConsoleRenderer()
+
+    formatter = structlog.stdlib.ProcessorFormatter(
+        foreign_pre_chain=shared_processors,
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            renderer,
+        ],
+    )
+
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setFormatter(formatter)
+    handler.setLevel(log_level)
+
+    root = logging.getLogger()
+    root.setLevel(log_level)
+    root.handlers.clear()
+    root.addHandler(handler)

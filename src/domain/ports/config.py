@@ -19,7 +19,7 @@ class ModelConfig(BaseModel):
 
     simple: str = "qwen2.5-coder:7b"
     medium: str = "qwen2.5-coder:7b"
-    complex: str = "qwen2.5-coder:32b"
+    complex: str = "qwen2.5-coder:7b"
     fallback: str = "qwen2.5-coder:7b"
     # Per-provider overrides. Keys: provider name (lm_studio, ollama, openai, etc).
     overrides: dict[str, ProviderModelSet] = {}
@@ -113,6 +113,7 @@ class RAGConfig(BaseModel):
     collection_name: str = "codebase"
     chunk_size: int = 500
     chunk_overlap: int = 50
+    batch_size: int = 100  # Batch size for embedding requests
 
 
 class ServerConfig(BaseModel):

@@ -15,6 +15,7 @@ export function EditorTabs({ files, activeFile, onSelect, onClose }: EditorTabsP
   }
 
   const handleClose = (e: React.MouseEvent, path: string) => {
+    e.preventDefault()
     e.stopPropagation()
     onClose(path)
   }
@@ -41,8 +42,10 @@ export function EditorTabs({ files, activeFile, onSelect, onClose }: EditorTabsP
             {file.isDirty && <span className="editor-tabs__dirty-dot">●</span>}
           </span>
           <button
+            type="button"
             className="editor-tabs__close"
             onClick={(e) => handleClose(e, file.path)}
+            onMouseDown={(e) => e.stopPropagation()}
             title="Close"
           >
             ×

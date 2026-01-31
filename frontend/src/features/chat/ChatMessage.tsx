@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { User, Bot } from 'lucide-react'
 import Markdown from 'react-markdown'
 import type { ChatMessage as ChatMessageType } from '../../api/client'
 
@@ -13,43 +14,48 @@ export function ChatMessage({ message }: Props) {
 
   return (
     <div className={`chat-message chat-message--${message.role}`}>
-      <span className="chat-message__role">{isUser ? 'Вы' : 'AI'}</span>
-      {hasThinking && (
-        <details
-          className="chat-message__thinking"
-          open={showThinking}
-          onToggle={(e) => setShowThinking((e.target as HTMLDetailsElement).open)}
-        >
-          <summary>Рассуждения ({message.thinking!.length} символов)</summary>
-          <pre className="chat-message__thinking-content">{message.thinking}</pre>
-        </details>
-      )}
-      <div className="chat-message__content">
-        {isUser ? (
-          message.content
-        ) : (
-          <Markdown
-            components={{
-              code({ className, children, ...props }) {
-                const match = /language-(\w+)/.exec(className || '')
-                const isBlock = match || (typeof children === 'string' && children.includes('\n'))
-                return isBlock ? (
-                  <pre className="chat-message__code-block">
-                    <code className={className} {...props}>
+      <div className="chat-message__avatar">
+        {isUser ? <User size={12} /> : <Bot size={12} />}
+      </div>
+      <div className="chat-message__body">
+        <span className="chat-message__role">{isUser ? 'Вы' : 'AI'}</span>
+        {hasThinking && (
+          <details
+            className="chat-message__thinking"
+            open={showThinking}
+            onToggle={(e) => setShowThinking((e.target as HTMLDetailsElement).open)}
+          >
+            <summary>Рассуждения ({message.thinking!.length} символов)</summary>
+            <pre className="chat-message__thinking-content">{message.thinking}</pre>
+          </details>
+        )}
+        <div className="chat-message__content">
+          {isUser ? (
+            message.content
+          ) : (
+            <Markdown
+              components={{
+                code({ className, children, ...props }) {
+                  const match = /language-(\w+)/.exec(className || '')
+                  const isBlock = match || (typeof children === 'string' && children.includes('\n'))
+                  return isBlock ? (
+                    <pre className="chat-message__code-block">
+                      <code className={className} {...props}>
+                        {children}
+                      </code>
+                    </pre>
+                  ) : (
+                    <code className="chat-message__inline-code" {...props}>
                       {children}
                     </code>
-                  </pre>
-                ) : (
-                  <code className="chat-message__inline-code" {...props}>
-                    {children}
-                  </code>
-                )
-              },
-            }}
-          >
-            {message.content}
-          </Markdown>
-        )}
+                  )
+                },
+              }}
+            >
+              {message.content}
+            </Markdown>
+          )}
+        </div>
       </div>
     </div>
   )

@@ -21,7 +21,7 @@ interface GitStatusData {
   behind: number
 }
 
-export function useGitStatus(pollInterval: number = 5000) {
+export function useGitStatus(pollInterval: number = 10000) {
   const [status, setStatus] = useState<GitStatusData | null>(null)
   const [log, setLog] = useState<GitLogEntry[]>([])
   const [loading, setLoading] = useState(false)

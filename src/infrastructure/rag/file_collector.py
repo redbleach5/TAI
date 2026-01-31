@@ -175,6 +175,79 @@ def is_binary_file(file_path: Path, check_bytes: int = 8192) -> bool:
     return False
 
 
+def collect_code_files_with_stats(
+    path: Path,
+    max_file_size: int = 500 * 1024,
+    max_files: int = MAX_FILE_COUNT,
+    follow_symlinks: bool = False,
+) -> list[tuple[str, str, float, int]]:
+    """Collect (relative_path, content, mtime, size) for supported code files.
+
+    Same as collect_code_files but includes mtime and size for incremental indexing.
+    """
+    results: list[tuple[str, str, float, int]] = []
+    path = path.resolve()
+
+    if not path.is_dir():
+        logger.warning(f"Path is not a directory: {path}")
+        return results
+
+    ignore_patterns, negated_patterns = parse_gitignore(path)
+    skipped_large = 0
+    skipped_binary = 0
+    skipped_error = 0
+
+    for p in path.rglob("*"):
+        if len(results) >= max_files:
+            logger.warning(f"Reached max file limit ({max_files}), stopping collection")
+            break
+
+        if p.is_symlink() and not follow_symlinks:
+            continue
+
+        if not p.is_file():
+            continue
+
+        if p.suffix.lower() not in SUPPORTED_EXTENSIONS:
+            continue
+
+        if is_ignored(p, path, ignore_patterns, negated_patterns):
+            continue
+
+        try:
+            stat = p.stat()
+            file_size = stat.st_size
+            mtime = stat.st_mtime
+            if file_size > max_file_size:
+                skipped_large += 1
+                continue
+            if file_size == 0:
+                continue
+        except OSError:
+            skipped_error += 1
+            continue
+
+        if is_binary_file(p):
+            skipped_binary += 1
+            continue
+
+        try:
+            content = p.read_text(encoding="utf-8", errors="replace")
+            rel = str(p.relative_to(path))
+            results.append((rel, content, mtime, file_size))
+        except OSError as e:
+            logger.debug(f"Failed to read {p}: {e}")
+            skipped_error += 1
+            continue
+
+    if skipped_large or skipped_binary or skipped_error:
+        logger.debug(
+            f"Skipped files: {skipped_large} large, {skipped_binary} binary, {skipped_error} errors"
+        )
+
+    return results
+
+
 def collect_code_files(
     path: Path,
     max_file_size: int = 500 * 1024,

@@ -29,7 +29,7 @@ class TestFileTree:
         data = response.json()
         assert data["success"] is True
         assert data["tree"]["name"] == "src"
-        assert data["tree"]["is_dir"] is True
+        assert data["tree"]["type"] == "directory"
 
     def test_get_tree_excludes_pycache(self):
         """Test that __pycache__ is excluded from tree."""

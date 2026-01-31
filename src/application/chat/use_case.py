@@ -50,7 +50,7 @@ class ChatUseCase:
         messages = await self._build_messages(request)
         
         # Generate LLM response
-        model = self._model_router.select_model(request.message)
+        model = request.model or self._model_router.select_model(request.message)
         temperature = self._get_temperature(request)
         llm_response = await self._generate_with_fallback(messages, model, temperature)
         
@@ -70,7 +70,7 @@ class ChatUseCase:
 
         # Build messages with command processing
         messages = await self._build_messages(request)
-        model = self._model_router.select_model(request.message)
+        model = request.model or self._model_router.select_model(request.message)
         temperature = self._get_temperature(request)
         
         # Stream response
@@ -104,6 +104,13 @@ class ChatUseCase:
         
         # Build user message
         user_content = parsed.text or request.message
+        # Prepend context: open files (Cursor-like) first, then commands
+        if request.context_files:
+            file_context = "\n\n".join(
+                f"[file: {f.path}]\n```\n{f.content}\n```"
+                for f in request.context_files
+            )
+            user_content = f"[Context - open files in IDE]\n\n{file_context}\n\n---\n\n{user_content}"
         if extra_context:
             user_content = f"{extra_context}\n\n---\n\n{user_content}"
         

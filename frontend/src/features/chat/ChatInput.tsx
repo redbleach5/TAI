@@ -1,21 +1,28 @@
-import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent } from 'react'
+import { useState, useRef, useEffect, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { Send, FileText, Globe, Code, Search, HelpCircle } from 'lucide-react'
 
 interface Props {
-  onSend: (text: string, useStream?: boolean, modeId?: string) => void
+  onSend: (text: string, useStream?: boolean, modeId?: string, modelId?: string) => void
   disabled?: boolean
   useStream?: boolean
   onUseStreamChange?: (useStream: boolean) => void
   modeId?: string
+  modelId?: string
+  searchWeb?: boolean
+  onSearchWebChange?: (v: boolean) => void
   onInsertTemplate?: () => void
+  /** Cursor-like: Mode + Model + Web inline in toolbar */
+  modeSelector?: ReactNode
+  modelSelector?: ReactNode
 }
 
-// Quick command suggestions
+// Quick command suggestions with icons
 const QUICK_COMMANDS = [
-  { cmd: '@web', desc: 'Search the web', example: '@web python async tutorial' },
-  { cmd: '@code', desc: 'Include code file', example: '@code src/main.py' },
-  { cmd: '@file', desc: 'Read any file', example: '@file README.md' },
-  { cmd: '@rag', desc: 'Search codebase', example: '@rag how auth works' },
-  { cmd: '@help', desc: 'Show commands', example: '@help' },
+  { cmd: '@web', desc: 'Поиск в интернете', example: '@web python async tutorial', Icon: Globe },
+  { cmd: '@code', desc: 'Добавить код файла', example: '@code src/main.py', Icon: Code },
+  { cmd: '@file', desc: 'Прочитать файл', example: '@file README.md', Icon: FileText },
+  { cmd: '@rag', desc: 'Поиск по кодовой базе', example: '@rag how auth works', Icon: Search },
+  { cmd: '@help', desc: 'Показать команды', example: '@help', Icon: HelpCircle },
 ]
 
 export function ChatInput({ 
@@ -24,7 +31,12 @@ export function ChatInput({
   useStream = false, 
   onUseStreamChange,
   modeId,
+  modelId,
+  searchWeb = false,
+  onSearchWebChange,
   onInsertTemplate,
+  modeSelector,
+  modelSelector,
 }: Props) {
   const [value, setValue] = useState('')
   const [showCommands, setShowCommands] = useState(false)
@@ -33,7 +45,11 @@ export function ChatInput({
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
     if (value.trim() && !disabled) {
-      onSend(value, useStream, modeId)
+      let text = value.trim()
+      if (searchWeb && !text.startsWith('@web')) {
+        text = `@web ${text}`
+      }
+      onSend(text, useStream, modeId, modelId)
       setValue('')
       setShowCommands(false)
     }
@@ -88,6 +104,7 @@ export function ChatInput({
               onClick={() => insertCommand(c.cmd)}
               type="button"
             >
+              <c.Icon size={14} className="chat-input__command-icon" />
               <span className="chat-input__command-name">{c.cmd}</span>
               <span className="chat-input__command-desc">{c.desc}</span>
             </button>
@@ -96,55 +113,62 @@ export function ChatInput({
       )}
 
       <form className="chat-input" onSubmit={handleSubmit}>
-        <div className="chat-input__toolbar">
-          {onInsertTemplate && (
+        <div className="chat-input__box">
+          <div className="chat-input__controls">
+            {modeSelector && <div className="chat-input__control">{modeSelector}</div>}
+            {modelSelector && <div className="chat-input__control">{modelSelector}</div>}
+            {onSearchWebChange && (
+              <button
+                type="button"
+                className={`chat-input__icon ${searchWeb ? 'chat-input__icon--active' : ''}`}
+                onClick={() => onSearchWebChange(!searchWeb)}
+                title={searchWeb ? 'Веб-поиск включён' : 'Веб-поиск'}
+              >
+                <Globe size={14} />
+              </button>
+            )}
+            {onInsertTemplate && (
+              <button
+                type="button"
+                className="chat-input__icon"
+                onClick={onInsertTemplate}
+                title="Шаблон"
+              >
+                <FileText size={14} />
+              </button>
+            )}
+          </div>
+          <div className="chat-input__row">
+            <textarea
+              ref={inputRef}
+              value={value}
+              onChange={(e) => handleChange(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="Чем помочь?"
+              disabled={disabled}
+              className="chat-input__field"
+              rows={1}
+            />
             <button
-              type="button"
-              className="chat-input__tool"
-              onClick={onInsertTemplate}
-              title="Insert template"
+              type="submit"
+              disabled={disabled || !value.trim()}
+              className="chat-input__btn"
             >
-              📝
+              <Send size={16} />
             </button>
-          )}
-          <span className="chat-input__hint">
-            Type @ for commands • Shift+Enter for newline
-          </span>
+          </div>
         </div>
-        
-        <div className="chat-input__main">
-          <textarea
-            ref={inputRef}
-            value={value}
-            onChange={(e) => handleChange(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Message... (@web, @code, @rag for commands)"
-            disabled={disabled}
-            className="chat-input__field"
-            rows={1}
-          />
-          <button 
-            type="submit" 
-            disabled={disabled || !value.trim()} 
-            className="chat-input__btn"
-          >
-            ↑
-          </button>
-        </div>
-
-        <div className="chat-input__footer">
-          {onUseStreamChange && (
-            <label className="chat-input__stream">
-              <input
-                type="checkbox"
-                checked={useStream}
-                onChange={(e) => onUseStreamChange(e.target.checked)}
-                disabled={disabled}
-              />
-              Stream
-            </label>
-          )}
-        </div>
+        {onUseStreamChange && (
+          <label className="chat-input__stream">
+            <input
+              type="checkbox"
+              checked={useStream}
+              onChange={(e) => onUseStreamChange(e.target.checked)}
+              disabled={disabled}
+            />
+            Stream
+          </label>
+        )}
       </form>
     </div>
   )

@@ -3,6 +3,7 @@
 from fastapi import APIRouter, Depends, Request
 
 from src.api.dependencies import get_llm_adapter, get_model_router, limiter
+from src.api.container import get_container
 from src.domain.ports.llm import LLMPort
 from src.domain.services.model_router import ModelRouter
 from src.infrastructure.resilience import get_all_breakers, reset_all_breakers
@@ -10,13 +11,30 @@ from src.infrastructure.resilience import get_all_breakers, reset_all_breakers
 router = APIRouter(prefix="/models", tags=["models"])
 
 
+def _get_llm_for_provider(provider: str) -> LLMPort:
+    """Get LLM adapter for a specific provider (for model listing)."""
+    container = get_container()
+    if provider == "lm_studio":
+        from src.infrastructure.llm.openai_compatible import OpenAICompatibleAdapter
+        return OpenAICompatibleAdapter(container.config.openai_compatible)
+    from src.infrastructure.llm.ollama import OllamaAdapter
+    return OllamaAdapter(container.config.ollama)
+
+
 @router.get("")
 @limiter.limit("60/minute")
 async def list_models(
     request: Request,
+    provider: str | None = None,
     llm: LLMPort = Depends(get_llm_adapter),
 ) -> list[str]:
-    """List available models from current LLM provider (Ollama or LM Studio)."""
+    """List available models from LLM provider.
+
+    provider: Optional. "ollama" or "lm_studio" to fetch models for that provider.
+    If omitted, uses current configured provider.
+    """
+    if provider in ("ollama", "lm_studio"):
+        llm = _get_llm_for_provider(provider)
     return await llm.list_models()
 
 

@@ -86,10 +86,13 @@ export function useProjects() {
     }
   }, [])
 
-  const indexProject = useCallback(async (projectId: string) => {
+  const indexProject = useCallback(async (projectId: string, incremental = true) => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/projects/${projectId}/index`, { method: 'POST' })
+      const res = await fetch(
+        `/api/projects/${projectId}/index?incremental=${incremental}`,
+        { method: 'POST' }
+      )
       const data = await res.json()
       if (res.ok) {
         await fetchProjects()

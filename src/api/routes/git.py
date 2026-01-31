@@ -27,7 +27,7 @@ def _get_service() -> GitService:
 
 
 @router.get("/status")
-@limiter.limit("60/minute")
+@limiter.limit("120/minute")
 async def git_status(request: Request):
     """Get Git status."""
     service = _get_service()

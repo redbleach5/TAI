@@ -1,13 +1,34 @@
-import { useEffect, useState } from 'react'
-import { getConfig, patchConfig, type ConfigPatch, type ConfigResponse } from '../../api/client'
-import { ProjectSelector } from '../projects/ProjectSelector'
+import { useCallback, useEffect, useState } from 'react'
+import { Settings, Save, Loader2, Plus, CheckCircle2, AlertCircle, RefreshCw, X } from 'lucide-react'
+import { getConfig, getModels, patchConfig, type ConfigPatch, type ConfigResponse } from '../../api/client'
 
-export function SettingsPanel() {
+interface SettingsPanelProps {
+  onClose?: () => void
+}
+
+export function SettingsPanel({ onClose }: SettingsPanelProps) {
   const [config, setConfig] = useState<ConfigResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [modelsOllama, setModelsOllama] = useState<string[]>([])
+  const [modelsLmStudio, setModelsLmStudio] = useState<string[]>([])
+  const [modelsLoading, setModelsLoading] = useState(false)
+
+  const fetchModels = useCallback(async () => {
+    setModelsLoading(true)
+    try {
+      const [ollama, lmStudio] = await Promise.all([
+        getModels('ollama').catch(() => []),
+        getModels('lm_studio').catch(() => []),
+      ])
+      setModelsOllama(ollama)
+      setModelsLmStudio(lmStudio)
+    } finally {
+      setModelsLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     getConfig()
@@ -15,6 +36,10 @@ export function SettingsPanel() {
       .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load'))
       .finally(() => setLoading(false))
   }, [])
+
+  useEffect(() => {
+    if (config) fetchModels()
+  }, [config, fetchModels])
 
   const handleSave = async () => {
     if (!config) return
@@ -40,22 +65,30 @@ export function SettingsPanel() {
     }
   }
 
-  if (loading) return <div className="settings-panel">Загрузка...</div>
+  if (loading) return (
+    <div className="settings-panel">
+      <Loader2 size={20} className="icon-spin" />
+      Загрузка...
+    </div>
+  )
   if (error && !config) return <div className="settings-panel settings-panel__error">{error}</div>
   if (!config) return null
 
   return (
     <div className="settings-panel">
-      <h3>Настройки</h3>
-
-      <ProjectSelector />
-
-      <hr className="settings-panel__divider" />
+      <div className="settings-panel__header">
+        <h3>
+          <Settings size={20} />
+          Настройки
+        </h3>
+        {onClose && (
+          <button type="button" className="settings-panel__close" onClick={onClose} title="Закрыть">
+            <X size={18} />
+          </button>
+        )}
+      </div>
 
       <h4>Конфигурация LLM</h4>
-      <p className="settings-panel__hint">
-        Изменения сохраняются в config/development.toml. Перезапустите backend для применения.
-      </p>
 
       <div className="settings-panel__section">
         <label>
@@ -77,72 +110,72 @@ export function SettingsPanel() {
 
       <div className="settings-panel__section">
         <h4>Модели (Ollama / defaults)</h4>
+        {modelsLoading && (
+          <p className="settings-panel__muted">
+            <Loader2 size={14} className="icon-spin" /> Загрузка моделей...
+          </p>
+        )}
         <div className="settings-panel__fields">
-          <label>
-            Simple
-            <input
-              type="text"
-              value={config.models.defaults.simple}
-              onChange={(e) =>
-                setConfig({
-                  ...config,
-                  models: {
-                    ...config.models,
-                    defaults: { ...config.models.defaults, simple: e.target.value },
-                  },
-                })
-              }
-            />
-          </label>
-          <label>
-            Medium
-            <input
-              type="text"
-              value={config.models.defaults.medium}
-              onChange={(e) =>
-                setConfig({
-                  ...config,
-                  models: {
-                    ...config.models,
-                    defaults: { ...config.models.defaults, medium: e.target.value },
-                  },
-                })
-              }
-            />
-          </label>
-          <label>
-            Complex
-            <input
-              type="text"
-              value={config.models.defaults.complex}
-              onChange={(e) =>
-                setConfig({
-                  ...config,
-                  models: {
-                    ...config.models,
-                    defaults: { ...config.models.defaults, complex: e.target.value },
-                  },
-                })
-              }
-            />
-          </label>
-          <label>
-            Fallback
-            <input
-              type="text"
-              value={config.models.defaults.fallback}
-              onChange={(e) =>
-                setConfig({
-                  ...config,
-                  models: {
-                    ...config.models,
-                    defaults: { ...config.models.defaults, fallback: e.target.value },
-                  },
-                })
-              }
-            />
-          </label>
+          {(['simple', 'medium', 'complex', 'fallback'] as const).map((key) => {
+            const value = config.models.defaults[key]
+            const options = modelsOllama.length
+              ? [...new Set([value, ...modelsOllama])].filter(Boolean)
+              : []
+            return (
+              <label key={key}>
+                {key.charAt(0).toUpperCase() + key.slice(1)}
+                {options.length > 0 ? (
+                  <select
+                    value={value}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        models: {
+                          ...config.models,
+                          defaults: { ...config.models.defaults, [key]: e.target.value },
+                        },
+                      })
+                    }
+                  >
+                    {options.map((m) => (
+                      <option key={m} value={m}>{m}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={value}
+                    onChange={(e) =>
+                      setConfig({
+                        ...config,
+                        models: {
+                          ...config.models,
+                          defaults: { ...config.models.defaults, [key]: e.target.value },
+                        },
+                      })
+                    }
+                  />
+                )}
+              </label>
+            )
+          })}
         </div>
+        {(modelsOllama.length > 0 || modelsLmStudio.length > 0) && (
+          <button
+            type="button"
+            className="settings-panel__refresh"
+            onClick={fetchModels}
+            disabled={modelsLoading}
+            title="Обновить список моделей с Ollama и LM Studio"
+          >
+            {modelsLoading ? (
+              <Loader2 size={14} className="icon-spin" />
+            ) : (
+              <RefreshCw size={14} />
+            )}
+            Обновить модели
+          </button>
+        )}
       </div>
 
       <div className="settings-panel__section">
@@ -150,82 +183,55 @@ export function SettingsPanel() {
         <div className="settings-panel__fields">
           {config.models.lm_studio ? (
             <>
-              <label>
-                Simple
-                <input
-                  type="text"
-                  value={config.models.lm_studio.simple}
-                  onChange={(e) =>
-                    setConfig({
-                      ...config,
-                      models: {
-                        ...config.models,
-                        lm_studio: {
-                          ...config.models.lm_studio!,
-                          simple: e.target.value,
-                        },
-                      },
-                    })
-                  }
-                />
-              </label>
-              <label>
-                Medium
-                <input
-                  type="text"
-                  value={config.models.lm_studio.medium}
-                  onChange={(e) =>
-                    setConfig({
-                      ...config,
-                      models: {
-                        ...config.models,
-                        lm_studio: {
-                          ...config.models.lm_studio!,
-                          medium: e.target.value,
-                        },
-                      },
-                    })
-                  }
-                />
-              </label>
-              <label>
-                Complex
-                <input
-                  type="text"
-                  value={config.models.lm_studio.complex}
-                  onChange={(e) =>
-                    setConfig({
-                      ...config,
-                      models: {
-                        ...config.models,
-                        lm_studio: {
-                          ...config.models.lm_studio!,
-                          complex: e.target.value,
-                        },
-                      },
-                    })
-                  }
-                />
-              </label>
-              <label>
-                Fallback
-                <input
-                  type="text"
-                  value={config.models.lm_studio.fallback}
-                  onChange={(e) =>
-                    setConfig({
-                      ...config,
-                      models: {
-                        ...config.models,
-                        lm_studio: {
-                          ...config.models.lm_studio!,
-                          fallback: e.target.value,
-                        },
-                      },
-                    })
-                  }
-                />
-              </label>
+              {(['simple', 'medium', 'complex', 'fallback'] as const).map((key) => {
+                const value = config.models.lm_studio![key]
+                const options = modelsLmStudio.length
+                  ? [...new Set([value, ...modelsLmStudio])].filter(Boolean)
+                  : []
+                return (
+                  <label key={key}>
+                    {key.charAt(0).toUpperCase() + key.slice(1)}
+                    {options.length > 0 ? (
+                      <select
+                        value={value}
+                        onChange={(e) =>
+                          setConfig({
+                            ...config,
+                            models: {
+                              ...config.models,
+                              lm_studio: {
+                                ...config.models.lm_studio!,
+                                [key]: e.target.value,
+                              },
+                            },
+                          })
+                        }
+                      >
+                        {options.map((m) => (
+                          <option key={m} value={m}>{m}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={value}
+                        onChange={(e) =>
+                          setConfig({
+                            ...config,
+                            models: {
+                              ...config.models,
+                              lm_studio: {
+                                ...config.models.lm_studio!,
+                                [key]: e.target.value,
+                              },
+                            },
+                          })
+                        }
+                      />
+                    )}
+                  </label>
+                )
+              })}
             </>
           ) : (
             <div>
@@ -245,6 +251,7 @@ export function SettingsPanel() {
                   })
                 }
               >
+                <Plus size={14} />
                 Добавить LM Studio overrides
               </button>
             </div>
@@ -288,8 +295,18 @@ export function SettingsPanel() {
         </label>
       </div>
 
-      {message && <p className="settings-panel__success">{message}</p>}
-      {error && <p className="settings-panel__error">{error}</p>}
+      {message && (
+        <p className="settings-panel__success">
+          <CheckCircle2 size={14} />
+          {message}
+        </p>
+      )}
+      {error && (
+        <p className="settings-panel__error">
+          <AlertCircle size={14} />
+          {error}
+        </p>
+      )}
 
       <button
         type="button"
@@ -297,7 +314,17 @@ export function SettingsPanel() {
         onClick={handleSave}
         disabled={saving}
       >
-        {saving ? 'Сохранение...' : 'Сохранить'}
+        {saving ? (
+          <>
+            <Loader2 size={14} className="icon-spin" />
+            <span>Сохранение...</span>
+          </>
+        ) : (
+          <>
+            <Save size={14} />
+            <span>Сохранить</span>
+          </>
+        )}
       </button>
     </div>
   )

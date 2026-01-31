@@ -1,10 +1,33 @@
 import { useState } from 'react'
+import { 
+  GitBranch, 
+  GitCommit, 
+  History, 
+  FileEdit, 
+  FilePlus, 
+  FileMinus, 
+  FileQuestion, 
+  RefreshCw,
+  X,
+  Check,
+  ArrowUp,
+  ArrowDown
+} from 'lucide-react'
 import { useGitStatus } from './useGitStatus'
 import type { GitFile, GitLogEntry } from './useGitStatus'
 import { useToast } from '../toast/ToastContext'
 
 interface GitPanelProps {
   onFileClick?: (path: string) => void
+}
+
+const STATUS_ICONS: Record<string, typeof FileEdit> = {
+  'M': FileEdit,
+  'A': FilePlus,
+  'D': FileMinus,
+  '?': FileQuestion,
+  'R': FileEdit,
+  'U': FileEdit,
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string }> = {
@@ -18,14 +41,20 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
 
 function FileItem({ file, onClick }: { file: GitFile; onClick?: () => void }) {
   const statusInfo = STATUS_LABELS[file.status] || { label: file.status, color: '#ccc' }
+  const StatusIcon = STATUS_ICONS[file.status] || FileEdit
   
   return (
     <div className="git-file" onClick={onClick}>
       <span className="git-file__icon" style={{ color: statusInfo.color }}>
-        {file.status}
+        <StatusIcon size={14} />
       </span>
       <span className="git-file__path">{file.path}</span>
-      {file.staged && <span className="git-file__staged">staged</span>}
+      {file.staged && (
+        <span className="git-file__staged">
+          <Check size={10} />
+          staged
+        </span>
+      )}
     </div>
   )
 }
@@ -34,6 +63,7 @@ function LogEntry({ entry }: { entry: GitLogEntry }) {
   return (
     <div className="git-log-entry">
       <div className="git-log-entry__header">
+        <GitCommit size={12} className="git-log-entry__icon" />
         <span className="git-log-entry__hash">{entry.short_hash}</span>
         <span className="git-log-entry__author">{entry.author}</span>
       </div>
@@ -52,16 +82,16 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
 
   const handleCommit = async () => {
     if (!commitMessage.trim()) {
-      showToast('Commit message is required', 'error')
+      showToast('Введи сообщение коммита', 'error')
       return
     }
 
     const result = await commit(commitMessage)
     if (result.success) {
-      showToast(`Committed: ${result.hash}`, 'success')
+      showToast('Готово', 'success')
       setCommitMessage('')
     } else {
-      showToast(result.error || 'Commit failed', 'error')
+      showToast(result.error || 'Что-то пошло не так', 'error')
     }
   }
 
@@ -70,7 +100,7 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
     if (diff) {
       setSelectedDiff({ path, diff })
     } else {
-      showToast('No diff available', 'info')
+      showToast('Нет изменений для просмотра', 'info')
     }
   }
 
@@ -85,7 +115,10 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
         </div>
         <div className="git-panel__error">
           {error}
-          <button onClick={fetchStatus}>Retry</button>
+          <button onClick={fetchStatus}>
+            <RefreshCw size={12} />
+            Повторить
+          </button>
         </div>
       </div>
     )
@@ -97,11 +130,12 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
         <span className="git-panel__title">Source Control</span>
         {status?.branch && (
           <span className="git-panel__branch">
+            <GitBranch size={12} />
             {status.branch}
             {(status.ahead > 0 || status.behind > 0) && (
               <span className="git-panel__sync">
-                {status.ahead > 0 && `↑${status.ahead}`}
-                {status.behind > 0 && `↓${status.behind}`}
+                {status.ahead > 0 && <><ArrowUp size={10} />{status.ahead}</>}
+                {status.behind > 0 && <><ArrowDown size={10} />{status.behind}</>}
               </span>
             )}
           </span>
@@ -113,13 +147,15 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
           className={`git-panel__tab ${activeTab === 'changes' ? 'git-panel__tab--active' : ''}`}
           onClick={() => setActiveTab('changes')}
         >
-          Changes ({status?.files.length || 0})
+          <FileEdit size={14} />
+          <span>Changes ({status?.files.length || 0})</span>
         </button>
         <button
           className={`git-panel__tab ${activeTab === 'history' ? 'git-panel__tab--active' : ''}`}
           onClick={() => setActiveTab('history')}
         >
-          History
+          <History size={14} />
+          <span>История</span>
         </button>
       </div>
 
@@ -132,7 +168,7 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
               className="git-panel__commit-input"
               value={commitMessage}
               onChange={(e) => setCommitMessage(e.target.value)}
-              placeholder="Commit message"
+              placeholder="Сообщение коммита"
               onKeyDown={(e) => e.key === 'Enter' && handleCommit()}
             />
             <button
@@ -140,7 +176,7 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
               onClick={handleCommit}
               disabled={loading || !commitMessage.trim()}
             >
-              {loading ? '...' : 'Commit All'}
+              {loading ? '...' : 'Commit'}
             </button>
           </div>
 
@@ -177,7 +213,7 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
 
           {status?.files.length === 0 && (
             <div className="git-panel__empty">
-              No changes
+              Нет изменений
             </div>
           )}
         </div>
@@ -189,7 +225,7 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
             <LogEntry key={entry.hash} entry={entry} />
           ))}
           {log.length === 0 && (
-            <div className="git-panel__empty">No commits yet</div>
+            <div className="git-panel__empty">Нет коммитов</div>
           )}
         </div>
       )}
@@ -200,9 +236,11 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
           <div className="git-panel__diff-modal" onClick={(e) => e.stopPropagation()}>
             <div className="git-panel__diff-header">
               <span>{selectedDiff.path}</span>
-              <button onClick={() => setSelectedDiff(null)}>✕</button>
+              <button onClick={() => setSelectedDiff(null)}>
+                <X size={16} />
+              </button>
             </div>
-            <pre className="git-panel__diff-content">{selectedDiff.diff || 'No changes'}</pre>
+            <pre className="git-panel__diff-content">{selectedDiff.diff || 'Нет изменений'}</pre>
           </div>
         </div>
       )}

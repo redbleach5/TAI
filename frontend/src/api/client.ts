@@ -16,11 +16,18 @@ export interface ChatMessage {
   thinking?: string
 }
 
+export interface ContextFile {
+  path: string
+  content: string
+}
+
 export interface ChatRequest {
   message: string
   history?: ChatMessage[]
   conversation_id?: string
   mode_id?: string
+  model?: string  // Override model (Cursor-like)
+  context_files?: ContextFile[]
 }
 
 export interface ChatResponse {
@@ -66,8 +73,9 @@ export async function patchConfig(updates: ConfigPatch): Promise<{ ok: boolean; 
   return res.json()
 }
 
-export async function getModels(): Promise<string[]> {
-  const res = await fetch(`${API_BASE}/models`)
+export async function getModels(provider?: 'ollama' | 'lm_studio'): Promise<string[]> {
+  const url = provider ? `${API_BASE}/models?provider=${provider}` : `${API_BASE}/models`
+  const res = await fetch(url)
   if (!res.ok) throw new Error(`Models failed: ${res.status}`)
   return res.json()
 }
@@ -92,6 +100,15 @@ export function getChatStreamUrl(message: string, conversationId?: string): stri
   const params = new URLSearchParams({ message })
   if (conversationId) params.set('conversation_id', conversationId)
   return `${API_BASE}/chat/stream?${params}`
+}
+
+/** POST stream - supports context_files (open files from IDE, Cursor-like) */
+export async function postChatStream(request: ChatRequest): Promise<Response> {
+  return fetch(`${API_BASE}/chat/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
 }
 
 // Workflow

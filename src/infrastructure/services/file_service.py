@@ -11,6 +11,7 @@ EXCLUDED_DIRS = {
     ".git", ".venv", "venv", "node_modules", "__pycache__",
     ".pytest_cache", ".ruff_cache", ".mypy_cache",
     "dist", "build", ".next", ".nuxt", "coverage",
+    "output", "ssl",
 }
 
 

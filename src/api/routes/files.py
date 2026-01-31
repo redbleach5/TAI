@@ -1,9 +1,12 @@
 """Files API routes - uses FileService."""
 
+from pathlib import Path
+
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from src.api.dependencies import limiter
+from src.api.routes.workspace import _get_workspace_path
 from src.infrastructure.services.file_service import FileService
 
 router = APIRouter(prefix="/files", tags=["files"])
@@ -40,8 +43,50 @@ class RenameRequest(BaseModel):
 
 
 def _get_service() -> FileService:
-    """Get FileService instance."""
-    return FileService()
+    """Get FileService instance with workspace root."""
+    root = _get_workspace_path()
+    return FileService(root_path=root)
+
+
+def _get_browse_roots() -> list[dict]:
+    """Get roots for folder picker (home, cwd)."""
+    roots = []
+    home = Path.home()
+    cwd = Path.cwd().resolve()
+    roots.append({"path": str(home), "name": "Home"})
+    if cwd != home:
+        roots.append({"path": str(cwd), "name": cwd.name})
+    return roots
+
+
+@router.get("/browse")
+async def browse_dirs(request: Request, path: str = ""):
+    """List directories for folder picker. path='' returns roots."""
+    if not path:
+        return {"dirs": _get_browse_roots(), "parent": None}
+
+    p = Path(path)
+    if not p.is_absolute():
+        p = Path.cwd() / p
+    p = p.resolve()
+
+    home = Path.home()
+    if not str(p).startswith(str(home)) and p != Path.cwd():
+        return {"dirs": [], "parent": None, "error": "Access denied"}
+
+    if not p.exists() or not p.is_dir():
+        return {"dirs": [], "parent": None, "error": "Path not found"}
+
+    dirs = []
+    try:
+        for child in sorted(p.iterdir()):
+            if child.is_dir() and not child.name.startswith("."):
+                dirs.append({"path": str(child), "name": child.name})
+    except PermissionError:
+        pass
+
+    parent = str(p.parent) if p.parent != p else None
+    return {"dirs": dirs, "parent": parent}
 
 
 @router.get("/tree")
@@ -62,9 +107,10 @@ async def get_tree(
         return {
             "name": node.name,
             "path": node.path,
-            "is_dir": node.is_dir,
+            "type": "directory" if node.is_dir else "file",
             "size": node.size,
-            "children": [node_to_dict(c) for c in node.children],
+            "extension": node.path.split('.')[-1] if '.' in node.path and not node.is_dir else None,
+            "children": [node_to_dict(c) for c in node.children] if node.children else None,
         }
     
     return {

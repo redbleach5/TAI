@@ -35,14 +35,17 @@ class SearchResponse(BaseModel):
 async def index_path(
     request: Request,
     path: str = ".",
+    incremental: bool = True,
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
 ):
     """Index a directory for RAG search.
-    
+
     Indexes all code files (.py, .ts, .tsx, .js, .json, .md, .toml, etc.)
     Respects .gitignore patterns.
+
+    incremental: If True (default), only index new/changed files. If False, full reindex.
     """
-    stats = await rag.index_path(path)
+    stats = await rag.index_path(path, incremental=incremental)
     return {
         "status": "ok",
         "path": stats.get("path", path),

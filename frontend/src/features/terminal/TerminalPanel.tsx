@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { Terminal, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import { useTerminal } from './useTerminal'
 
 interface TerminalPanelProps {
@@ -46,8 +47,9 @@ export function TerminalPanel({ collapsed = false, onToggle }: TerminalPanelProp
   if (collapsed) {
     return (
       <div className="terminal-panel terminal-panel--collapsed" onClick={onToggle}>
+        <Terminal size={14} />
         <span className="terminal-panel__collapsed-label">Terminal</span>
-        <span className="terminal-panel__expand">▲</span>
+        <ChevronUp size={14} className="terminal-panel__expand" />
       </div>
     )
   }
@@ -55,14 +57,17 @@ export function TerminalPanel({ collapsed = false, onToggle }: TerminalPanelProp
   return (
     <div className="terminal-panel">
       <div className="terminal-panel__header">
-        <span className="terminal-panel__title">Terminal</span>
+        <span className="terminal-panel__title">
+          <Terminal size={14} />
+          Terminal
+        </span>
         <div className="terminal-panel__actions">
           <button 
             className="terminal-panel__btn"
             onClick={clearOutput}
             title="Clear"
           >
-            Clear
+            <Trash2 size={14} />
           </button>
           {onToggle && (
             <button 
@@ -70,7 +75,7 @@ export function TerminalPanel({ collapsed = false, onToggle }: TerminalPanelProp
               onClick={onToggle}
               title="Collapse"
             >
-              ▼
+              <ChevronDown size={14} />
             </button>
           )}
         </div>

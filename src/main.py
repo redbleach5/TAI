@@ -23,6 +23,7 @@ from src.api.routes.projects import router as projects_router
 from src.api.routes.rag import router as rag_router
 from src.api.routes.terminal import router as terminal_router
 from src.api.routes.workflow import router as workflow_router
+from src.api.routes.workspace import router as workspace_router
 from src.shared.logging import setup_logging
 
 
@@ -72,6 +73,7 @@ app.include_router(projects_router)
 app.include_router(rag_router)
 app.include_router(terminal_router)
 app.include_router(workflow_router)
+app.include_router(workspace_router)
 
 
 @app.get("/health")

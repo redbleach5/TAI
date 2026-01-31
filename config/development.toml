@@ -1,2 +1,20 @@
 [logging]
 level = "DEBUG"
+
+[llm]
+provider = "ollama"
+
+[embeddings]
+model = "nomic-embed-text"
+
+[models]
+simple = "qwen2.5-coder:7b"
+medium = "glm-4.7-flash:latest"
+complex = "gpt-oss:20b"
+fallback = "qwen2.5-coder:7b"
+
+[models.lm_studio]
+simple = "local"
+medium = "local"
+complex = "local"
+fallback = "local"

@@ -1,7 +1,13 @@
 import { useState, useCallback } from 'react'
-import { postChat, getChatStreamUrl, type ChatMessage } from '../../api/client'
+import { postChat, postChatStream, type ChatMessage } from '../../api/client'
 
-export function useChat() {
+export interface UseChatOptions {
+  /** Get open files to include as context (Cursor-like) */
+  getContextFiles?: () => Array<{ path: string; content: string }>
+}
+
+export function useChat(options: UseChatOptions = {}) {
+  const { getContextFiles } = options
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -9,20 +15,31 @@ export function useChat() {
   const [streaming, setStreaming] = useState(false)
 
   const send = useCallback(
-    async (text: string, useStream = false, modeId = 'default') => {
+    async (text: string, useStream = false, modeId = 'default', model?: string) => {
       if (!text.trim() || loading) return
 
+      const contextFiles = getContextFiles?.() ?? []
       const userMessage: ChatMessage = { role: 'user', content: text.trim() }
       setMessages((prev) => [...prev, userMessage])
       setLoading(true)
       setStreaming(useStream)
       setError(null)
 
+      const req = {
+        message: text.trim(),
+        conversation_id: conversationId ?? undefined,
+        mode_id: modeId,
+        model: model || undefined,
+        context_files: contextFiles.length ? contextFiles : undefined,
+      }
+
       try {
         if (useStream) {
-          // Note: streaming doesn't support mode_id yet in URL params
-          const url = getChatStreamUrl(text.trim(), conversationId ?? undefined)
-          const eventSource = new EventSource(url)
+          const response = await postChatStream(req)
+          if (!response.ok) throw new Error(`Stream failed: ${response.status}`)
+          if (!response.body) throw new Error('No stream')
+          const reader = response.body.getReader()
+          const decoder = new TextDecoder()
           let content = ''
           let thinking = ''
           setMessages((prev) => [...prev, { role: 'assistant', content: '', thinking: '' }])
@@ -35,35 +52,31 @@ export function useChat() {
             })
           }
 
-          await new Promise<void>((resolve) => {
-            eventSource.addEventListener('content', (e: MessageEvent) => {
-              if (e.data) {
-                content += e.data
-                updateMessage()
+          let buffer = ''
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            buffer += decoder.decode(value, { stream: true })
+            const blocks = buffer.split(/\r?\n\r?\n/)
+            buffer = blocks.pop() ?? ''
+            for (const block of blocks) {
+              let eventType = ''
+              let data = ''
+              for (const line of block.split(/\r?\n/)) {
+                if (line.startsWith('event: ')) eventType = line.slice(7).trim()
+                if (line.startsWith('data: ')) data = line.slice(6).trim()
               }
-            })
-            eventSource.addEventListener('thinking', (e: MessageEvent) => {
-              if (e.data) {
-                thinking += e.data
-                updateMessage()
-              }
-            })
-            eventSource.addEventListener('done', () => {
-              eventSource.close()
-              resolve()
-            })
-            eventSource.onerror = () => {
-              eventSource.close()
-              resolve()
+              if (eventType === 'content' && data) content += data
+              else if (eventType === 'thinking' && data) thinking += data
+              updateMessage()
+              if (eventType === 'done') break
             }
-          })
+          }
         } else {
           const history = messages.map((m) => ({ role: m.role, content: m.content }))
           const response = await postChat({
-            message: text.trim(),
+            ...req,
             history: history.length > 0 ? history : undefined,
-            conversation_id: conversationId ?? undefined,
-            mode_id: modeId,
           })
           setMessages((prev) => [
             ...prev,
@@ -80,7 +93,7 @@ export function useChat() {
         setStreaming(false)
       }
     },
-    [messages, loading, conversationId]
+    [messages, loading, conversationId, getContextFiles]
   )
 
   const clear = useCallback(() => {
@@ -89,5 +102,24 @@ export function useChat() {
     setError(null)
   }, [])
 
-  return { messages, loading, streaming, error, send, clear, conversationId }
+  /** Add message (for Analyze, Generate results) */
+  const addMessage = useCallback((role: 'user' | 'assistant', content: string) => {
+    setMessages((prev) => [...prev, { role, content }])
+  }, [])
+
+  /** Update last assistant message (for streaming Generate) */
+  const updateLastAssistant = useCallback((content: string) => {
+    setMessages((prev) => {
+      const next = [...prev]
+      const lastIdx = next.length - 1
+      if (lastIdx >= 0 && next[lastIdx].role === 'assistant') {
+        next[lastIdx] = { ...next[lastIdx], content }
+      } else {
+        next.push({ role: 'assistant', content })
+      }
+      return next
+    })
+  }, [])
+
+  return { messages, loading, streaming, error, send, clear, addMessage, updateLastAssistant, conversationId }
 }

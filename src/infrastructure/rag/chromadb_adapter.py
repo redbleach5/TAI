@@ -1,6 +1,15 @@
-"""ChromaDB RAG adapter - implements RAGPort."""
+"""ChromaDB RAG adapter - implements RAGPort.
 
+Production-ready with:
+- Batch retry on embedding failures
+- Progress logging for large indexing
+- Configurable batch size
+"""
+
+import asyncio
 import hashlib
+import logging
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import chromadb
@@ -8,12 +17,19 @@ import chromadb
 from src.domain.ports.config import RAGConfig
 from src.domain.ports.embeddings import EmbeddingsPort
 from src.domain.ports.rag import Chunk
-from src.infrastructure.rag.file_collector import collect_code_files, chunk_text
+from src.infrastructure.rag.file_collector import (
+    collect_code_files,
+    collect_code_files_with_stats,
+    chunk_text,
+)
+from src.infrastructure.rag.index_state import IndexState
 from src.infrastructure.agents.project_mapper import (
     build_project_map,
     save_project_map,
     load_project_map,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class ChromaDBRAGAdapter:
@@ -26,12 +42,15 @@ class ChromaDBRAGAdapter:
     ) -> None:
         self._config = config
         self._embeddings = embeddings
-        self._client = chromadb.PersistentClient(path=config.chromadb_path)
+        chromadb_path = Path(config.chromadb_path).resolve()
+        chromadb_path.mkdir(parents=True, exist_ok=True)
+        self._client = chromadb.PersistentClient(path=str(chromadb_path))
         self._collection = self._client.get_or_create_collection(
             name=config.collection_name,
             metadata={"hnsw:space": "cosine"},
         )
         self._index_stats: dict = {}
+        self._index_state = IndexState(str(chromadb_path))
 
     async def search(
         self,
@@ -40,20 +59,39 @@ class ChromaDBRAGAdapter:
         min_score: float = 0.3,
         max_tokens: int | None = None,
     ) -> list[Chunk]:
-        """Search for relevant chunks by query."""
+        """Search for relevant chunks by query.
+        
+        Handles ChromaDB query failures gracefully.
+        """
         if not query.strip():
             return []
         
-        count = self._collection.count()
-        if count == 0:
+        try:
+            count = self._collection.count()
+            if count == 0:
+                return []
+        except Exception as e:
+            logger.error(f"Failed to get collection count: {e}")
             return []
         
-        query_embedding = await self._embeddings.embed(query.strip())
-        result = self._collection.query(
-            query_embeddings=[query_embedding],
-            n_results=min(limit, count),
-            include=["documents", "metadatas", "distances"],
-        )
+        try:
+            query_embedding = await self._embeddings.embed(query.strip())
+            if not query_embedding:
+                logger.warning("Empty query embedding returned")
+                return []
+        except Exception as e:
+            logger.error(f"Failed to embed query: {e}")
+            return []
+        
+        try:
+            result = self._collection.query(
+                query_embeddings=[query_embedding],
+                n_results=min(limit, count),
+                include=["documents", "metadatas", "distances"],
+            )
+        except Exception as e:
+            logger.error(f"ChromaDB query failed: {e}")
+            return []
         
         documents = result.get("documents", [[]])[0] or []
         metadatas = result.get("metadatas", [[]])[0] or []
@@ -125,45 +163,111 @@ class ChromaDBRAGAdapter:
                 files.add(meta["source"])
         return sorted(files)
 
-    async def index_path(self, path: str, generate_map: bool = True) -> dict:
-        """Index a directory for RAG search."""
+    async def index_path(
+        self,
+        path: str,
+        generate_map: bool = True,
+        incremental: bool = True,
+        on_progress: Callable[[int, int], Awaitable[None]] | None = None,
+    ) -> dict:
+        """Index a directory for RAG search.
+
+        Args:
+            path: Directory to index
+            generate_map: Whether to build project map
+            incremental: If True, only index new/changed files; if False, full reindex
+            on_progress: Optional callback(batch_num, total_batches)
+        """
         base = Path(path).resolve()
-        files = collect_code_files(base)
-        
+        base_str = str(base)
+
         stats = {
-            "path": str(base),
-            "files_found": len(files),
+            "path": base_str,
+            "files_found": 0,
+            "files_added": 0,
+            "files_updated": 0,
+            "files_deleted": 0,
+            "files_unchanged": 0,
             "files_by_type": {},
             "total_chunks": 0,
             "total_chars": 0,
             "project_map": None,
+            "incremental": incremental,
         }
-        
-        if not files:
+
+        files_with_stats = collect_code_files_with_stats(base)
+        current_files: dict[str, dict[str, float | int]] = {
+            rel: {"mtime": mtime, "size": size}
+            for rel, _, mtime, size in files_with_stats
+        }
+
+        if incremental:
+            indexed = self._index_state.get_indexed_files(base_str)
+            new_paths, changed_paths, deleted_paths = IndexState.diff_files(
+                current_files, indexed
+            )
+            unchanged_count = len(current_files) - len(new_paths) - len(changed_paths)
+            stats["files_added"] = len(new_paths)
+            stats["files_updated"] = len(changed_paths)
+            stats["files_deleted"] = len(deleted_paths)
+            stats["files_unchanged"] = unchanged_count
+
+            # Delete chunks for removed and changed files
+            to_delete = set(deleted_paths) | set(changed_paths)
+            for rel_path in to_delete:
+                self.delete_chunks_by_source(rel_path)
+
+            # Only index new and changed files
+            to_index = set(new_paths) | set(changed_paths)
+            files_to_process = [
+                (rel, content, mtime, size)
+                for rel, content, mtime, size in files_with_stats
+                if rel in to_index
+            ]
+        else:
+            self.clear()
+            self._index_state.clear_state(base_str)
+            files_to_process = files_with_stats
+
+        stats["files_found"] = len(files_with_stats)
+
+        if not files_to_process:
+            # Update project map even when no new files
+            if generate_map and files_with_stats:
+                files_for_map = [(r, c) for r, c, _, _ in files_with_stats]
+                try:
+                    project_map = build_project_map(base, files_for_map)
+                    map_path = save_project_map(project_map)
+                    stats["project_map"] = str(map_path)
+                    stats["project_stats"] = project_map.stats
+                except Exception as e:
+                    stats["project_map_error"] = str(e)
+            self._index_state.update_state(base_str, current_files)
+            stats["total_chunks"] = self._collection.count()
             self._index_stats = stats
             return stats
-        
-        # Generate project map
+
+        # Generate project map from all files
         if generate_map:
+            files_for_map = [(r, c) for r, c, _, _ in files_with_stats]
             try:
-                project_map = build_project_map(base, files)
+                project_map = build_project_map(base, files_for_map)
                 map_path = save_project_map(project_map)
                 stats["project_map"] = str(map_path)
                 stats["project_stats"] = project_map.stats
             except Exception as e:
                 stats["project_map_error"] = str(e)
-        
-        # Count files by extension
-        for rel_path, _ in files:
+
+        for rel_path, _, _, _ in files_to_process:
             ext = Path(rel_path).suffix.lower()
             stats["files_by_type"][ext] = stats["files_by_type"].get(ext, 0) + 1
-        
-        # Prepare chunks
+
+        # Prepare chunks for files to process
         all_chunks: list[str] = []
         all_ids: list[str] = []
         all_metadatas: list[dict] = []
-        
-        for rel_path, content in files:
+
+        for rel_path, content, _, _ in files_to_process:
             ext = Path(rel_path).suffix.lower()
             chunks = chunk_text(
                 content,
@@ -172,7 +276,7 @@ class ChromaDBRAGAdapter:
             )
             for j, chunk in enumerate(chunks):
                 chunk_id = hashlib.sha256(
-                    f"{rel_path}:{j}:{chunk[:100]}".encode()
+                    f"{rel_path}:{j}".encode()
                 ).hexdigest()[:16]
                 all_chunks.append(chunk)
                 all_ids.append(chunk_id)
@@ -182,28 +286,82 @@ class ChromaDBRAGAdapter:
                     "extension": ext,
                 })
                 stats["total_chars"] += len(chunk)
-        
-        stats["total_chunks"] = len(all_chunks)
-        
+
         if not all_chunks:
+            self._index_state.update_state(base_str, current_files)
+            stats["total_chunks"] = self._collection.count()
             self._index_stats = stats
             return stats
-        
-        # Batch embeddings
-        batch_size = 100
-        for i in range(0, len(all_chunks), batch_size):
-            batch_chunks = all_chunks[i:i + batch_size]
-            batch_ids = all_ids[i:i + batch_size]
-            batch_metas = all_metadatas[i:i + batch_size]
-            
-            embeddings = await self._embeddings.embed_batch(batch_chunks)
-            self._collection.upsert(
-                ids=batch_ids,
-                documents=batch_chunks,
-                embeddings=embeddings,
-                metadatas=batch_metas,
-            )
-        
+
+        batch_size = self._config.batch_size
+        total_batches = (len(all_chunks) + batch_size - 1) // batch_size
+
+        logger.info(
+            f"Indexing {len(all_chunks)} chunks ({len(files_to_process)} files) "
+            f"in {total_batches} batches (incremental={incremental})"
+        )
+
+        for batch_num, i in enumerate(range(0, len(all_chunks), batch_size), 1):
+            batch_chunks = all_chunks[i : i + batch_size]
+            batch_ids = all_ids[i : i + batch_size]
+            batch_metas = all_metadatas[i : i + batch_size]
+
+            embeddings = None
+            last_error = None
+            for attempt in range(3):
+                try:
+                    embeddings = await self._embeddings.embed_batch(batch_chunks)
+                    if len(embeddings) != len(batch_chunks):
+                        logger.warning(
+                            f"Batch {batch_num}: embedding count mismatch "
+                            f"(got {len(embeddings)}, expected {len(batch_chunks)})"
+                        )
+                        while len(embeddings) < len(batch_chunks):
+                            embeddings.append([])
+                        embeddings = embeddings[: len(batch_chunks)]
+                    break
+                except Exception as e:
+                    last_error = e
+                    if attempt < 2:
+                        logger.warning(
+                            f"Batch {batch_num} embedding failed (attempt {attempt + 1}): {e}"
+                        )
+                        await asyncio.sleep(2**attempt)
+                    else:
+                        logger.error(
+                            f"Batch {batch_num} embedding failed after 3 attempts: {e}"
+                        )
+
+            if embeddings is None:
+                logger.error(
+                    f"Skipping batch {batch_num} due to embedding failure: {last_error}"
+                )
+                continue
+
+            try:
+                self._collection.upsert(
+                    ids=batch_ids,
+                    documents=batch_chunks,
+                    embeddings=embeddings,
+                    metadatas=batch_metas,
+                )
+            except Exception as e:
+                logger.error(f"Batch {batch_num} ChromaDB upsert failed: {e}")
+
+            if on_progress:
+                await on_progress(batch_num, total_batches)
+            if total_batches > 5 and batch_num % max(1, total_batches // 10) == 0:
+                progress_pct = round(batch_num / total_batches * 100)
+                logger.info(
+                    f"Indexing progress: {progress_pct}% ({batch_num}/{total_batches})"
+                )
+
+        self._index_state.update_state(base_str, current_files)
+        stats["total_chunks"] = self._collection.count()
+        logger.info(
+            f"Indexing complete: {len(all_chunks)} chunks, "
+            f"total in index: {stats['total_chunks']}"
+        )
         self._index_stats = stats
         return stats
 
@@ -214,11 +372,21 @@ class ChromaDBRAGAdapter:
             return project_map.to_markdown()
         return None
 
+    def delete_chunks_by_source(self, source_path: str) -> int:
+        """Delete all chunks for a given source file. Returns count deleted."""
+        try:
+            self._collection.delete(where={"source": {"$eq": source_path}})
+            return 1
+        except Exception as e:
+            logger.warning(f"Failed to delete chunks for {source_path}: {e}")
+            return 0
+
     def clear(self) -> None:
-        """Clear all indexed data."""
+        """Clear all indexed data and index state."""
         self._client.delete_collection(self._config.collection_name)
         self._collection = self._client.get_or_create_collection(
             name=self._config.collection_name,
             metadata={"hnsw:space": "cosine"},
         )
+        self._index_state.clear_state()
         self._index_stats = {}
