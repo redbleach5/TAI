@@ -1,5 +1,6 @@
 """Tool parser - extracts tool calls from LLM response (ReAct format)."""
 
+import json
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -31,7 +32,7 @@ def parse_tool_call(content: str) -> ParsedToolCall | None:
     
     raw = match.group(1).strip()
     try:
-        data = __import__("json").loads(raw)
+        data = json.loads(raw)
         if not isinstance(data, dict):
             return None
         tool = data.get("tool", "").strip()
@@ -54,7 +55,7 @@ def parse_all_tool_calls(content: str) -> list[ParsedToolCall]:
     for match in matches:
         raw = match.group(1).strip()
         try:
-            data = __import__("json").loads(raw)
+            data = json.loads(raw)
             if not isinstance(data, dict):
                 continue
             tool = data.get("tool", "").strip()
