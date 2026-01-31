@@ -115,6 +115,16 @@ class ChatUseCase:
         parsed = parse_message(request.message)
         extra_context = await self._process_commands(parsed.commands)
         
+        # B4: Auto-RAG — if no @rag command, inject relevant chunks
+        has_rag_cmd = any(
+            getattr(c, "type", None) and str(getattr(c.type, "value", c.type)) == "rag"
+            for c in parsed.commands
+        )
+        if not has_rag_cmd and self._rag and (parsed.text or request.message).strip():
+            auto_rag = await self._auto_rag_search((parsed.text or request.message).strip())
+            if auto_rag:
+                extra_context = f"{auto_rag}\n\n---\n\n{extra_context}" if extra_context else auto_rag
+        
         # Build user message
         user_content = parsed.text or request.message
         # Prepend context: open files (Cursor-like) first, then commands
@@ -129,6 +139,22 @@ class ChatUseCase:
         
         messages.append(LLMMessage(role="user", content=user_content))
         return messages
+
+    async def _auto_rag_search(self, query: str) -> str:
+        """B4: Auto RAG search when user doesn't use @rag."""
+        if not query or len(query) < 5:
+            return ""
+        try:
+            chunks = await self._rag.search(query, limit=5, min_score=0.4)
+            if not chunks:
+                return ""
+            parts = []
+            for c in chunks[:5]:
+                src = c.metadata.get("source", "unknown")
+                parts.append(f"### {src}\n```\n{c.content[:400]}\n```")
+            return f"[Relevant code from project]\n\n" + "\n\n".join(parts)
+        except Exception:
+            return ""
 
     async def _process_commands(self, commands: list) -> str:
         """Process all commands in PARALLEL and return combined context."""
