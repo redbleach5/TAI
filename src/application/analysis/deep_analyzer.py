@@ -5,10 +5,13 @@ Phases:
 2. Expanded RAG (8-10 queries, 20-25 chunks)
 3. Framework detection (FastAPI, React, Django)
 4. Framework-specific prompts
+
+Multi-step (A1): LLM → проблемные модули → targeted RAG → финальный синтез.
 """
 
 import asyncio
 import json
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -52,6 +55,44 @@ RAG_QUERIES = [
 RAG_CHUNKS_PER_QUERY = 3
 RAG_MAX_CHUNKS = 25
 RAG_MIN_SCORE = 0.35
+
+# Multi-step: targeted RAG per module
+A1_MAX_MODULES = 5
+A1_CHUNKS_PER_MODULE = 5
+A1_TARGETED_QUERY_TEMPLATE = "код логика проблемы рефакторинг {module}"
+
+# Step 1 prompt: identify problematic modules
+STEP1_MODULES_PROMPT = """Ты — эксперт по анализу кода. На основе статического анализа и карты проекта определи 3–5 **наиболее проблемных модулей** (файлов или директорий), требующих углублённого анализа.
+
+## Входные данные
+
+### Ключевые файлы
+{key_files}
+
+### Статический анализ
+{static_report}
+
+### Карта проекта
+{project_map}
+
+### Релевантный код (начальный RAG)
+{rag_context}
+
+---
+
+## Задача
+
+Верни **только** валидный JSON, без markdown и пояснений:
+```json
+{{"problematic_modules": ["путь/к/файлу1.py", "src/api/routes", "frontend/src/App.tsx"]}}
+```
+
+Правила:
+- 3–5 путей (относительно корня проекта)
+- Файлы: src/main.py, frontend/src/App.tsx
+- Директории: src/api/routes, frontend/src/features
+- Только пути из карты проекта или статического анализа
+- Приоритет: сложность, ошибки, дублирование, архитектурные проблемы"""
 
 # Framework-specific prompts
 DEEP_ANALYSIS_PROMPT_GENERIC = """Ты — эксперт по анализу кодовых баз уровня Cursor AI. Проанализируй проект и дай **практичные, приоритизированные** рекомендации.
@@ -199,6 +240,26 @@ PROMPTS_BY_FRAMEWORK = {
 }
 
 
+def _parse_step1_modules(response: str) -> list[str] | None:
+    """Parse JSON with problematic_modules from step 1 LLM response."""
+    if not response or not response.strip():
+        return None
+    # Extract JSON from markdown code block if present
+    match = re.search(r"```(?:json)?\s*(\{[\s\S]*?\})\s*```", response)
+    if match:
+        raw = match.group(1)
+    else:
+        raw = response.strip()
+    try:
+        data = json.loads(raw)
+        modules = data.get("problematic_modules")
+        if isinstance(modules, list) and 1 <= len(modules) <= A1_MAX_MODULES:
+            return [str(m).strip() for m in modules if m]
+    except (json.JSONDecodeError, TypeError):
+        pass
+    return None
+
+
 def _collect_key_files(project_path: Path) -> str:
     """Collect key project files for context."""
     parts: list[str] = []
@@ -285,8 +346,12 @@ class DeepAnalyzer:
         self._model_router = model_router
         self._rag = rag
 
-    async def analyze(self, path: str) -> str:
-        """Run deep analysis and return markdown report."""
+    async def analyze(self, path: str, multi_step: bool = True) -> str:
+        """Run deep analysis and return markdown report.
+
+        Multi-step (A1): LLM identifies problematic modules → targeted RAG → final synthesis.
+        Fallback: single pass when RAG unavailable or step 1 fails.
+        """
         project_path = Path(path).resolve()
         if not project_path.exists() or not project_path.is_dir():
             raise ValueError(f"Invalid project path: {path}")
@@ -310,37 +375,35 @@ class DeepAnalyzer:
             if map_md:
                 project_map = map_md[:8000]
 
-        # 4. RAG context (expanded)
+        # 4. Initial RAG context (expanded)
         rag_context = "Не доступен. Выполните индексацию workspace."
         if self._rag:
             try:
-                chunks_by_query: list[str] = []
-                seen_sources: set[str] = set()
-                for q in RAG_QUERIES:
-                    if len(chunks_by_query) >= RAG_MAX_CHUNKS:
-                        break
-                    results = await self._rag.search(q, limit=RAG_CHUNKS_PER_QUERY, min_score=RAG_MIN_SCORE)
-                    for c in results:
-                        src = c.metadata.get("source", "")
-                        if src not in seen_sources:
-                            seen_sources.add(src)
-                            chunks_by_query.append(
-                                f"### {src}\n```\n{c.content[:700]}\n```"
-                            )
-                            if len(chunks_by_query) >= RAG_MAX_CHUNKS:
-                                break
-                if chunks_by_query:
-                    rag_context = "\n\n".join(chunks_by_query)
+                rag_context = await self._gather_initial_rag()
             except Exception:
                 rag_context = "Ошибка поиска по индексу."
 
-        # 5. LLM synthesis (framework-specific prompt)
+        # 5. Multi-step: targeted RAG per module (A1)
+        targeted_rag = ""
+        if multi_step and self._rag and rag_context != "Не доступен. Выполните индексацию workspace.":
+            modules = await self._step1_identify_modules(
+                key_files=key_files,
+                static_report=static_report,
+                project_map=project_map,
+                rag_context=rag_context,
+            )
+            if modules:
+                targeted_rag = await self._step2_targeted_rag(modules)
+                if targeted_rag:
+                    rag_context = f"{rag_context}\n\n---\n\n### Углублённый контекст по проблемным модулям\n{targeted_rag}"
+
+        # 6. LLM synthesis (framework-specific prompt)
         prompt_template = PROMPTS_BY_FRAMEWORK.get(framework, DEEP_ANALYSIS_PROMPT_GENERIC)
         prompt = prompt_template.format(
             key_files=key_files,
             static_report=static_report[:12000],
             project_map=project_map,
-            rag_context=rag_context[:8000],
+            rag_context=rag_context[:12000],
         )
 
         messages = [
@@ -360,3 +423,65 @@ class DeepAnalyzer:
             return response.content or static_report
         except Exception as e:
             return f"{static_report}\n\n---\n\n**Примечание:** LLM-анализ недоступен ({e}). Показан только статический отчёт."
+
+    async def _gather_initial_rag(self) -> str:
+        """Gather initial RAG context from expanded queries."""
+        chunks_by_query: list[str] = []
+        seen_sources: set[str] = set()
+        for q in RAG_QUERIES:
+            if len(chunks_by_query) >= RAG_MAX_CHUNKS:
+                break
+            results = await self._rag.search(q, limit=RAG_CHUNKS_PER_QUERY, min_score=RAG_MIN_SCORE)
+            for c in results:
+                src = c.metadata.get("source", "")
+                if src not in seen_sources:
+                    seen_sources.add(src)
+                    chunks_by_query.append(f"### {src}\n```\n{c.content[:700]}\n```")
+                    if len(chunks_by_query) >= RAG_MAX_CHUNKS:
+                        break
+        return "\n\n".join(chunks_by_query) if chunks_by_query else "Не найдено релевантных чанков."
+
+    async def _step1_identify_modules(
+        self,
+        key_files: str,
+        static_report: str,
+        project_map: str,
+        rag_context: str,
+    ) -> list[str] | None:
+        """Step 1: LLM identifies 3–5 problematic modules."""
+        prompt = STEP1_MODULES_PROMPT.format(
+            key_files=key_files[:4000],
+            static_report=static_report[:8000],
+            project_map=project_map[:6000],
+            rag_context=rag_context[:6000],
+        )
+        messages = [
+            LLMMessage(role="system", content="Ты эксперт. Отвечай только валидным JSON."),
+            LLMMessage(role="user", content=prompt),
+        ]
+        try:
+            model = self._model_router.select_model("анализ модулей")
+            response = await self._llm.generate(messages=messages, model=model, temperature=0.2)
+            return _parse_step1_modules(response.content or "")
+        except Exception:
+            return None
+
+    async def _step2_targeted_rag(self, modules: list[str]) -> str:
+        """Step 2: RAG search per module for deeper context."""
+        parts: list[str] = []
+        seen: set[str] = set()
+        for module in modules[:A1_MAX_MODULES]:
+            query = A1_TARGETED_QUERY_TEMPLATE.format(module=module)
+            try:
+                results = await self._rag.search(
+                    query, limit=A1_CHUNKS_PER_MODULE, min_score=RAG_MIN_SCORE
+                )
+                for c in results:
+                    src = c.metadata.get("source", "")
+                    key = f"{src}:{c.content[:100]}"
+                    if key not in seen:
+                        seen.add(key)
+                        parts.append(f"#### {module}\n```\n{c.content[:600]}\n```")
+            except Exception:
+                continue
+        return "\n\n".join(parts) if parts else ""
