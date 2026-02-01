@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { API_BASE } from '../../api/client'
 
 export interface FileNode {
   name: string
@@ -24,7 +25,7 @@ export function useFileTree() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/files/tree?path=${encodeURIComponent(path)}`)
+      const res = await fetch(`${API_BASE}/files/tree?path=${encodeURIComponent(path)}`)
       const data: TreeResponse = await res.json()
       if (data.success && data.tree) {
         setTree(data.tree)
@@ -40,7 +41,7 @@ export function useFileTree() {
 
   const createFile = useCallback(async (path: string, isDirectory: boolean = false) => {
     try {
-      const res = await fetch('/api/files/create', {
+      const res = await fetch(`${API_BASE}/files/create`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path, is_directory: isDirectory }),
@@ -58,7 +59,7 @@ export function useFileTree() {
 
   const deleteFile = useCallback(async (path: string) => {
     try {
-      const res = await fetch(`/api/files/delete?path=${encodeURIComponent(path)}`, {
+      const res = await fetch(`${API_BASE}/files/delete?path=${encodeURIComponent(path)}`, {
         method: 'DELETE',
       })
       const data = await res.json()
@@ -74,7 +75,7 @@ export function useFileTree() {
 
   const renameFile = useCallback(async (oldPath: string, newPath: string) => {
     try {
-      const res = await fetch('/api/files/rename', {
+      const res = await fetch(`${API_BASE}/files/rename`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ old_path: oldPath, new_path: newPath }),

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { API_BASE } from '../../api/client'
 
 export interface Project {
   id: string
@@ -19,7 +20,7 @@ export function useProjects() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/projects')
+      const res = await fetch(`${API_BASE}/projects`)
       const data = await res.json()
       setProjects(data.projects || [])
       setCurrentProject(data.current || null)
@@ -37,7 +38,7 @@ export function useProjects() {
   const addProject = useCallback(async (name: string, path: string) => {
     setLoading(true)
     try {
-      const res = await fetch('/api/projects', {
+      const res = await fetch(`${API_BASE}/projects`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name, path }),
@@ -57,7 +58,7 @@ export function useProjects() {
 
   const removeProject = useCallback(async (projectId: string) => {
     try {
-      const res = await fetch(`/api/projects/${projectId}`, { method: 'DELETE' })
+      const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}`, { method: 'DELETE' })
       if (res.ok) {
         await fetchProjects()
         return { success: true }
@@ -72,7 +73,7 @@ export function useProjects() {
   const selectProject = useCallback(async (projectId: string) => {
     setLoading(true)
     try {
-      const res = await fetch(`/api/projects/${projectId}/select`, { method: 'POST' })
+      const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}/select`, { method: 'POST' })
       const data = await res.json()
       if (res.ok) {
         setCurrentProject(data.project)
@@ -90,7 +91,7 @@ export function useProjects() {
     setLoading(true)
     try {
       const res = await fetch(
-        `/api/projects/${projectId}/index?incremental=${incremental}`,
+        `${API_BASE}/projects/${encodeURIComponent(projectId)}/index?incremental=${incremental}`,
         { method: 'POST' }
       )
       const data = await res.json()

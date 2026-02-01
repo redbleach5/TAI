@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { API_BASE } from '../../api/client'
 
 export interface AssistantMode {
   id: string
@@ -24,9 +25,15 @@ export function useAssistant() {
 
   const fetchModes = useCallback(async () => {
     try {
-      const res = await fetch('/api/assistant/modes')
+      const res = await fetch(`${API_BASE}/assistant/modes`)
+      if (!res.ok) throw new Error(`Modes failed: ${res.status}`)
       const data = await res.json()
-      setModes(data.modes || [])
+      const list = data.modes || []
+      setModes(list)
+      setCurrentMode((prev) => {
+        const valid = list.some((m: AssistantMode) => m.id === prev)
+        return valid ? prev : (list[0]?.id ?? 'default')
+      })
     } catch (e) {
       console.error('Failed to fetch modes:', e)
     }
@@ -34,9 +41,9 @@ export function useAssistant() {
 
   const fetchTemplates = useCallback(async (category?: string) => {
     try {
-      const url = category 
-        ? `/api/assistant/templates?category=${category}`
-        : '/api/assistant/templates'
+      const url = category
+        ? `${API_BASE}/assistant/templates?category=${encodeURIComponent(category)}`
+        : `${API_BASE}/assistant/templates`
       const res = await fetch(url)
       const data = await res.json()
       setTemplates(data.templates || [])
@@ -48,7 +55,7 @@ export function useAssistant() {
 
   const getTemplate = useCallback(async (templateId: string): Promise<PromptTemplate | null> => {
     try {
-      const res = await fetch(`/api/assistant/templates/${templateId}`)
+      const res = await fetch(`${API_BASE}/assistant/templates/${encodeURIComponent(templateId)}`)
       const data = await res.json()
       return data.error ? null : data
     } catch (e) {
@@ -58,11 +65,11 @@ export function useAssistant() {
   }, [])
 
   const fillTemplate = useCallback(async (
-    templateId: string, 
+    templateId: string,
     variables: Record<string, string>
   ): Promise<string | null> => {
     try {
-      const res = await fetch('/api/assistant/templates/fill', {
+      const res = await fetch(`${API_BASE}/assistant/templates/fill`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ template_id: templateId, variables }),
@@ -78,7 +85,7 @@ export function useAssistant() {
   const webSearch = useCallback(async (query: string) => {
     setLoading(true)
     try {
-      const res = await fetch('/api/assistant/search/web', {
+      const res = await fetch(`${API_BASE}/assistant/search/web`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ query, max_results: 5 }),

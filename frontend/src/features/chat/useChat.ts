@@ -112,8 +112,6 @@ export interface UseChatOptions {
   onToolCall?: (toolAndArgs: string) => void
   /** Callback when agent receives tool result */
   onToolResult?: (result: string) => void
-  /** Callback to trigger analysis (when user says "проанализируй проект"). skipUserMessage=true when useChat already added the message. */
-  onAnalyzeRequest?: (skipUserMessage?: boolean) => Promise<void>
 }
 
 export interface ConversationItem {
@@ -122,7 +120,7 @@ export interface ConversationItem {
 }
 
 export function useChat(options: UseChatOptions = {}) {
-  const { getContextFiles, getActiveFilePath, onToolCall, onToolResult, onAnalyzeRequest } = options
+  const { getContextFiles, getActiveFilePath, onToolCall, onToolResult } = options
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadFromStorage().messages)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -198,19 +196,7 @@ export function useChat(options: UseChatOptions = {}) {
     async (text: string, useStream = false, modeId = 'default', model?: string) => {
       if (!text.trim() || loading) return
 
-      // "Проанализируй проект" → запуск анализа
-      if (isAnalyzeIntent(text) && onAnalyzeRequest) {
-        const userMessage: ChatMessage = { role: 'user', content: text.trim() }
-        setMessages((prev) => [...prev, userMessage])
-        setLoading(true)
-        try {
-          await onAnalyzeRequest(true)
-        } finally {
-          setLoading(false)
-        }
-        return
-      }
-
+      // C3.1: все сообщения в чат; анализ через агента (tool run_project_analysis)
       const contextFiles = getContextFiles?.() ?? []
       const userMessage: ChatMessage = { role: 'user', content: text.trim() }
       setMessages((prev) => [...prev, userMessage])
@@ -240,6 +226,7 @@ export function useChat(options: UseChatOptions = {}) {
           const toolEvents: Array<{ type: 'tool_call' | 'tool_result'; data: string }> = []
           const pendingEdits: ProposedEdit[] = []
           let modelName = ''
+          let reportPath: string | undefined
           setMessages((prev) => [...prev, { role: 'assistant', content: '', thinking: '', toolEvents: [], pendingEdits: [] }])
 
           const updateMessage = () => {
@@ -252,6 +239,7 @@ export function useChat(options: UseChatOptions = {}) {
                 toolEvents: [...toolEvents],
                 pendingEdits: [...pendingEdits],
                 model: modelName || undefined,
+                reportPath,
               }
               return next
             })
@@ -293,6 +281,9 @@ export function useChat(options: UseChatOptions = {}) {
                 } catch {
                   // skip malformed
                 }
+              } else if (eventType === 'report_path' && data) {
+                reportPath = data
+                updateMessage()
               } else if (eventType === 'done') {
                 if (data) {
                   try {
@@ -338,7 +329,7 @@ export function useChat(options: UseChatOptions = {}) {
         setStreaming(false)
       }
     },
-    [messages, loading, conversationId, getContextFiles, getActiveFilePath, onToolCall, onToolResult, onAnalyzeRequest]
+    [messages, loading, conversationId, getContextFiles, getActiveFilePath, onToolCall, onToolResult]
   )
 
   /** New chat: save current title and clear (Cursor-like). Use this instead of clear. */

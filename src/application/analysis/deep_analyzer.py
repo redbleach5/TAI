@@ -257,6 +257,24 @@ PROMPTS_BY_FRAMEWORK = {
 }
 
 
+def summary_from_report(full_md: str, report_path: str) -> str:
+    """Из полного отчёта выделить краткую сводку для чата (C3.1, agent tool)."""
+    if not full_md or not full_md.strip():
+        return f"Отчёт сохранён в `{report_path}`. Откройте файл для просмотра."
+    lines = full_md.strip().split("\n")
+    summary_lines: list[str] = []
+    for line in lines:
+        if line.strip() == "---":
+            break
+        if line.startswith("## ") and summary_lines:
+            break
+        summary_lines.append(line)
+    summary_text = "\n".join(summary_lines).strip()
+    if len(summary_text) > 500:
+        summary_text = summary_text[:500].rsplit(" ", 1)[0] + "…"
+    return f"{summary_text}\n\n📄 **Полный отчёт в проекте:** `{report_path}`"
+
+
 def _parse_step1_modules(response: str) -> list[str] | None:
     """Parse JSON with problematic_modules from step 1 LLM response."""
     if not response or not response.strip():

@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { API_BASE } from '../../api/client'
 
 interface TerminalOutput {
   type: 'input' | 'stdout' | 'stderr' | 'error' | 'info'
@@ -34,7 +35,7 @@ export function useTerminal() {
     setRunning(true)
 
     try {
-      const res = await fetch('/api/terminal/exec', {
+      const res = await fetch(`${API_BASE}/terminal/exec`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ command, timeout: 30 }),

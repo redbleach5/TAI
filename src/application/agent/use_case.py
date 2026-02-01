@@ -2,11 +2,13 @@
 
 import json
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from src.application.agent.ollama_tools import AGENT_SYSTEM_PROMPT_NATIVE, OLLAMA_TOOLS
 from src.application.agent.tool_parser import parse_all_tool_calls, parse_tool_call, strip_tool_call_from_content
-from src.application.agent.tools import AGENT_TOOLS_PROMPT, ToolExecutor
+from src.application.agent.tools import AGENT_TOOLS_PROMPT, ToolExecutor, ToolResult
+from src.application.analysis.deep_analyzer import DeepAnalyzer, summary_from_report
 from src.application.chat.dto import ChatRequest, ChatResponse
 from src.domain.ports.llm import LLMMessage, LLMPort
 from src.domain.services.model_selector import ModelSelector
@@ -91,11 +93,27 @@ class AgentUseCase:
         msgs.append({"role": "user", "content": user_content})
         return msgs
 
+    async def _run_project_analysis(self, workspace_path: str, question: str | None) -> tuple[str, str]:
+        """C3.1: Run deep analysis, save to docs/ANALYSIS_REPORT.md, return (summary, report_path)."""
+        analyzer = DeepAnalyzer(llm=self._llm, model_selector=self._model_selector, rag=self._rag)
+        full_md = await analyzer.analyze(workspace_path)
+        report_rel = "docs/ANALYSIS_REPORT.md"
+        report_file = Path(workspace_path) / report_rel
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+        report_file.write_text(full_md, encoding="utf-8")
+        summary = summary_from_report(full_md, report_rel)
+        return summary, report_rel
+
     async def execute(self, request: ChatRequest) -> ChatResponse:
         """Run agent loop until done or max iterations (sync: writes to disk, no proposed_edits)."""
         model, fallback = await self._model_selector.select_model(request.message)
         model = request.model or model
-        executor = ToolExecutor(workspace_path=None, rag=self._rag, propose_edits=False)
+        executor = ToolExecutor(
+            workspace_path=None,
+            rag=self._rag,
+            propose_edits=False,
+            deep_analyzer_run=self._run_project_analysis,
+        )
 
         if self._use_native_tools():
             return await self._execute_native(request, model, executor)
@@ -134,10 +152,22 @@ class AgentUseCase:
 
             for tc in tool_calls:
                 name = tc.get("name", "")
-                args = tc.get("arguments", {}) or {}
-                result = await executor.execute(name, args)
+                raw_args = tc.get("arguments", {}) or {}
+                if isinstance(raw_args, str):
+                    try:
+                        args = json.loads(raw_args) if raw_args.strip() else {}
+                    except json.JSONDecodeError:
+                        args = {}
+                elif isinstance(raw_args, dict):
+                    args = raw_args
+                else:
+                    args = {}
+                try:
+                    result = await executor.execute(name, args)
+                except Exception as e:
+                    result = ToolResult(success=False, content="", error=str(e), tool=name, args=args)
                 obs = result.content if result.success else f"Error: {result.error}"
-                msg = {"role": "tool", "content": obs}
+                msg = {"role": "tool", "content": obs, "tool_name": name}
                 if tc.get("id"):
                     msg["tool_call_id"] = tc["id"]
                 messages.append(msg)
@@ -186,7 +216,12 @@ class AgentUseCase:
         model, fallback = await self._model_selector.select_model(request.message)
         model = request.model or model
         propose_edits = getattr(request, "apply_edits_required", True)
-        executor = ToolExecutor(workspace_path=None, rag=self._rag, propose_edits=propose_edits)
+        executor = ToolExecutor(
+            workspace_path=None,
+            rag=self._rag,
+            propose_edits=propose_edits,
+            deep_analyzer_run=self._run_project_analysis,
+        )
 
         if self._use_native_tools():
             async for evt in self._execute_stream_native(request, model, executor):
@@ -229,14 +264,29 @@ class AgentUseCase:
 
             for tc in tool_calls:
                 name = tc.get("name", "")
-                args = tc.get("arguments", {}) or {}
+                raw_args = tc.get("arguments", {}) or {}
+                # Ollama/API may send arguments as JSON string
+                if isinstance(raw_args, str):
+                    try:
+                        args = json.loads(raw_args) if raw_args.strip() else {}
+                    except json.JSONDecodeError:
+                        args = {}
+                elif isinstance(raw_args, dict):
+                    args = raw_args
+                else:
+                    args = {}
                 yield ("tool_call", f"{name}: {args}")
-                result = await executor.execute(name, args)
+                try:
+                    result = await executor.execute(name, args)
+                except Exception as e:
+                    result = ToolResult(success=False, content="", error=str(e), tool=name, args=args)
                 if result.proposed_edit:
                     yield ("proposed_edit", json.dumps(result.proposed_edit))
+                if result.report_path:
+                    yield ("report_path", result.report_path)
                 obs = result.content if result.success else f"Error: {result.error}"
                 yield ("tool_result", obs[:500] + ("..." if len(obs) > 500 else ""))
-                msg = {"role": "tool", "content": obs}
+                msg = {"role": "tool", "content": obs, "tool_name": name}
                 if tc.get("id"):
                     msg["tool_call_id"] = tc["id"]
                 messages.append(msg)
@@ -269,6 +319,8 @@ class AgentUseCase:
                 result = await executor.execute(tc.tool, tc.args)
                 if result.proposed_edit:
                     yield ("proposed_edit", json.dumps(result.proposed_edit))
+                if result.report_path:
+                    yield ("report_path", result.report_path)
                 obs_text = result.content if result.success else f"Error: {result.error}"
                 obs_parts.append(obs_text)
                 yield ("tool_result", obs_text[:500] + ("..." if len(obs_text) > 500 else ""))

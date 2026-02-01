@@ -20,9 +20,17 @@ export function ModelSelector({ value, onChange, provider }: Props) {
   const fetchModels = useCallback(async () => {
     setLoading(true)
     try {
-      const p = provider ?? (await getConfig()).llm.provider
-      const list = await getModels(p as 'ollama' | 'lm_studio')
-      setModels(list)
+      let p: 'ollama' | 'lm_studio' | undefined = provider
+      if (p == null) {
+        try {
+          const config = await getConfig()
+          p = (config?.llm?.provider as 'ollama' | 'lm_studio') ?? undefined
+        } catch {
+          // use current provider from backend (no query param)
+        }
+      }
+      const list = await getModels(p ?? undefined)
+      setModels(Array.isArray(list) ? list : [])
     } catch {
       setModels([])
     } finally {

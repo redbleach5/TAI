@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { API_BASE } from '../../api/client'
 
 export interface GitFile {
   path: string
@@ -29,7 +30,7 @@ export function useGitStatus(pollInterval: number = 10000) {
 
   const fetchStatus = useCallback(async () => {
     try {
-      const res = await fetch('/api/git/status')
+      const res = await fetch(`${API_BASE}/git/status`)
       const data = await res.json()
       if (data.success) {
         setStatus({
@@ -50,7 +51,7 @@ export function useGitStatus(pollInterval: number = 10000) {
 
   const fetchLog = useCallback(async (limit: number = 20) => {
     try {
-      const res = await fetch(`/api/git/log?limit=${limit}`)
+      const res = await fetch(`${API_BASE}/git/log?limit=${limit}`)
       const data = await res.json()
       if (data.success) {
         setLog(data.entries)
@@ -62,7 +63,7 @@ export function useGitStatus(pollInterval: number = 10000) {
 
   const getDiff = useCallback(async (path?: string, staged: boolean = false) => {
     try {
-      let url = '/api/git/diff'
+      let url = `${API_BASE}/git/diff`
       const params = new URLSearchParams()
       if (path) params.set('path', path)
       if (staged) params.set('staged', 'true')
@@ -79,7 +80,7 @@ export function useGitStatus(pollInterval: number = 10000) {
   const commit = useCallback(async (message: string, files?: string[]) => {
     setLoading(true)
     try {
-      const res = await fetch('/api/git/commit', {
+      const res = await fetch(`${API_BASE}/git/commit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message, files }),

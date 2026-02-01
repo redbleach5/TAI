@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react'
+import { API_BASE } from '../../api/client'
 
 export interface OpenFile {
   path: string
@@ -53,7 +54,7 @@ export function useOpenFiles() {
 
     // Fetch file content
     try {
-      const res = await fetch('/api/files/read', {
+      const res = await fetch(`${API_BASE}/files/read`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path }),
@@ -117,7 +118,7 @@ export function useOpenFiles() {
     if (!file) return { success: false, error: 'File not found' }
 
     try {
-      const res = await fetch('/api/files/write', {
+      const res = await fetch(`${API_BASE}/files/write`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path, content: file.content }),

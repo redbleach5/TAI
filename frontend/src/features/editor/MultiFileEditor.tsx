@@ -1,5 +1,6 @@
 import { useEffect, useCallback, useState, useRef } from 'react'
 import Editor from '@monaco-editor/react'
+import { API_BASE } from '../../api/client'
 import { useToast } from '../toast/ToastContext'
 import { useOpenFilesContext } from './OpenFilesContext'
 import { useOpenFiles } from './useOpenFiles'
@@ -88,7 +89,7 @@ export function MultiFileEditor({ externalOpenFile }: MultiFileEditorProps) {
     setOutput(null)
 
     try {
-      const res = await fetch('/api/code/run', {
+      const res = await fetch(`${API_BASE}/code/run`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code: file.content }),

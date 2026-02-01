@@ -1,10 +1,13 @@
 """Tests for model validator."""
 
+import logging
+
 import pytest
 from unittest.mock import AsyncMock
 
 from src.domain.ports.config import AppConfig, ModelConfig, LLMConfig
 from src.infrastructure.config.model_validator import validate_models_config
+from src.shared.logging import setup_logging
 
 
 @pytest.fixture
@@ -35,6 +38,7 @@ async def test_validate_all_models_available(config):
 @pytest.mark.asyncio
 async def test_validate_missing_model_logs_warning(config, capsys):
     """When a configured model is missing, log warning to stdout."""
+    setup_logging("INFO")
     llm = AsyncMock()
     llm.list_models = AsyncMock(return_value=["qwen2.5-coder:7b"])  # missing gpt-oss, glm
 
@@ -48,6 +52,7 @@ async def test_validate_missing_model_logs_warning(config, capsys):
 @pytest.mark.asyncio
 async def test_validate_llm_unreachable_skips(config, capsys):
     """When LLM is unreachable, skip validation without failing."""
+    setup_logging("INFO")
     llm = AsyncMock()
     llm.list_models = AsyncMock(side_effect=ConnectionError("Connection refused"))
 

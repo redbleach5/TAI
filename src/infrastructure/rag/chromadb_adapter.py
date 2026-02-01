@@ -13,6 +13,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 import chromadb
+from chromadb.config import Settings
 
 from src.domain.ports.config import RAGConfig
 from src.domain.ports.embeddings import EmbeddingsPort
@@ -44,7 +45,8 @@ class ChromaDBRAGAdapter:
         self._embeddings = embeddings
         chromadb_path = Path(config.chromadb_path).resolve()
         chromadb_path.mkdir(parents=True, exist_ok=True)
-        self._client = chromadb.PersistentClient(path=str(chromadb_path))
+        settings = Settings(anonymized_telemetry=False)
+        self._client = chromadb.PersistentClient(path=str(chromadb_path), settings=settings)
         self._collection = self._client.get_or_create_collection(
             name=config.collection_name,
             metadata={"hnsw:space": "cosine"},

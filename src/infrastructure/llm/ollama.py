@@ -146,7 +146,10 @@ class OllamaAdapter:
         model: str | None = None,
         temperature: float = 0.3,
     ) -> AsyncIterator[tuple[str, str | list[dict] | None]]:
-        """Stream chat with tools. Yields (kind, data): content chunks, then ("tool_calls", [...]) or ("done", None)."""
+        """Stream chat with tools. Yields (kind, data): content chunks, then ("tool_calls", [...]) or ("done", None).
+        Merges tool_calls by index (Ollama streams partial tool_calls per chunk).
+        """
+        import json as _json
         model = model or "llama2"
         try:
             stream = await self._client.chat(
@@ -157,24 +160,44 @@ class OllamaAdapter:
                 stream=True,
             )
             content_buf = ""
-            tool_calls: list[dict] = []
+            # Merge by index: Ollama may send multiple chunks with same tool_call (partial args)
+            tool_calls_acc: dict[int, dict[str, Any]] = {}
             async for chunk in stream:
                 if chunk.message and chunk.message.content:
                     content_buf += chunk.message.content
                     yield ("content", chunk.message.content)
                 tcs = getattr(chunk.message, "tool_calls", None) if chunk.message else None
                 if tcs:
-                    for tc in tcs:
+                    for i, tc in enumerate(tcs):
                         fn = getattr(tc, "function", tc) if hasattr(tc, "function") else tc
+                        idx = getattr(fn, "index", i) if not isinstance(fn, dict) else fn.get("index", i)
                         name = getattr(fn, "name", "") if not isinstance(fn, dict) else fn.get("name", "")
-                        args = getattr(fn, "arguments", {}) if not isinstance(fn, dict) else fn.get("arguments", {})
-                        if isinstance(args, str):
-                            import json
-                            try:
-                                args = json.loads(args) if args else {}
-                            except json.JSONDecodeError:
-                                args = {}
-                        tool_calls.append({"name": name, "arguments": args or {}})
+                        args_raw = getattr(fn, "arguments", {}) if not isinstance(fn, dict) else fn.get("arguments", {})
+                        if idx not in tool_calls_acc:
+                            tool_calls_acc[idx] = {"name": "", "arguments": ""}
+                        acc = tool_calls_acc[idx]
+                        if name:
+                            acc["name"] = name
+                        if args_raw is not None and args_raw != "":
+                            if isinstance(args_raw, dict):
+                                acc["arguments"] = args_raw
+                            elif isinstance(args_raw, str):
+                                prev = acc.get("arguments", "")
+                                acc["arguments"] = (prev if isinstance(prev, str) else "") + args_raw
+            # Build final list and parse arguments (Ollama may send string or dict)
+            tool_calls = []
+            for idx in sorted(tool_calls_acc.keys()):
+                acc = tool_calls_acc[idx]
+                name = acc.get("name", "")
+                args = acc.get("arguments", "") or ""
+                if isinstance(args, str):
+                    try:
+                        args = _json.loads(args) if args.strip() else {}
+                    except _json.JSONDecodeError:
+                        args = {}
+                elif not isinstance(args, dict):
+                    args = {}
+                tool_calls.append({"name": name, "arguments": args})
             if tool_calls:
                 yield ("tool_calls", tool_calls)
             yield ("done", None)

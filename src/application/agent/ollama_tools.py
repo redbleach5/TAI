@@ -95,6 +95,19 @@ OLLAMA_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_project_analysis",
+            "description": "Run deep project analysis (architecture, quality, recommendations). Saves report to docs/ANALYSIS_REPORT.md. Use when user asks to analyze the project or 'проанализируй проект'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "question": {"type": "string", "description": "Optional: specific question to answer in the report."},
+                },
+            },
+        },
+    },
 ]
 
 AGENT_SYSTEM_PROMPT_NATIVE = """You are an autonomous coding agent. You can read files, write files, search the codebase, run terminal commands, list directories, and index the project.
@@ -102,6 +115,8 @@ AGENT_SYSTEM_PROMPT_NATIVE = """You are an autonomous coding agent. You can read
 Your goal: accomplish the user's task step by step. Use tools when needed. Think before acting.
 
 If the user asks about the codebase (e.g. "how does X work?", "where is Y?") and search_rag returns no results, check get_index_status(). If the project is not indexed, call index_workspace() so you can search the code — the user may have forgotten to index.
+
+If the user asks to analyze the project (e.g. "проанализируй проект", "analyze this project"), use run_project_analysis() to run deep analysis and save the report to docs/ANALYSIS_REPORT.md.
 
 Rules:
 - Use ONE tool at a time. After receiving the result, analyze it and either call another tool or give your final answer.

@@ -1,6 +1,7 @@
 """Agent tools - definitions and executor for ReAct-style agent."""
 
 import json
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -32,6 +33,7 @@ class ToolResult:
     tool: str = ""
     args: dict[str, Any] = field(default_factory=dict)
     proposed_edit: dict | None = None  # When propose_edits and write_file: {path, content, old_content?}
+    report_path: str | None = None  # C3.1: when run_project_analysis, path to report (e.g. docs/ANALYSIS_REPORT.md)
 
 
 # Tool definitions for system prompt
@@ -51,6 +53,7 @@ Available tools:
 5. list_files(path?) - List files in directory. path: optional, default ".".
 6. get_index_status() - Check if project is indexed for code search. Use when user asks about codebase but search_rag returns nothing.
 7. index_workspace(incremental?) - Index the project for semantic search. Call when user needs codebase search but project is not indexed. incremental: optional, default true (faster).
+8. run_project_analysis(question?) - Run deep project analysis (architecture, quality, recommendations). Saves report to docs/ANALYSIS_REPORT.md. Use when user asks to analyze the project or "проанализируй проект". question: optional, specific question to answer in the report.
 
 Rules:
 - You can use multiple tool calls in one response when editing several files (e.g. several write_file blocks).
@@ -62,6 +65,10 @@ Rules:
 """
 
 
+# C3.1: (path, question?) -> (summary, report_path)
+DeepAnalyzerRun = Callable[[str, str | None], Awaitable[tuple[str, str]]]
+
+
 class ToolExecutor:
     """Executes agent tools with workspace context."""
 
@@ -70,12 +77,14 @@ class ToolExecutor:
         workspace_path: str | None = None,
         rag=None,
         propose_edits: bool = False,
+        deep_analyzer_run: DeepAnalyzerRun | None = None,
     ) -> None:
         self._workspace = Path(workspace_path or _get_workspace_path()).resolve()
         self._file_service = FileService(root_path=str(self._workspace))
         self._terminal = TerminalService(cwd=str(self._workspace))
         self._rag = rag
         self._propose_edits = propose_edits
+        self._deep_analyzer_run = deep_analyzer_run
 
     async def execute(self, tool: str, args: dict[str, Any]) -> ToolResult:
         """Execute tool with given args."""
@@ -94,6 +103,8 @@ class ToolExecutor:
             return await self._get_index_status(args)
         if tool_lower == "index_workspace":
             return await self._index_workspace(args)
+        if tool_lower == "run_project_analysis":
+            return await self._run_project_analysis(args)
         return ToolResult(
             success=False,
             content="",
@@ -283,5 +294,37 @@ class ToolExecutor:
                 content="",
                 error=str(e),
                 tool="index_workspace",
+                args=args,
+            )
+
+    async def _run_project_analysis(self, args: dict) -> ToolResult:
+        """C3.1: Run deep project analysis, save report to docs/ANALYSIS_REPORT.md, return summary + report_path."""
+        if not self._deep_analyzer_run:
+            return ToolResult(
+                success=False,
+                content="",
+                error="Deep analysis not available (run_project_analysis not configured).",
+                tool="run_project_analysis",
+                args=args,
+            )
+        question = args.get("question", "").strip() or None
+        try:
+            summary, report_path = await self._deep_analyzer_run(str(self._workspace), question)
+            content = summary
+            if report_path:
+                content += f"\n\nReport path: {report_path}"
+            return ToolResult(
+                success=True,
+                content=content,
+                tool="run_project_analysis",
+                args=args,
+                report_path=report_path or None,
+            )
+        except Exception as e:
+            return ToolResult(
+                success=False,
+                content="",
+                error=str(e),
+                tool="run_project_analysis",
                 args=args,
             )
