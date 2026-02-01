@@ -347,7 +347,8 @@ Preserve the overall structure and imports. Make minimal necessary changes.
 
 
 async def _validate_node(state: ImprovementState) -> ImprovementState:
-    """Validate improved code (syntax check + basic tests). B5: full stack trace in validation_output."""
+    """Validate improved code (syntax check + basic tests). B5: full stack trace in validation_output.
+    B6: when inline selection is set, validate the full file (selection replaced) so fragment is not parsed alone."""
     import ast
     import subprocess
     import tempfile
@@ -355,10 +356,21 @@ async def _validate_node(state: ImprovementState) -> ImprovementState:
     from pathlib import Path
 
     improved_code = state.get("improved_code", "")
+    full_file_content = state.get("full_file_content")
+    selection_start = state.get("selection_start_line")
+    selection_end = state.get("selection_end_line")
+
+    # B6: For inline selection, validate the full file content (selection replaced), not the fragment alone
+    if full_file_content and selection_start is not None and selection_end is not None:
+        code_to_validate = _build_full_content_for_selection(
+            full_file_content, selection_start, selection_end, improved_code
+        )
+    else:
+        code_to_validate = improved_code
 
     # Syntax check — B5: include line content when available
     try:
-        ast.parse(improved_code)
+        ast.parse(code_to_validate)
     except SyntaxError as e:
         line_preview = ""
         if e.text:
@@ -373,7 +385,7 @@ async def _validate_node(state: ImprovementState) -> ImprovementState:
     # Try to run basic import check — B5: full stderr (stack trace)
     with tempfile.TemporaryDirectory() as tmpdir:
         code_file = Path(tmpdir) / "improved.py"
-        code_file.write_text(improved_code, encoding="utf-8")
+        code_file.write_text(code_to_validate, encoding="utf-8")
 
         try:
             result = subprocess.run(
