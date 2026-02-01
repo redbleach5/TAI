@@ -3,10 +3,10 @@
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from src.api.dependencies import get_config, limiter
+from src.api.dependencies import get_config, get_library, limiter
 from src.domain.ports.config import AppConfig
 from src.infrastructure.services.assistant_modes import list_modes, get_mode
-from src.infrastructure.services.prompt_templates import get_library, PromptTemplate
+from src.infrastructure.services.prompt_templates import PromptLibrary, PromptTemplate
 from src.infrastructure.services.command_parser import get_help_text
 from src.infrastructure.services.web_search import (
     multi_search,
@@ -59,9 +59,12 @@ class TemplateFill(BaseModel):
 
 @router.get("/templates")
 @limiter.limit("60/minute")
-async def list_templates(request: Request, category: str | None = None):
+async def list_templates(
+    request: Request,
+    category: str | None = None,
+    library: PromptLibrary = Depends(get_library),
+):
     """List prompt templates."""
-    library = get_library()
     if category:
         templates = library.list_by_category(category)
     else:
@@ -83,9 +86,12 @@ async def list_templates(request: Request, category: str | None = None):
 
 @router.get("/templates/{template_id}")
 @limiter.limit("60/minute")
-async def get_template(request: Request, template_id: str):
+async def get_template(
+    request: Request,
+    template_id: str,
+    library: PromptLibrary = Depends(get_library),
+):
     """Get template by ID."""
-    library = get_library()
     template = library.get(template_id)
     if not template:
         return {"error": "Template not found"}
@@ -101,9 +107,12 @@ async def get_template(request: Request, template_id: str):
 
 @router.post("/templates")
 @limiter.limit("30/minute")
-async def create_template(request: Request, body: TemplateCreate):
+async def create_template(
+    request: Request,
+    body: TemplateCreate,
+    library: PromptLibrary = Depends(get_library),
+):
     """Create custom template."""
-    library = get_library()
     template = PromptTemplate(
         id=body.id,
         name=body.name,
@@ -118,9 +127,12 @@ async def create_template(request: Request, body: TemplateCreate):
 
 @router.delete("/templates/{template_id}")
 @limiter.limit("30/minute")
-async def delete_template(request: Request, template_id: str):
+async def delete_template(
+    request: Request,
+    template_id: str,
+    library: PromptLibrary = Depends(get_library),
+):
     """Delete custom template."""
-    library = get_library()
     if library.remove(template_id):
         return {"status": "ok"}
     return {"status": "error", "error": "Cannot delete (not found or builtin)"}
@@ -128,9 +140,12 @@ async def delete_template(request: Request, template_id: str):
 
 @router.post("/templates/fill")
 @limiter.limit("60/minute")
-async def fill_template(request: Request, body: TemplateFill):
+async def fill_template(
+    request: Request,
+    body: TemplateFill,
+    library: PromptLibrary = Depends(get_library),
+):
     """Fill template with variables."""
-    library = get_library()
     result = library.fill_template(body.template_id, **body.variables)
     if result is None:
         return {"error": "Template not found"}

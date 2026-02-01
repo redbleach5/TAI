@@ -1,10 +1,10 @@
 """Tests for Code Security Checker."""
 
 import pytest
+from src.api.dependencies import get_security_checker
 from src.infrastructure.services.code_security import (
     CodeSecurityChecker,
     SecurityCheckResult,
-    get_security_checker,
 )
 
 
@@ -107,10 +107,11 @@ print('hello')
         assert "import json" in sanitized
         assert "print('hello')" in sanitized
 
-    def test_get_security_checker_singleton(self):
-        """get_security_checker should return instance."""
+    def test_get_security_checker_from_container(self):
+        """get_security_checker (from dependencies) should return container instance."""
         checker = get_security_checker()
         assert isinstance(checker, CodeSecurityChecker)
+        assert get_security_checker() is checker
 
 
 class TestSecurityCheckResult:

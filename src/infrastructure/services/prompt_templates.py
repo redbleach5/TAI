@@ -204,15 +204,3 @@ class PromptLibrary:
             content = content.replace(f"{{{key}}}", str(value))
         
         return content
-
-
-# Singleton instance
-_library: PromptLibrary | None = None
-
-
-def get_library() -> PromptLibrary:
-    """Get prompt library singleton."""
-    global _library
-    if _library is None:
-        _library = PromptLibrary()
-    return _library

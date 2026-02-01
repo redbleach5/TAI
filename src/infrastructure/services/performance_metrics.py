@@ -18,10 +18,6 @@ from typing import Callable
 
 logger = logging.getLogger(__name__)
 
-# Lock for singleton initialization
-_singleton_lock = threading.Lock()
-
-
 @dataclass
 class StageMetrics:
     """Метрики для одного этапа."""
@@ -233,21 +229,3 @@ class PerformanceMetrics:
                     metrics_file.unlink()
             except OSError as e:
                 logger.warning(f"Failed to delete metrics file: {e}")
-
-
-# Singleton
-_metrics: PerformanceMetrics | None = None
-
-
-def get_metrics() -> PerformanceMetrics:
-    """Получить глобальный экземпляр метрик (thread-safe singleton)."""
-    global _metrics
-    # Fast path without lock
-    if _metrics is not None:
-        return _metrics
-    
-    # Slow path with lock (double-checked locking)
-    with _singleton_lock:
-        if _metrics is None:
-            _metrics = PerformanceMetrics()
-        return _metrics

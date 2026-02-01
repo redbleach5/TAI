@@ -5,10 +5,10 @@ import time
 from pathlib import Path
 
 import pytest
+from src.api.dependencies import get_metrics
 from src.infrastructure.services.performance_metrics import (
     PerformanceMetrics,
     StageMetrics,
-    get_metrics,
 )
 
 
@@ -193,9 +193,10 @@ class TestPerformanceMetrics:
 
 
 class TestGetMetrics:
-    """Tests for get_metrics singleton."""
+    """Tests for get_metrics from container."""
 
     def test_get_metrics_returns_instance(self):
-        """get_metrics should return PerformanceMetrics instance."""
+        """get_metrics (from dependencies) should return container instance."""
         metrics = get_metrics()
         assert isinstance(metrics, PerformanceMetrics)
+        assert get_metrics() is metrics

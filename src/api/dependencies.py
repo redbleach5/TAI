@@ -16,6 +16,9 @@ from src.domain.services.model_router import ModelRouter
 from src.domain.services.model_selector import ModelSelector
 from src.infrastructure.persistence.conversation_memory import ConversationMemory
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
+from src.infrastructure.services.code_security import CodeSecurityChecker
+from src.infrastructure.services.performance_metrics import PerformanceMetrics
+from src.infrastructure.services.prompt_templates import PromptLibrary
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -79,3 +82,20 @@ def get_improvement_use_case() -> SelfImprovementUseCase:
 def get_rag_adapter() -> ChromaDBRAGAdapter:
     """Get RAG adapter."""
     return get_container().rag
+
+
+def get_security_checker(strict: bool = False) -> CodeSecurityChecker:
+    """Get code security checker from container."""
+    if strict:
+        return get_container().strict_security_checker
+    return get_container().code_security_checker
+
+
+def get_metrics() -> PerformanceMetrics:
+    """Get performance metrics from container."""
+    return get_container().performance_metrics
+
+
+def get_library() -> PromptLibrary:
+    """Get prompt library from container."""
+    return get_container().prompt_library

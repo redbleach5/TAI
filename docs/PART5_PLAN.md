@@ -54,29 +54,29 @@
 
 ### 1.3 ProjectAnalyzer в Container
 
-- [ ] **1.3.1** В `container.py`: добавить `@cached_property def project_analyzer(self) -> ProjectAnalyzer` (создать `ProjectAnalyzer()` с нужными параметрами, если есть).
-- [ ] **1.3.2** В `api/dependencies.py`: добавить `def get_analyzer() -> ProjectAnalyzer: return get_container().project_analyzer`.
-- [ ] **1.3.3** В `api/routes/analyze.py` и везде, где используется get_analyzer: импортировать `get_analyzer` из `api.dependencies` (или оставить импорт из project_analyzer, но сам get_analyzer в dependencies должен вызывать container). Лучше: анализер только через Depends(get_analyzer), а get_analyzer в dependencies возвращает container.project_analyzer.
-- [ ] **1.3.4** В `infrastructure/analyzer/project_analyzer.py`: удалить глобальный `_analyzer` и функцию `get_analyzer()` (или оставить тонкую обёртку `return get_container().project_analyzer` только если не хотим импортировать container в инфраструктуру; предпочтительно — вызов только из api.dependencies).
-- [ ] **1.3.5** В `application/analysis/deep_analyzer.py`: анализатор должен получаться извне (через конструктор или вызов get_analyzer из зависимостей). Сейчас deep_analyzer вызывает get_analyzer() напрямую — заменить на зависимость: либо DeepAnalyzer(..., analyzer: ProjectAnalyzer), либо оставить вызов get_analyzer(), но get_analyzer в одном месте (dependencies) и возвращает container.project_analyzer. Проще всего: оставить в deep_analyzer импорт get_analyzer из dependencies (перенести get_analyzer в dependencies, в project_analyzer.py удалить get_analyzer и _analyzer).
-- [ ] **1.3.6** Обновить `infrastructure/analyzer/__init__.py`: экспортировать класс ProjectAnalyzer, не get_analyzer (или реэкспорт get_analyzer из api.dependencies — нежелательно из-за циклических импортов; лучше анализер получать только в API-слое через Depends).
-- [ ] **1.3.7** Тесты: проверить analyze и deep_analyzer.
+- [x] **1.3.1** В `container.py`: добавить `@cached_property def project_analyzer(self) -> ProjectAnalyzer` (создать `ProjectAnalyzer()` с нужными параметрами, если есть).
+- [x] **1.3.2** В `api/dependencies.py`: добавить `def get_analyzer() -> ProjectAnalyzer: return get_container().project_analyzer`.
+- [x] **1.3.3** В `api/routes/analyze.py` и везде, где используется get_analyzer: импортировать `get_analyzer` из `api.dependencies` (или оставить импорт из project_analyzer, но сам get_analyzer в dependencies должен вызывать container). Лучше: анализер только через Depends(get_analyzer), а get_analyzer в dependencies возвращает container.project_analyzer.
+- [x] **1.3.4** В `infrastructure/analyzer/project_analyzer.py`: удалить глобальный `_analyzer` и функцию `get_analyzer()` (или оставить тонкую обёртку `return get_container().project_analyzer` только если не хотим импортировать container в инфраструктуру; предпочтительно — вызов только из api.dependencies).
+- [x] **1.3.5** В `application/analysis/deep_analyzer.py`: анализатор должен получаться извне (через конструктор или вызов get_analyzer из зависимостей). Сейчас deep_analyzer вызывает get_analyzer() напрямую — заменить на зависимость: либо DeepAnalyzer(..., analyzer: ProjectAnalyzer), либо оставить вызов get_analyzer(), но get_analyzer в одном месте (dependencies) и возвращает container.project_analyzer. Проще всего: оставить в deep_analyzer импорт get_analyzer из dependencies (перенести get_analyzer в dependencies, в project_analyzer.py удалить get_analyzer и _analyzer).
+- [x] **1.3.6** Обновить `infrastructure/analyzer/__init__.py`: экспортировать класс ProjectAnalyzer, не get_analyzer (или реэкспорт get_analyzer из api.dependencies — нежелательно из-за циклических импортов; лучше анализер получать только в API-слое через Depends).
+- [x] **1.3.7** Тесты: проверить analyze и deep_analyzer.
 
 **Критерий:** Нет _analyzer в project_analyzer.py; анализатор создаётся в Container, в API получается через Depends(get_analyzer). deep_analyzer и analyze используют один источник (dependencies → container).
 
 **Примечание по циклам:** Container не должен импортировать api.routes.projects (get_store) до того, как store будет в container. После 1.1 container импортирует только класс ProjectsStore (из одного модуля), создаёт store сам. Тогда deep_analyzer может импортировать get_analyzer из api.dependencies только если у него нет обратной зависимости от application к api. Проверить: deep_analyzer используется в agent и в analyze routes; analyze routes уже импортируют dependencies. Значит, в deep_analyzer лучше принимать analyzer в конструкторе (инжектить из контейнера при создании DeepAnalyzer в agent/analyze), а не вызывать get_analyzer() внутри deep_analyzer — чтобы не тянуть api.dependencies в application/analysis. Итого: в container создаём project_analyzer; при создании DeepAnalyzer (где он создаётся?) — в analyze.py и в agent — передавать analyzer=get_analyzer() из Depends. Тогда deep_analyzer принимает analyzer в __init__ и не вызывает get_analyzer сам. Нужно проверить, где создаётся DeepAnalyzer.
 
-- [ ] **1.3.8** Найти все места создания DeepAnalyzer: передать туда `analyzer` из Depends(get_analyzer) или из container. В DeepAnalyzer добавить параметр `analyzer: ProjectAnalyzer` в __init__ и убрать вызов get_analyzer() внутри.
+- [x] **1.3.8** Найти все места создания DeepAnalyzer: передать туда `analyzer` из Depends(get_analyzer) или из container. В DeepAnalyzer добавить параметр `analyzer: ProjectAnalyzer` в __init__ и убрать вызов get_analyzer() внутри.
 
 ---
 
 ### 1.4 CodeSecurityChecker в Container
 
-- [ ] **1.4.1** В `container.py`: добавить `@cached_property def code_security_checker(self) -> CodeSecurityChecker` (по умолчанию strict=False). При необходимости второй — `strict_security_checker` (strict=True) или фабрика.
-- [ ] **1.4.2** В `dependencies.py`: добавить `def get_security_checker(strict: bool = False) -> CodeSecurityChecker` — возвращать container.code_security_checker или container.strict_security_checker в зависимости от strict.
-- [ ] **1.4.3** В `api/routes/code.py`: оставить Depends(get_security_checker), импорт get_security_checker из dependencies.
-- [ ] **1.4.4** В `code_security.py`: удалить _checker и логику синглтона из get_security_checker; оставить только фабрику или убрать get_security_checker из модуля (полностью перенести в dependencies).
-- [ ] **1.4.5** Тесты: test_code_security, test_code.
+- [x] **1.4.1** В `container.py`: добавить `@cached_property def code_security_checker(self) -> CodeSecurityChecker` (по умолчанию strict=False). При необходимости второй — `strict_security_checker` (strict=True) или фабрика.
+- [x] **1.4.2** В `dependencies.py`: добавить `def get_security_checker(strict: bool = False) -> CodeSecurityChecker` — возвращать container.code_security_checker или container.strict_security_checker в зависимости от strict.
+- [x] **1.4.3** В `api/routes/code.py`: оставить Depends(get_security_checker), импорт get_security_checker из dependencies.
+- [x] **1.4.4** В `code_security.py`: удалить _checker и логику синглтона из get_security_checker; оставить только фабрику или убрать get_security_checker из модуля (полностью перенести в dependencies).
+- [x] **1.4.5** Тесты: test_code_security, test_code.
 
 **Критерий:** Checker создаётся в Container; код получает его через Depends.
 
@@ -84,11 +84,11 @@
 
 ### 1.5 PerformanceMetrics в Container
 
-- [ ] **1.5.1** В `container.py`: добавить `@cached_property def performance_metrics(self) -> PerformanceMetrics`.
-- [ ] **1.5.2** В `dependencies.py`: добавить `def get_metrics() -> PerformanceMetrics: return get_container().performance_metrics`.
-- [ ] **1.5.3** В `api/routes/code.py`: использовать Depends(get_metrics), импорт из dependencies.
-- [ ] **1.5.4** В `performance_metrics.py`: удалить _metrics и синглтон из get_metrics.
-- [ ] **1.5.5** Тесты: test_performance_metrics, test_code.
+- [x] **1.5.1** В `container.py`: добавить `@cached_property def performance_metrics(self) -> PerformanceMetrics`.
+- [x] **1.5.2** В `dependencies.py`: добавить `def get_metrics() -> PerformanceMetrics: return get_container().performance_metrics`.
+- [x] **1.5.3** В `api/routes/code.py`: использовать Depends(get_metrics), импорт из dependencies.
+- [x] **1.5.4** В `performance_metrics.py`: удалить _metrics и синглтон из get_metrics.
+- [x] **1.5.5** Тесты: test_performance_metrics, test_code.
 
 **Критерий:** Метрики только из Container через dependencies.
 
@@ -96,12 +96,12 @@
 
 ### 1.6 CommandRegistry в Container
 
-- [ ] **1.6.1** В `container.py`: добавить `@cached_property def command_registry(self) -> CommandRegistry` (создать через get_default_registry() или скопировать логику регистрации команд из registry.py).
-- [ ] **1.6.2** В `container.py`: в `chat_use_case` передать `command_registry=self.command_registry` вместо вызова get_default_registry().
-- [ ] **1.6.3** В `dependencies.py`: при необходимости добавить `def get_command_registry() -> CommandRegistry: return get_container().command_registry`.
-- [ ] **1.6.4** В `application/chat/handlers/registry.py`: убрать _default_registry; get_default_registry() может вызывать get_container().command_registry только если не будет циклического импорта (registry → container → chat_use_case → registry). Безопаснее: в Container создавать CommandRegistry напрямую (скопировать построение из get_default_registry), тогда registry.py только определяет класс и регистрацию, а синглтон убрать; ChatUseCase получает registry из container.
-- [ ] **1.6.5** В chat/use_case.py: уже принимает command_registry or get_default_registry(); после 1.6.2 всегда передавать из container, убрать fallback на get_default_registry() в use_case или оставить для обратной совместимости тестов.
-- [ ] **1.6.6** Тесты: test_chat.
+- [x] **1.6.1** В `container.py`: добавить `@cached_property def command_registry(self) -> CommandRegistry` (создать через get_default_registry() или скопировать логику регистрации команд из registry.py).
+- [x] **1.6.2** В `container.py`: в `chat_use_case` передать `command_registry=self.command_registry` вместо вызова get_default_registry().
+- [x] **1.6.3** В `dependencies.py`: при необходимости добавить `def get_command_registry() -> CommandRegistry: return get_container().command_registry`.
+- [x] **1.6.4** В `application/chat/handlers/registry.py`: убрать _default_registry; get_default_registry() может вызывать get_container().command_registry только если не будет циклического импорта (registry → container → chat_use_case → registry). Безопаснее: в Container создавать CommandRegistry напрямую (скопировать построение из get_default_registry), тогда registry.py только определяет класс и регистрацию, а синглтон убрать; ChatUseCase получает registry из container.
+- [x] **1.6.5** В chat/use_case.py: уже принимает command_registry or get_default_registry(); после 1.6.2 всегда передавать из container, убрать fallback на get_default_registry() в use_case или оставить для обратной совместимости тестов.
+- [x] **1.6.6** Тесты: test_chat.
 
 **Критерий:** Один CommandRegistry из Container; в chat use case не вызывается глобальный get_default_registry.
 

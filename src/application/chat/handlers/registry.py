@@ -70,13 +70,7 @@ def create_default_registry() -> CommandRegistry:
     return registry
 
 
-# Global default registry
-_default_registry: CommandRegistry | None = None
-
-
 def get_default_registry() -> CommandRegistry:
-    """Get or create default command registry."""
-    global _default_registry
-    if _default_registry is None:
-        _default_registry = create_default_registry()
-    return _default_registry
+    """Get default command registry from container (for backward compatibility)."""
+    from src.api.container import get_container
+    return get_container().command_registry

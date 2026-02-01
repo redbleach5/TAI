@@ -20,6 +20,10 @@ if TYPE_CHECKING:
     from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
     from src.infrastructure.persistence.conversation_memory import ConversationMemory
     from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
+    from src.infrastructure.services.code_security import CodeSecurityChecker
+    from src.infrastructure.services.performance_metrics import PerformanceMetrics
+    from src.application.chat.handlers.registry import CommandRegistry
+    from src.infrastructure.services.prompt_templates import PromptLibrary
 
 
 class Container:
@@ -119,6 +123,36 @@ class Container:
         return ProjectAnalyzer()
 
     @cached_property
+    def code_security_checker(self) -> "CodeSecurityChecker":
+        """Code security checker (strict=False)."""
+        from src.infrastructure.services.code_security import CodeSecurityChecker
+        return CodeSecurityChecker(strict_mode=False)
+
+    @cached_property
+    def strict_security_checker(self) -> "CodeSecurityChecker":
+        """Code security checker (strict=True)."""
+        from src.infrastructure.services.code_security import CodeSecurityChecker
+        return CodeSecurityChecker(strict_mode=True)
+
+    @cached_property
+    def performance_metrics(self) -> "PerformanceMetrics":
+        """Performance metrics singleton."""
+        from src.infrastructure.services.performance_metrics import PerformanceMetrics
+        return PerformanceMetrics()
+
+    @cached_property
+    def command_registry(self) -> "CommandRegistry":
+        """Command registry for chat (@web, @rag, @code, etc.)."""
+        from src.application.chat.handlers.registry import create_default_registry
+        return create_default_registry()
+
+    @cached_property
+    def prompt_library(self) -> "PromptLibrary":
+        """Prompt templates library."""
+        from src.infrastructure.services.prompt_templates import PromptLibrary
+        return PromptLibrary()
+
+    @cached_property
     def agent_use_case(self) -> "AgentUseCase":
         """Agent use case for autonomous tool execution."""
         from src.application.agent.use_case import AgentUseCase
@@ -157,6 +191,7 @@ class Container:
             max_context_messages=self.config.persistence.max_context_messages,
             memory=self.conversation_memory,
             rag=self.rag,
+            command_registry=self.command_registry,
             agent_use_case=self.agent_use_case,
             workspace_path_getter=_workspace_path,
             is_indexed_getter=_is_indexed,

@@ -95,7 +95,7 @@
 | Пункт | Статус |
 |-------|--------|
 | tool_parser: статический import json | ✅ |
-| Глобальные переменные → DI | ⬜ |
+| Глобальные переменные → DI | ✅ (store, improvement, file_writer, project_analyzer в Container) |
 | project_analyzer: разбить на модули | ⬜ |
 | Большие файлы: вынести логику | ⬜ |
 

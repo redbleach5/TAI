@@ -219,15 +219,3 @@ class CodeSecurityChecker:
                 safe_lines.append(line)
         
         return "\n".join(safe_lines)
-
-
-# Singleton
-_checker: CodeSecurityChecker | None = None
-
-
-def get_security_checker(strict: bool = False) -> CodeSecurityChecker:
-    """Получить или создать security checker."""
-    global _checker
-    if _checker is None:
-        _checker = CodeSecurityChecker(strict_mode=strict)
-    return _checker
