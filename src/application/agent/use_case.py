@@ -77,6 +77,8 @@ class AgentUseCase:
             for m in request.history[-15:]:
                 msgs.append({"role": m.role, "content": m.content})
         user_content = request.message
+        if request.active_file_path:
+            user_content = f"Current file (user focused): {request.active_file_path}\n\n---\n\n{user_content}"
         if rag_context:
             user_content = f"{rag_context}\n\n---\n\n{user_content}"
         if request.context_files:
@@ -118,19 +120,26 @@ class AgentUseCase:
             if not tool_calls:
                 break
 
-            # Ollama format: assistant with tool_calls, then one tool message per call
-            ollama_tool_calls = [
-                {"type": "function", "function": {"name": tc["name"], "arguments": tc["arguments"]}}
+            # Assistant message with tool_calls (include id for OpenAI/LM Studio)
+            tool_calls_for_msg = [
+                {
+                    **({"id": tc["id"]} if tc.get("id") else {}),
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": tc.get("arguments", {}) or {}},
+                }
                 for tc in tool_calls
             ]
-            messages.append({"role": "assistant", "content": content, "tool_calls": ollama_tool_calls})
+            messages.append({"role": "assistant", "content": content, "tool_calls": tool_calls_for_msg})
 
             for tc in tool_calls:
                 name = tc.get("name", "")
                 args = tc.get("arguments", {}) or {}
                 result = await executor.execute(name, args)
                 obs = result.content if result.success else f"Error: {result.error}"
-                messages.append({"role": "tool", "tool_name": name, "content": obs})
+                msg = {"role": "tool", "content": obs}
+                if tc.get("id"):
+                    msg["tool_call_id"] = tc["id"]
+                messages.append(msg)
 
         final = "\n\n".join(full_content).strip()
         if not final:
@@ -206,11 +215,15 @@ class AgentUseCase:
             if not tool_calls:
                 break
 
-            ollama_tool_calls = [
-                {"type": "function", "function": {"name": tc["name"], "arguments": tc["arguments"]}}
+            tool_calls_for_msg = [
+                {
+                    **({"id": tc["id"]} if tc.get("id") else {}),
+                    "type": "function",
+                    "function": {"name": tc["name"], "arguments": tc.get("arguments", {}) or {}},
+                }
                 for tc in tool_calls
             ]
-            messages.append({"role": "assistant", "content": content_buf, "tool_calls": ollama_tool_calls})
+            messages.append({"role": "assistant", "content": content_buf, "tool_calls": tool_calls_for_msg})
 
             for tc in tool_calls:
                 name = tc.get("name", "")
@@ -219,7 +232,10 @@ class AgentUseCase:
                 result = await executor.execute(name, args)
                 obs = result.content if result.success else f"Error: {result.error}"
                 yield ("tool_result", obs[:500] + ("..." if len(obs) > 500 else ""))
-                messages.append({"role": "tool", "tool_name": name, "content": obs})
+                msg = {"role": "tool", "content": obs}
+                if tc.get("id"):
+                    msg["tool_call_id"] = tc["id"]
+                messages.append(msg)
 
     async def _execute_stream_prompt_based(
         self, request: ChatRequest, model: str, fallback: str, executor: ToolExecutor
@@ -269,6 +285,8 @@ class AgentUseCase:
         if request.history:
             messages.extend(request.history[-15:])
         user_content = request.message
+        if request.active_file_path:
+            user_content = f"Current file (user focused): {request.active_file_path}\n\n---\n\n{user_content}"
         if rag_context:
             user_content = f"{rag_context}\n\n---\n\n{user_content}"
         if request.context_files:

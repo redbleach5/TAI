@@ -117,7 +117,18 @@ class Container:
     @cached_property
     def chat_use_case(self) -> "ChatUseCase":
         """Chat use case with all dependencies."""
+        from pathlib import Path
+        from src.api.routes.projects import get_store
         from src.application.chat.use_case import ChatUseCase
+
+        def _workspace_path() -> str:
+            current = get_store().get_current()
+            return current.path if current else str(Path.cwd().resolve())
+
+        def _is_indexed() -> bool:
+            current = get_store().get_current()
+            return bool(current and getattr(current, "indexed", False))
+
         return ChatUseCase(
             llm=self.llm,
             model_selector=self.model_selector,
@@ -125,6 +136,8 @@ class Container:
             memory=self.conversation_memory,
             rag=self.rag,
             agent_use_case=self.agent_use_case,
+            workspace_path_getter=_workspace_path,
+            is_indexed_getter=_is_indexed,
         )
     
     @cached_property

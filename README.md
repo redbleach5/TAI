@@ -1,32 +1,23 @@
-# CodeGen AI
+# TAI (TAi)
 
-Локальная AI-система для генерации кода — альтернатива Cursor AI, работающая на собственной инфраструктуре (Ollama, LM Studio) без облачных API.
+Локальная AI-система для разработки — альтернатива Cursor AI, работающая на своей инфраструктуре (Ollama, LM Studio) без облачных API.
+
+**Репозиторий:** [github.com/redbleach5/TAI](https://github.com/redbleach5/TAI)
 
 ## Возможности
 
-- **Chat** — диалог с LLM, greeting/help без workflow
-- **Workflow** — TDD: intent → planner → researcher (RAG) → tests → coder → validator
-- **Model Router** — выбор модели по сложности задачи (config-driven, per-provider)
-- **RAG** — ChromaDB + embeddings для контекста из кодовой базы (все типы файлов, gitignore)
-- **Project Map** — автогенерация карты проекта при индексации
-- **Multi-Project** — работа с несколькими проектами
-- **Quick Commands** — @web, @code, @rag команды в чате (Cherry Studio стиль)
-- **Assistant Modes** — пресеты (Coder, Researcher, Writer, Analyst, Reviewer)
-- **Web Search** — Multi-engine (DuckDuckGo, SearXNG, Brave) с кэшированием
-- **Prompt Templates** — библиотека готовых промптов
-- **Стриминг** — SSE для chat и workflow
-- **Reasoning** — парсинг `<think>` (DeepSeek-R1, QwQ), стриминг thinking в UI
-- **Settings UI** — редактирование config через веб-интерфейс
-- **Self-Improvement** — автоматический анализ, рефакторинг и улучшение кода с retry loop
-- **Advanced IDE** — File Browser, Multi-File Editor (Monaco), Terminal, Git integration
-- **Полноценная IDE** — Monaco Editor с подсветкой синтаксиса, редактированием и выполнением кода
-- **Полированный UI** — табы IDE, индикатор шагов workflow, markdown в чате, toast, responsive
-- **Resilience** — Circuit Breaker для защиты от каскадных сбоев LLM
-- **Code Security** — проверка кода на опасные операции перед выполнением
-- **Performance Metrics** — мониторинг и адаптивные оценки времени
-- **Keyboard Layout Fix** — автоисправление текста в неправильной раскладке
-- **Project Analyzer** — комплексный анализ любого проекта (безопасность, качество, архитектура)
-- **Report Generator** — генерация Markdown отчётов с рекомендациями
+- **Чат (Cursor-like)** — диалог с LLM; модель автоматически видит открытые файлы, текущий файл и (после индексации) структуру проекта и релевантный код. Команды @web, @code, @file, @rag опциональны.
+- **Режим агента** — автономное выполнение: read_file, write_file, search_rag, run_terminal, list_files, **get_index_status**, **index_workspace** (модель может сама запустить индексацию, если пользователь забыл).
+- **Ollama и LM Studio** — оба провайдера; с LM Studio поддерживаются нативные tool calls (Qwen, Llama 3.1+ и др.).
+- **Workflow** — TDD: intent → planner → researcher (RAG) → tests → coder → validator.
+- **RAG** — ChromaDB + embeddings; индексация через UI или API; auto-RAG в чате; project map в контексте.
+- **Multi-Project** — несколько проектов, переключение workspace.
+- **Режимы ассистента** — Coder, Researcher, Writer, Analyst, Reviewer и др.
+- **Self-Improvement** — анализ проекта, улучшение кода с retry loop.
+- **IDE** — File Browser, Multi-File Editor (Monaco), Terminal, Git.
+- **Анализ проекта** — безопасность, качество, архитектура, Markdown-отчёты.
+- **Reasoning** — парсинг `<think>`, стриминг thinking в UI.
+- **Settings UI** — редактирование config через веб-интерфейс.
 
 ## Требования
 
@@ -69,57 +60,31 @@ npm run dev
 - Frontend: http://localhost:5173
 - OpenAPI: http://localhost:8000/docs
 
-### 4. RAG (опционально)
+### 4. Проект и RAG
 
-Индексация проекта для контекста в workflow:
+1. В UI откройте папку проекта (кнопка «Открыть папку»).
+2. Нажмите «Индексировать» для семантического поиска по коду (RAG). Либо в режиме агента попросите модель проиндексировать проект.
 
-```bash
-curl -X POST "http://localhost:8000/rag/index?path=."
-curl http://localhost:8000/rag/status
-```
-
-## API
+## API (основное)
 
 | Endpoint | Описание |
 |----------|----------|
 | `GET /health` | Статус backend и LLM |
-| `POST /chat` | Chat (sync) |
-| `GET /chat/stream` | Chat (SSE) |
-| `POST /workflow` | Workflow (sync) |
-| `POST /workflow?stream=true` | Workflow (SSE) |
+| `POST /chat` | Чат (sync) |
+| `POST /chat/stream` | Чат (SSE, с context_files) |
+| `GET /workspace` | Текущий workspace |
+| `POST /workspace` | Открыть папку |
+| `POST /workspace/index` | Индексация проекта для RAG |
 | `GET /models` | Список моделей провайдера |
 | `GET /conversations` | Список диалогов |
-| `GET /config` | Настройки (для Settings UI) |
-| `PATCH /config` | Обновление настроек |
-| `POST /code/run` | Выполнение кода (sandbox) |
-| `POST /improve/analyze` | Анализ проекта (issues, suggestions) |
-| `POST /improve/run` | Запуск улучшения файла |
-| `GET /improve/queue/status` | Статус очереди улучшений |
-| `POST /files/write` | Запись файла с backup |
-| `GET /files/tree` | Дерево файлов проекта |
-| `POST /files/create` | Создание файла/директории |
-| `POST /terminal/exec` | Выполнение команды |
-| `GET /git/status` | Git статус |
-| `POST /git/commit` | Git commit |
-| `POST /rag/index?path=.` | Индексация директории |
-| `GET /rag/status` | Статус RAG индекса |
-| `POST /rag/search` | Поиск по индексу |
-| `GET /rag/project-map` | Карта проекта |
-| `GET /projects` | Список проектов |
-| `POST /projects` | Добавить проект |
-| `POST /projects/{id}/index` | Индексировать проект |
-| `GET /assistant/modes` | Список режимов ассистента |
-| `GET /assistant/templates` | Список шаблонов промптов |
-| `POST /assistant/search/web` | Веб-поиск (multi-engine) |
-| `POST /code/check` | Проверка безопасности кода |
-| `GET /code/metrics` | Метрики выполнения кода |
-| `GET /models/resilience` | Статус Circuit Breaker |
-| `GET /models/router/cache` | Статистика кэша Model Router |
+| `GET /config`, `PATCH /config` | Настройки |
+| `POST /files/read`, `POST /files/write` | Чтение/запись файлов |
+| `GET /files/tree` | Дерево файлов |
+| `POST /improve/analyze`, `POST /improve/run` | Анализ и улучшение кода |
 | `POST /analyze/project` | Полный анализ проекта |
-| `POST /analyze/project/detailed` | Детальный анализ со всеми данными |
-| `POST /analyze/project/report` | Markdown отчёт анализа |
-| `POST /analyze/security` | Только проверка безопасности |
-| `GET /analyze/compare` | Сравнение двух проектов |
+| `POST /workflow` | Workflow (генерация кода) |
+
+Полный список: http://localhost:8000/docs
 
 ## Конфигурация
 
@@ -127,58 +92,37 @@ curl http://localhost:8000/rag/status
 - `config/development.toml` — переопределения для dev
 - Переменные окружения: см. `.env.example`
 
-### Ключевые секции
-
 | Секция | Описание |
 |--------|----------|
 | `[llm] provider` | `ollama` \| `lm_studio` |
 | `[models]` | Модели по сложности (defaults для Ollama) |
-| `[models.lm_studio]` | Overrides для LM Studio (`simple = "local"` и т.д.) |
-| `[embeddings] model` | Модель для RAG (`nomic-embed-text`) |
+| `[models.lm_studio]` | Overrides для LM Studio |
+| `[embeddings] model` | Модель для RAG |
 | `[rag]` | ChromaDB path, chunk_size, chunk_overlap |
 
 ## Структура проекта
 
 ```
 ├── src/
-│   ├── api/              # Routes, dependencies
-│   ├── application/      # ChatUseCase, WorkflowUseCase
-│   ├── domain/           # Entities, Ports (LLMPort, RAGPort, EmbeddingsPort)
+│   ├── api/              # Routes, dependencies, container
+│   ├── application/      # ChatUseCase, AgentUseCase, WorkflowUseCase, Improvement
+│   ├── domain/           # Entities, Ports (LLMPort, RAGPort), Services
 │   ├── infrastructure/   # Ollama, LM Studio, ChromaDB, agents
-│   └── shared/           # Logging
+│   └── shared/
 ├── frontend/             # React + TypeScript + Vite
 ├── config/               # TOML
+├── docs/                 # Документация
 └── tests/
 ```
 
-## План развития
-
-См. [plan.md](plan.md) — фазы 0–6.
-
-| Фаза | Статус | Описание |
-|------|--------|----------|
-| 0 | ✓ | Фундамент: Ollama + LM Studio, config, CORS, rate limit |
-| 1 | ✓ | Chat: SSE, ConversationMemory, intent, layout |
-| 2 | ✓ | Model Router: per-provider overrides, fallback |
-| 3 | ✓ | Workflow: LangGraph, planner → researcher → tests → coder → validator |
-| 4 | ✓ | RAG: ChromaDB, embeddings, researcher node |
-| 5 | ✓ | IDE: код, Copy, Download, layout split |
-| 6 | ✓ | Reasoning, Settings UI, документация |
-| 7 | ✓ | Self-Improvement: анализ, рефакторинг с retry loop |
-| 8 | ✓ | Advanced IDE: File Browser, Terminal, Git integration |
-| 9 | ✓ | Smart Context: расширенный RAG, Project Map, Multi-Project |
-| 10 | ✓ | Cherry Studio: @commands, modes, templates, web search |
-| 11 | ✓ | Resilience: Circuit Breaker, Code Security, Performance Metrics |
-| 12 | ✓ | Project Analyzer: анализ любого проекта, отчёты, сравнение |
-
-## Проверка
-
-См. [check.md](check.md) — чеклист для ручной проверки по фазам.
-
 ## Документация
 
-- [plan.md](plan.md) — план реализации
-- [check.md](check.md) — руководство по проверке
+- [CONTRIBUTING.md](CONTRIBUTING.md) — как внести вклад
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — архитектура
-- [docs/API_REFERENCE.md](docs/API_REFERENCE.md) — API reference
-- [CONTRIBUTING.md](CONTRIBUTING.md) — руководство по внесению вклада
+- [docs/CURSOR_LEVEL_ROADMAP.md](docs/CURSOR_LEVEL_ROADMAP.md) — план развития (уровень Cursor)
+- [docs/CHAT_PROJECT_CONTEXT_ANALYSIS.md](docs/CHAT_PROJECT_CONTEXT_ANALYSIS.md) — контекст чата и открытый проект
+- [docs/CHECKLIST.md](docs/CHECKLIST.md) — чеклист ручной проверки
+
+## Лицензия
+
+См. репозиторий.

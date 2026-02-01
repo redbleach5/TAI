@@ -1,7 +1,16 @@
-import { useState, useCallback, useEffect } from 'react'
-import { postChat, postChatStream, type ChatMessage } from '../../api/client'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import {
+  postChat,
+  postChatStream,
+  getConversations,
+  getConversation,
+  deleteConversation as apiDeleteConversation,
+  type ChatMessage,
+} from '../../api/client'
 
 const CHAT_STORAGE_KEY = 'tai-chat'
+const CHAT_TITLES_KEY = 'tai-chat-titles'
+const TITLE_MAX_LEN = 48
 
 function loadFromStorage(): { messages: ChatMessage[]; conversationId: string | null } {
   try {
@@ -31,6 +40,45 @@ function saveToStorage(messages: ChatMessage[], conversationId: string | null) {
   }
 }
 
+function loadTitles(): Record<string, string> {
+  try {
+    const raw = localStorage.getItem(CHAT_TITLES_KEY)
+    if (!raw) return {}
+    const data = JSON.parse(raw)
+    return typeof data === 'object' && data !== null ? data : {}
+  } catch {
+    return {}
+  }
+}
+
+function saveTitle(conversationId: string, title: string) {
+  const titles = loadTitles()
+  if (title.trim()) {
+    titles[conversationId] = title.trim().slice(0, TITLE_MAX_LEN)
+    try {
+      localStorage.setItem(CHAT_TITLES_KEY, JSON.stringify(titles))
+    } catch {
+      // ignore
+    }
+  }
+}
+
+function removeTitle(conversationId: string) {
+  const titles = loadTitles()
+  delete titles[conversationId]
+  try {
+    localStorage.setItem(CHAT_TITLES_KEY, JSON.stringify(titles))
+  } catch {
+    // ignore
+  }
+}
+
+function firstUserMessageTitle(messages: ChatMessage[]): string {
+  const first = messages.find((m) => m.role === 'user')
+  if (!first?.content?.trim()) return 'Новый чат'
+  return first.content.trim().replace(/\s+/g, ' ').slice(0, TITLE_MAX_LEN)
+}
+
 export const ANALYZE_PATTERNS = [
   'проанализируй', 'проанализировать', 'анализ проекта', 'анализируй проект',
   'analyze project', 'analyze the project', 'проанализируйте',
@@ -42,8 +90,10 @@ export function isAnalyzeIntent(text: string): boolean {
 }
 
 export interface UseChatOptions {
-  /** Get open files to include as context (Cursor-like) */
+  /** Get open files to include as context (Cursor-like — model sees them automatically) */
   getContextFiles?: () => Array<{ path: string; content: string }>
+  /** Get path of the focused tab — "current file" for the model */
+  getActiveFilePath?: () => string | undefined
   /** Callback when agent executes a tool (mode=agent) */
   onToolCall?: (toolAndArgs: string) => void
   /** Callback when agent receives tool result */
@@ -52,17 +102,83 @@ export interface UseChatOptions {
   onAnalyzeRequest?: (skipUserMessage?: boolean) => Promise<void>
 }
 
+export interface ConversationItem {
+  id: string
+  title: string
+}
+
 export function useChat(options: UseChatOptions = {}) {
-  const { getContextFiles, onToolCall, onToolResult, onAnalyzeRequest } = options
+  const { getContextFiles, getActiveFilePath, onToolCall, onToolResult, onAnalyzeRequest } = options
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadFromStorage().messages)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [conversationId, setConversationId] = useState<string | null>(() => loadFromStorage().conversationId)
   const [streaming, setStreaming] = useState(false)
+  const [conversations, setConversations] = useState<ConversationItem[]>([])
+
+  // Ref so sync postChat always uses latest messages for history (avoids stale closure).
+  // Backend contract: history = previous turns only; current message is sent as `message` and appended server-side.
+  const messagesRef = useRef<ChatMessage[]>(messages)
+  messagesRef.current = messages
 
   useEffect(() => {
     saveToStorage(messages, conversationId)
   }, [messages, conversationId])
+
+  const refreshConversations = useCallback(async () => {
+    try {
+      const list = await getConversations()
+      setConversations(list.map((c) => ({ id: c.id, title: c.title || 'Без названия' })))
+    } catch {
+      setConversations([])
+    }
+  }, [])
+
+  const startNewConversation = useCallback(() => {
+    if (conversationId && messages.length > 0) {
+      saveTitle(conversationId, firstUserMessageTitle(messages))
+    }
+    setMessages([])
+    setConversationId(null)
+    setError(null)
+    saveToStorage([], null)
+    refreshConversations()
+  }, [conversationId, messages.length, refreshConversations])
+
+  const switchConversation = useCallback(
+    async (id: string) => {
+      if (id === conversationId) return
+      try {
+        const list = await getConversation(id)
+        const msgs: ChatMessage[] = list.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }))
+        const title = list.find((m) => m.role === 'user')?.content?.trim()
+        if (title) saveTitle(id, title.slice(0, TITLE_MAX_LEN))
+        setMessages(msgs)
+        setConversationId(id)
+        setError(null)
+        saveToStorage(msgs, id)
+      } catch {
+        setError('Не удалось загрузить чат')
+      }
+    },
+    [conversationId]
+  )
+
+  const deleteConversation = useCallback(
+    async (id: string) => {
+      try {
+        await apiDeleteConversation(id)
+        removeTitle(id)
+        await refreshConversations()
+        if (conversationId === id) {
+          startNewConversation()
+        }
+      } catch {
+        setError('Не удалось удалить чат')
+      }
+    },
+    [conversationId, refreshConversations, startNewConversation]
+  )
 
   const send = useCallback(
     async (text: string, useStream = false, modeId = 'default', model?: string) => {
@@ -94,6 +210,7 @@ export function useChat(options: UseChatOptions = {}) {
         mode_id: modeId,
         model: model || undefined,
         context_files: contextFiles.length ? contextFiles : undefined,
+        active_file_path: getActiveFilePath?.() ?? undefined,
       }
 
       try {
@@ -142,7 +259,10 @@ export function useChat(options: UseChatOptions = {}) {
               } else if (eventType === 'done' && data) {
                 try {
                   const parsed = JSON.parse(data)
-                  if (parsed.conversation_id) setConversationId(parsed.conversation_id)
+                  if (parsed.conversation_id) {
+                    setConversationId(parsed.conversation_id)
+                    saveTitle(parsed.conversation_id, firstUserMessageTitle(messagesRef.current))
+                  }
                   if (parsed.model != null) modelName = String(parsed.model)
                 } catch {
                   setConversationId(data)
@@ -155,10 +275,13 @@ export function useChat(options: UseChatOptions = {}) {
           // Final update so watermark (model) is applied after stream ends
           updateMessage()
         } else {
-          const history = messages.map((m) => ({ role: m.role, content: m.content }))
+          // Use ref so history is the latest at call time (avoids stale closure after async setState).
+          // API contract: history = previous turns only; current message is in req.message, backend appends it.
+          const previousMessages = messagesRef.current
+          const historyForRequest = previousMessages.map((m) => ({ role: m.role, content: m.content }))
           const response = await postChat({
             ...req,
-            history: history.length > 0 ? history : undefined,
+            history: historyForRequest.length > 0 ? historyForRequest : undefined,
           })
           setMessages((prev) => [
             ...prev,
@@ -166,6 +289,7 @@ export function useChat(options: UseChatOptions = {}) {
           ])
           if (response.conversation_id) {
             setConversationId(response.conversation_id)
+            saveTitle(response.conversation_id, firstUserMessageTitle(messagesRef.current))
           }
         }
       } catch (e) {
@@ -175,15 +299,13 @@ export function useChat(options: UseChatOptions = {}) {
         setStreaming(false)
       }
     },
-    [messages, loading, conversationId, getContextFiles, onToolCall, onToolResult, onAnalyzeRequest]
+    [messages, loading, conversationId, getContextFiles, getActiveFilePath, onToolCall, onToolResult, onAnalyzeRequest]
   )
 
+  /** New chat: save current title and clear (Cursor-like). Use this instead of clear. */
   const clear = useCallback(() => {
-    setMessages([])
-    setConversationId(null)
-    setError(null)
-    saveToStorage([], null)
-  }, [])
+    startNewConversation()
+  }, [startNewConversation])
 
   /** Add message (for Analyze, Generate results) */
   const addMessage = useCallback((role: 'user' | 'assistant', content: string) => {
@@ -204,5 +326,26 @@ export function useChat(options: UseChatOptions = {}) {
     })
   }, [])
 
-  return { messages, loading, streaming, error, send, clear, addMessage, updateLastAssistant, conversationId }
+  const currentTitle =
+    conversationId && messages.length > 0
+      ? (loadTitles()[conversationId] || firstUserMessageTitle(messages))
+      : 'Новый чат'
+
+  return {
+    messages,
+    loading,
+    streaming,
+    error,
+    send,
+    clear,
+    addMessage,
+    updateLastAssistant,
+    conversationId,
+    conversations,
+    refreshConversations,
+    startNewConversation,
+    switchConversation,
+    deleteConversation,
+    currentTitle,
+  }
 }

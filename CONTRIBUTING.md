@@ -1,6 +1,6 @@
 # Руководство по внесению вклада
 
-Спасибо за интерес к проекту CodeGen AI. Ниже — как внести вклад.
+Спасибо за интерес к проекту TAI. Ниже — как внести вклад.
 
 ## Требования
 
@@ -39,7 +39,7 @@ ruff check src/
 Проект следует слоистой архитектуре:
 
 - **API** — FastAPI routes, только маршрутизация и валидация
-- **Application** — Use Cases (ChatUseCase, WorkflowUseCase)
+- **Application** — Use Cases (ChatUseCase, AgentUseCase, WorkflowUseCase, ImprovementUseCase)
 - **Domain** — Entities, Ports (Protocol), Services
 - **Infrastructure** — Adapters (Ollama, LM Studio, ChromaDB, agents)
 
@@ -61,4 +61,4 @@ ruff check src/
 
 ## Вопросы
 
-Откройте issue в репозитории.
+Откройте [issue](https://github.com/redbleach5/TAI/issues) в репозитории.

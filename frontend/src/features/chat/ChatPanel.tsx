@@ -2,7 +2,7 @@
  * Chat panel — Cursor-like: modes, Analyze, Improve, Generate inline.
  */
 import { useRef, useEffect, useState, useCallback } from 'react'
-import { Plus, Globe, Code, Search, Wand2, Workflow, Loader2, Bot, Sparkles } from 'lucide-react'
+import { Plus, Globe, Code, Search, Wand2, Workflow, Loader2, Bot, Sparkles, MessageSquare, ChevronDown, Trash2, PanelRightClose } from 'lucide-react'
 import { useChat, isAnalyzeIntent } from './useChat'
 import { ChatMessage } from './ChatMessage'
 import { ChatInput } from './ChatInput'
@@ -13,13 +13,16 @@ import { TemplateSelector } from '../assistant/TemplateSelector'
 import { useWorkspace } from '../workspace/useWorkspace'
 import { useOpenFilesContext } from '../editor/OpenFilesContext'
 import { useToast } from '../toast/ToastContext'
+import { Tooltip } from '../ui/Tooltip'
 import { postImprove } from '../../api/client'
 
 interface ChatPanelProps {
   hasEditorContext?: boolean
+  /** Свернуть панель чата — освободить место для редактора */
+  onCollapse?: () => void
 }
 
-export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
+export function ChatPanel({ hasEditorContext, onCollapse }: ChatPanelProps) {
   const openFilesCtx = useOpenFilesContext()
   const getContextFiles = (hasEditorContext && openFilesCtx) ? openFilesCtx.getContextFiles : () => []
   const { show: showToast } = useToast()
@@ -34,8 +37,25 @@ export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
   const [improveRelatedFiles, setImproveRelatedFiles] = useState('')
 
   const handleAnalyzeRef = useRef<((skipUserMessage?: boolean) => Promise<void>) | null>(null)
-  const { messages, loading, streaming, error, send, clear, addMessage, updateLastAssistant } = useChat({
+  const {
+    messages,
+    loading,
+    streaming,
+    error,
+    send,
+    clear,
+    addMessage,
+    updateLastAssistant,
+    conversationId,
+    conversations,
+    refreshConversations,
+    startNewConversation,
+    switchConversation,
+    deleteConversation,
+    currentTitle,
+  } = useChat({
     getContextFiles,
+    getActiveFilePath: () => openFilesCtx?.getActiveFile()?.path,
     onToolCall: (toolAndArgs) => showToast(`Агент: ${toolAndArgs}`, 'info'),
     onAnalyzeRequest: (skipUserMessage?: boolean) => {
       const fn = handleAnalyzeRef.current
@@ -43,6 +63,36 @@ export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
       return Promise.resolve()
     },
   })
+  const [showConversations, setShowConversations] = useState(false)
+  const conversationsRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!showConversations) return
+    refreshConversations()
+  }, [showConversations, refreshConversations])
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (conversationsRef.current && !conversationsRef.current.contains(e.target as Node)) {
+        setShowConversations(false)
+      }
+    }
+    if (showConversations) {
+      document.addEventListener('click', handleClickOutside)
+      return () => document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showConversations])
+
+  useEffect(() => {
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setShowConversations(false)
+        setShowTemplates(false)
+      }
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [])
 
   const handleAnalyze = useCallback(async (skipUserMessage?: boolean) => {
     if (analyzing) return
@@ -196,47 +246,129 @@ export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
   return (
     <div className="chat-panel">
       <div className="chat-panel__header">
-        <span className="chat-panel__title">
-          Помощник
-          {hasEditorContext && openFilesCtx && openFilesCtx.files.size > 0 && (
-            <span className="chat-panel__context-hint" title="AI видит открытые файлы">
-              {openFilesCtx.files.size}
-            </span>
+        <div className="chat-panel__conversations" ref={conversationsRef}>
+          <Tooltip text="Чаты: переключение и новый чат" side="bottom">
+            <button
+              type="button"
+              className="chat-panel__conversations-trigger"
+              onClick={() => setShowConversations((v) => !v)}
+              aria-label="Чаты"
+            >
+              <MessageSquare size={14} />
+              <span className="chat-panel__conversations-title">{currentTitle}</span>
+              <ChevronDown size={12} className={showConversations ? 'chat-panel__chevron--open' : ''} />
+            </button>
+          </Tooltip>
+          {showConversations && (
+            <div className="chat-panel__conversations-dropdown">
+              <Tooltip text="Начать новый разговор" side="right">
+                <button
+                  type="button"
+                  className="chat-panel__conversations-item chat-panel__conversations-item--new"
+                  onClick={() => {
+                    startNewConversation()
+                    setShowConversations(false)
+                  }}
+                  aria-label="Новый чат"
+                >
+                  <Plus size={14} />
+                  <span>Новый чат</span>
+                </button>
+              </Tooltip>
+              {conversations.length === 0 && (
+                <div className="chat-panel__conversations-empty">Нет сохранённых чатов</div>
+              )}
+              {conversations.map((c) => (
+                <div
+                  key={c.id}
+                  className={`chat-panel__conversations-row ${c.id === conversationId ? 'chat-panel__conversations-item--active' : ''}`}
+                >
+                  <button
+                    type="button"
+                    className="chat-panel__conversations-item"
+                    onClick={() => {
+                      switchConversation(c.id)
+                      setShowConversations(false)
+                    }}
+                    title={c.title}
+                  >
+                    <MessageSquare size={12} />
+                    <span>{c.title}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="chat-panel__conversations-delete"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      if (window.confirm(`Удалить чат «${c.title}»?`)) {
+                        deleteConversation(c.id)
+                        setShowConversations(false)
+                      }
+                    }}
+                    title="Удалить чат"
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
           )}
-        </span>
-        {messages.length > 0 && (
-          <button type="button" className="chat-panel__new-btn" onClick={clear} title="Новый разговор">
-            <Plus size={14} />
-            <span>Новый</span>
-          </button>
-        )}
+        </div>
+        <div className="chat-panel__header-actions">
+          {hasEditorContext && openFilesCtx && openFilesCtx.files.size > 0 && (
+            <Tooltip
+              text={Array.from(openFilesCtx.files.keys()).join('\n')}
+              side="bottom"
+            >
+              <span className="chat-panel__context-hint" title="AI видит эти открытые файлы (как в Cursor)">
+                {openFilesCtx.files.size} файл{openFilesCtx.files.size === 1 ? '' : openFilesCtx.files.size >= 2 && openFilesCtx.files.size <= 4 ? 'а' : 'ов'}
+              </span>
+            </Tooltip>
+          )}
+          {onCollapse && (
+            <Tooltip text="Свернуть чат — больше места для кода" side="bottom">
+              <button
+                type="button"
+                className="chat-panel__collapse-btn"
+                onClick={onCollapse}
+                aria-label="Свернуть чат"
+              >
+                <PanelRightClose size={14} />
+              </button>
+            </Tooltip>
+          )}
+        </div>
       </div>
 
       {/* Quick actions — Cursor-like, refined */}
       {workspace && (
         <div className="chat-panel__actions">
           <div className="chat-panel__actions-row">
-            <button
-              type="button"
-              className="chat-panel__action"
-              onClick={() => handleAnalyze()}
-              disabled={busy}
-              title="Анализ кода"
-            >
-              {analyzing ? <Loader2 size={14} className="icon-spin" /> : <Wand2 size={14} />}
-              <span>Анализ</span>
-            </button>
-            <div className="chat-panel__improve">
+            <Tooltip text="Анализ проекта" side="bottom">
               <button
                 type="button"
-                className={`chat-panel__action ${showImproveForm ? 'chat-panel__action--active' : ''}`}
-                onClick={() => setShowImproveForm((v) => !v)}
+                className="chat-panel__action"
+                onClick={() => handleAnalyze()}
                 disabled={busy}
-                title="Улучшить открытый файл"
+                aria-label="Анализ проекта"
               >
-                {improving ? <Loader2 size={14} className="icon-spin" /> : <Sparkles size={14} />}
-                <span>Improve</span>
+                {analyzing ? <Loader2 size={14} className="icon-spin" /> : <Wand2 size={14} />}
+                <span>Анализ</span>
               </button>
+            </Tooltip>
+            <div className="chat-panel__improve">
+              <Tooltip text="Улучшить открытый файл" side="bottom">
+                <button
+                  type="button"
+                  className={`chat-panel__action ${showImproveForm ? 'chat-panel__action--active' : ''}`}
+                  onClick={() => setShowImproveForm((v) => !v)}
+                  disabled={busy}
+                  aria-label="Улучшить открытый файл"
+                >
+                  {improving ? <Loader2 size={14} className="icon-spin" /> : <Sparkles size={14} />}
+                  <span>Improve</span>
+                </button>
+              </Tooltip>
               {showImproveForm && openFilesCtx?.getActiveFile?.() && (
                 <div className="chat-panel__improve-form">
                   <div className="chat-panel__improve-file">
@@ -258,15 +390,18 @@ export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
                     onChange={(e) => setImproveRelatedFiles(e.target.value)}
                     disabled={improving}
                   />
-                  <button
-                    type="button"
-                    className="chat-panel__action chat-panel__action--primary chat-panel__improve-run"
-                    onClick={handleImprove}
-                    disabled={improving}
-                  >
-                    {improving ? <Loader2 size={14} className="icon-spin" /> : <Sparkles size={14} />}
-                    Запустить
-                  </button>
+                  <Tooltip text="Запустить улучшение" side="bottom">
+                    <button
+                      type="button"
+                      className="chat-panel__action chat-panel__action--primary chat-panel__improve-run"
+                      onClick={handleImprove}
+                      disabled={improving}
+                      aria-label="Запустить улучшение"
+                    >
+                      {improving ? <Loader2 size={14} className="icon-spin" /> : <Sparkles size={14} />}
+                      Запустить
+                    </button>
+                  </Tooltip>
                 </div>
               )}
               {showImproveForm && !openFilesCtx?.getActiveFile?.() && (
@@ -293,24 +428,26 @@ export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
                 }}
                 disabled={busy}
               />
-              <button
-                type="button"
-                className="chat-panel__action chat-panel__action--primary"
-                onClick={() => {
-                  if (isAnalyzeIntent(generateTask)) {
-                    addMessage('user', generateTask.trim())
-                    handleAnalyze(true)
-                    setGenerateTask('')
-                  } else {
-                    handleGenerate()
-                  }
-                }}
-                disabled={busy}
-                title="Сгенерировать код"
-              >
-                {generating ? <Loader2 size={14} className="icon-spin" /> : <Workflow size={14} />}
-                <span>Generate</span>
-              </button>
+              <Tooltip text="Сгенерировать код" side="bottom">
+                <button
+                  type="button"
+                  className="chat-panel__action chat-panel__action--primary"
+                  onClick={() => {
+                    if (isAnalyzeIntent(generateTask)) {
+                      addMessage('user', generateTask.trim())
+                      handleAnalyze(true)
+                      setGenerateTask('')
+                    } else {
+                      handleGenerate()
+                    }
+                  }}
+                  disabled={busy}
+                  aria-label="Сгенерировать код"
+                >
+                  {generating ? <Loader2 size={14} className="icon-spin" /> : <Workflow size={14} />}
+                  <span>Generate</span>
+                </button>
+              </Tooltip>
             </div>
           </div>
         </div>
@@ -319,7 +456,27 @@ export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
       <div className="chat-panel__messages" ref={scrollRef}>
         {messages.length === 0 && (
           <div className="chat-panel__empty">
-            <p className="chat-panel__empty-title">Чем помочь?</p>
+            <p className="chat-panel__empty-head">
+              Чем помочь? <span className="chat-panel__empty-hint">Напишите запрос или выберите подсказку</span>
+            </p>
+            <div className="chat-panel__empty-suggestions">
+              {[
+                'Объясни этот код простыми словами',
+                'Напиши юнит-тесты для этой функции',
+                'Найди возможные баги и улучши код',
+                'Сделай рефакторинг для читаемости',
+              ].map((text) => (
+                <button
+                  key={text}
+                  type="button"
+                  className="chat-panel__empty-suggestion"
+                  onClick={() => handleSend(text)}
+                  disabled={busy}
+                >
+                  {text}
+                </button>
+              ))}
+            </div>
             <div className="chat-panel__empty-commands">
               <span className="chat-panel__empty-command"><Globe size={14} /><code>@web</code> поиск</span>
               <span className="chat-panel__empty-command"><Code size={14} /><code>@code</code> файл</span>
@@ -366,6 +523,7 @@ export function ChatPanel({ hasEditorContext }: ChatPanelProps) {
         searchWeb={searchWeb}
         onSearchWebChange={setSearchWeb}
         onInsertTemplate={() => setShowTemplates(true)}
+        hasEditorContext={hasEditorContext && (openFilesCtx?.files.size ?? 0) > 0}
         modeSelector={<ModeSelector modes={modes} currentMode={currentMode} onSelect={setCurrentMode} compact />}
         modelSelector={<ModelSelector value={model} onChange={setModel} />}
       />

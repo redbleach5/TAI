@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 import httpx
 
@@ -127,3 +127,161 @@ class OpenAICompatibleAdapter:
                 return [m.get("id", "") for m in models if m.get("id")]
         except Exception:
             return []
+
+    def _messages_to_openai(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Convert internal messages (with tool_call_id, tool_calls) to OpenAI API format."""
+        out: list[dict[str, Any]] = []
+        for m in messages:
+            role = m.get("role", "")
+            if role == "tool":
+                out.append({
+                    "role": "tool",
+                    "content": m.get("content", ""),
+                    "tool_call_id": m.get("tool_call_id", ""),
+                })
+            elif role == "assistant" and m.get("tool_calls"):
+                tcs = m["tool_calls"]
+                openai_tcs = []
+                for tc in tcs:
+                    fn = tc.get("function", tc) if isinstance(tc.get("function"), dict) else {"name": tc.get("name", ""), "arguments": tc.get("arguments", {})}
+                    name = fn.get("name", "") if isinstance(fn, dict) else getattr(fn, "name", "")
+                    args = fn.get("arguments", {}) if isinstance(fn, dict) else getattr(fn, "arguments", {})
+                    if isinstance(args, dict):
+                        args = json.dumps(args) if args else "{}"
+                    openai_tcs.append({
+                        "id": tc.get("id", ""),
+                        "type": "function",
+                        "function": {"name": name, "arguments": args},
+                    })
+                out.append({"role": "assistant", "content": m.get("content") or "", "tool_calls": openai_tcs})
+            else:
+                out.append({"role": role, "content": m.get("content", "")})
+        return out
+
+    async def chat_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict],
+        model: str | None = None,
+        temperature: float = 0.3,
+    ) -> tuple[str, list[dict]]:
+        """Chat with tools (OpenAI / LM Studio tool use). Returns (content, tool_calls with id)."""
+        model = model or "default"
+        body = {
+            "model": model,
+            "messages": self._messages_to_openai(messages),
+            "tools": tools,
+            "temperature": temperature,
+            "stream": False,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self._config.timeout) as client:
+                resp = await client.post(
+                    f"{self._base_url}/chat/completions",
+                    json=body,
+                    headers=self._headers,
+                )
+                if resp.status_code >= 400:
+                    logger.warning("LM Studio tool call API error %s: %s", resp.status_code, resp.text[:300])
+                    return ("", [])
+                data = resp.json()
+        except Exception as e:
+            logger.warning("LM Studio chat_with_tools failed: %s", e)
+            return ("", [])
+        choice = data.get("choices", [{}])[0]
+        msg = choice.get("message", {})
+        content = msg.get("content") or ""
+        raw_tcs = msg.get("tool_calls") or []
+        calls = []
+        for tc in raw_tcs:
+            fn = tc.get("function", {})
+            name = fn.get("name", "")
+            args = fn.get("arguments", "{}")
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args) if args.strip() else {}
+                except json.JSONDecodeError:
+                    args = {}
+            calls.append({
+                "name": name,
+                "arguments": args or {},
+                "id": tc.get("id", ""),
+            })
+        return (content, calls)
+
+    async def chat_with_tools_stream(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict],
+        model: str | None = None,
+        temperature: float = 0.3,
+    ) -> AsyncIterator[tuple[str, str | list[dict] | None]]:
+        """Stream chat with tools. Yields (kind, data): content chunks, then ('tool_calls', [...]) or ('done', None)."""
+        model = model or "default"
+        body = {
+            "model": model,
+            "messages": self._messages_to_openai(messages),
+            "tools": tools,
+            "temperature": temperature,
+            "stream": True,
+        }
+        try:
+            async with httpx.AsyncClient(timeout=self._config.timeout) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self._base_url}/chat/completions",
+                    json=body,
+                    headers=self._headers,
+                ) as resp:
+                    if resp.status_code >= 400:
+                        err = await resp.aread()
+                        logger.warning("LM Studio stream tool API error %s: %s", resp.status_code, err[:300])
+                        yield ("content", "")
+                        yield ("done", None)
+                        return
+                    content_buf = ""
+                    tool_calls_acc: list[dict[str, Any]] = []
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        chunk = line[6:]
+                        if chunk.strip() == "[DONE]":
+                            break
+                        try:
+                            data = json.loads(chunk)
+                            delta = data.get("choices", [{}])[0].get("delta", {})
+                            if delta.get("content"):
+                                content_buf += delta["content"]
+                                yield ("content", delta["content"])
+                            for tc_delta in delta.get("tool_calls") or []:
+                                idx = tc_delta.get("index", 0)
+                                while len(tool_calls_acc) <= idx:
+                                    tool_calls_acc.append({"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
+                                acc = tool_calls_acc[idx]
+                                acc["id"] = acc.get("id", "") or tc_delta.get("id", "")
+                                fn = acc.setdefault("function", {"name": "", "arguments": ""})
+                                fn["name"] = fn.get("name", "") or (tc_delta.get("function") or {}).get("name", "")
+                                fn["arguments"] = (fn.get("arguments") or "") + (tc_delta.get("function") or {}).get("arguments", "")
+                        except json.JSONDecodeError:
+                            pass
+                    calls = []
+                    for acc in tool_calls_acc:
+                        fn = acc.get("function", {})
+                        args = fn.get("arguments", "{}")
+                        if isinstance(args, str):
+                            try:
+                                args = json.loads(args) if args.strip() else {}
+                            except json.JSONDecodeError:
+                                args = {}
+                        calls.append({
+                            "name": fn.get("name", ""),
+                            "arguments": args or {},
+                            "id": acc.get("id", ""),
+                        })
+                    if calls:
+                        yield ("tool_calls", calls)
+                    yield ("done", None)
+        except Exception as e:
+            logger.warning("LM Studio chat_with_tools_stream failed: %s", e)
+            yield ("content", "")
+            yield ("done", None)

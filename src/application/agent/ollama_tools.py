@@ -72,11 +72,34 @@ OLLAMA_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_index_status",
+            "description": "Check if the project is indexed for code search. Use when user asks about codebase but search_rag returns nothing — then suggest or call index_workspace.",
+            "parameters": {"type": "object", "properties": {}},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "index_workspace",
+            "description": "Index the project for semantic code search. Call when user needs to search the codebase but project is not indexed (user may have forgotten).",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "incremental": {"type": "boolean", "description": "If true (default), only new/changed files; if false, full reindex."},
+                },
+            },
+        },
+    },
 ]
 
-AGENT_SYSTEM_PROMPT_NATIVE = """You are an autonomous coding agent. You can read files, write files, search the codebase, run terminal commands, and list directories.
+AGENT_SYSTEM_PROMPT_NATIVE = """You are an autonomous coding agent. You can read files, write files, search the codebase, run terminal commands, list directories, and index the project.
 
 Your goal: accomplish the user's task step by step. Use tools when needed. Think before acting.
+
+If the user asks about the codebase (e.g. "how does X work?", "where is Y?") and search_rag returns no results, check get_index_status(). If the project is not indexed, call index_workspace() so you can search the code — the user may have forgotten to index.
 
 Rules:
 - Use ONE tool at a time. After receiving the result, analyze it and either call another tool or give your final answer.

@@ -31,7 +31,8 @@ export interface ChatRequest {
   conversation_id?: string
   mode_id?: string
   model?: string  // Override model (Cursor-like)
-  context_files?: ContextFile[]
+  context_files?: ContextFile[]  // Open files — model sees them automatically (Cursor-like)
+  active_file_path?: string     // Focused tab — "current file" for the model
 }
 
 export interface ChatResponse {
@@ -113,6 +114,35 @@ export async function postChatStream(request: ChatRequest): Promise<Response> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
   })
+}
+
+// Conversations (list / load / delete — Cursor-like)
+export interface ConversationListItem {
+  id: string
+  title: string
+}
+
+export async function getConversations(): Promise<ConversationListItem[]> {
+  const res = await fetch(`${API_BASE}/conversations`)
+  if (!res.ok) throw new Error(`Conversations list failed: ${res.status}`)
+  const list = await res.json()
+  return Array.isArray(list)
+    ? list.map((x: { id?: string; title?: string }) => ({
+        id: x.id ?? '',
+        title: (x.title && String(x.title).trim()) ? String(x.title).trim() : 'Без названия',
+      }))
+    : []
+}
+
+export async function getConversation(conversationId: string): Promise<Array<{ role: string; content: string }>> {
+  const res = await fetch(`${API_BASE}/conversations/${encodeURIComponent(conversationId)}`)
+  if (!res.ok) throw new Error(`Conversation load failed: ${res.status}`)
+  return res.json()
+}
+
+export async function deleteConversation(conversationId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/conversations/${encodeURIComponent(conversationId)}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(`Conversation delete failed: ${res.status}`)
 }
 
 // Workflow

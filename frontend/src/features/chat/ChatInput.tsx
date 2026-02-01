@@ -14,13 +14,15 @@ interface Props {
   /** Cursor-like: Mode + Model + Web inline in toolbar */
   modeSelector?: ReactNode
   modelSelector?: ReactNode
+  /** When true, show hint that AI sees open files (no @ needed) */
+  hasEditorContext?: boolean
 }
 
-// Quick command suggestions with icons
+// Quick command suggestions — @ optional: open files already visible (Cursor-like)
 const QUICK_COMMANDS = [
   { cmd: '@web', desc: 'Поиск в интернете', example: '@web python async tutorial', Icon: Globe },
-  { cmd: '@code', desc: 'Добавить код файла', example: '@code src/main.py', Icon: Code },
-  { cmd: '@file', desc: 'Прочитать файл', example: '@file README.md', Icon: FileText },
+  { cmd: '@code', desc: 'Добавить ещё файл по пути', example: '@code src/other.py', Icon: Code },
+  { cmd: '@file', desc: 'Прочитать файл по пути', example: '@file README.md', Icon: FileText },
   { cmd: '@rag', desc: 'Поиск по кодовой базе', example: '@rag how auth works', Icon: Search },
   { cmd: '@help', desc: 'Показать команды', example: '@help', Icon: HelpCircle },
 ]
@@ -37,6 +39,7 @@ export function ChatInput({
   onInsertTemplate,
   modeSelector,
   modelSelector,
+  hasEditorContext,
 }: Props) {
   const [value, setValue] = useState('')
   const [showCommands, setShowCommands] = useState(false)
@@ -52,6 +55,7 @@ export function ChatInput({
       onSend(text, useStream, modeId, modelId)
       setValue('')
       setShowCommands(false)
+      setTimeout(() => inputRef.current?.focus(), 0)
     }
   }
 
@@ -144,31 +148,33 @@ export function ChatInput({
               value={value}
               onChange={(e) => handleChange(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Чем помочь?"
+              placeholder={hasEditorContext ? 'Чем помочь? AI видит открытые файлы.' : 'Чем помочь?'}
+              title="Enter — отправить, Shift+Enter — новая строка"
               disabled={disabled}
               className="chat-input__field"
               rows={1}
             />
+            {onUseStreamChange && (
+              <label className="chat-input__stream">
+                <input
+                  type="checkbox"
+                  checked={useStream}
+                  onChange={(e) => onUseStreamChange(e.target.checked)}
+                  disabled={disabled}
+                />
+                Stream
+              </label>
+            )}
             <button
               type="submit"
               disabled={disabled || !value.trim()}
               className="chat-input__btn"
+              title="Отправить (Enter)"
             >
-              <Send size={16} />
+              <Send size={14} />
             </button>
           </div>
         </div>
-        {onUseStreamChange && (
-          <label className="chat-input__stream">
-            <input
-              type="checkbox"
-              checked={useStream}
-              onChange={(e) => onUseStreamChange(e.target.checked)}
-              disabled={disabled}
-            />
-            Stream
-          </label>
-        )}
       </form>
     </div>
   )

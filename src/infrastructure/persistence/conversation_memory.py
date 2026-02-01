@@ -37,3 +37,30 @@ class ConversationMemory:
         if not self._base.exists():
             return []
         return [p.stem for p in self._base.glob("*.json")]
+
+    def list_with_titles(self, title_max_len: int = 50) -> list[dict]:
+        """List conversations with title from first user message."""
+        if not self._base.exists():
+            return []
+        result = []
+        for path in self._base.glob("*.json"):
+            cid = path.stem
+            title = ""
+            try:
+                data = json.loads(path.read_text())
+                for m in data:
+                    if m.get("role") == "user" and m.get("content"):
+                        title = (m["content"] or "").strip().replace("\n", " ")[:title_max_len]
+                        break
+            except Exception:
+                pass
+            result.append({"id": cid, "title": title or "Без названия"})
+        return result
+
+    def delete(self, conversation_id: str) -> bool:
+        """Delete conversation file. Returns True if deleted."""
+        path = self._base / f"{conversation_id}.json"
+        if not path.exists():
+            return False
+        path.unlink()
+        return True

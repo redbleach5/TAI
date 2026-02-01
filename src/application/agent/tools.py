@@ -10,6 +10,12 @@ from src.infrastructure.services.file_service import FileService
 from src.infrastructure.services.terminal_service import TerminalService
 
 
+def _is_project_indexed() -> bool:
+    """Whether current project is marked as indexed in store."""
+    current = get_store().get_current()
+    return bool(current and getattr(current, "indexed", False))
+
+
 def _get_workspace_path() -> str:
     """Get current workspace path."""
     store = get_store()
@@ -39,9 +45,11 @@ Format your tool call as:
 Available tools:
 1. read_file(path) - Read file content. path: relative to project root.
 2. write_file(path, content) - Write content to file. path: relative to project root.
-3. search_rag(query) - Search codebase semantically. query: search question.
+3. search_rag(query) - Search codebase semantically. query: search question. If no results, project may need indexing — use get_index_status then index_workspace if needed.
 4. run_terminal(command) - Run shell command. command: e.g. "ls -la", "pytest tests/".
-5. list_files(path?) - List files in directory. path: optional, default "."
+5. list_files(path?) - List files in directory. path: optional, default ".".
+6. get_index_status() - Check if project is indexed for code search. Use when user asks about codebase but search_rag returns nothing.
+7. index_workspace(incremental?) - Index the project for semantic search. Call when user needs codebase search but project is not indexed. incremental: optional, default true (faster).
 
 Rules:
 - You can use multiple tool calls in one response when editing several files (e.g. several write_file blocks).
@@ -79,6 +87,10 @@ class ToolExecutor:
             return await self._run_terminal(args)
         if tool_lower == "list_files":
             return await self._list_files(args)
+        if tool_lower == "get_index_status":
+            return await self._get_index_status(args)
+        if tool_lower == "index_workspace":
+            return await self._index_workspace(args)
         return ToolResult(
             success=False,
             content="",
@@ -118,7 +130,15 @@ class ToolExecutor:
         try:
             results = await self._rag.search(query, limit=5)
             if not results:
-                return ToolResult(success=True, content="No results found.", tool="search_rag", args=args)
+                hint = ""
+                if not _is_project_indexed():
+                    hint = " Project may not be indexed. Use get_index_status() to check, then index_workspace() to index the project and search again."
+                return ToolResult(
+                    success=True,
+                    content="No results found." + hint,
+                    tool="search_rag",
+                    args=args,
+                )
             parts = []
             for i, r in enumerate(results, 1):
                 meta = r.metadata if hasattr(r, "metadata") else {}
@@ -156,3 +176,66 @@ class ToolExecutor:
             return ToolResult(success=True, content=f"Empty directory: {path}", tool="list_files", args=args)
         items = [f"{'📁' if c.is_dir else '📄'} {c.name}" for c in node.children]
         return ToolResult(success=True, content="\n".join(items), tool="list_files", args=args)
+
+    async def _get_index_status(self, args: dict) -> ToolResult:
+        """Return whether project is indexed so model can suggest or trigger indexing."""
+        current = get_store().get_current()
+        if not current:
+            return ToolResult(
+                success=True,
+                content="No project selected. User should open a folder (workspace) first.",
+                tool="get_index_status",
+                args=args,
+            )
+        indexed = getattr(current, "indexed", False)
+        files_count = getattr(current, "files_count", 0)
+        last_indexed = getattr(current, "last_indexed", None)
+        lines = [
+            f"Project: {current.name}",
+            f"Indexed: {indexed}",
+            f"Files in index: {files_count}",
+        ]
+        if last_indexed:
+            lines.append(f"Last indexed: {last_indexed}")
+        if not indexed:
+            lines.append("You can call index_workspace() to index the project for code search.")
+        return ToolResult(success=True, content="\n".join(lines), tool="get_index_status", args=args)
+
+    async def _index_workspace(self, args: dict) -> ToolResult:
+        """Index current workspace for RAG/search. User may forget to index — model can trigger this."""
+        incremental = args.get("incremental", True)
+        if isinstance(incremental, str):
+            incremental = incremental.strip().lower() not in ("false", "0", "no")
+        if not self._rag:
+            return ToolResult(
+                success=False,
+                content="",
+                error="RAG not available; indexing disabled.",
+                tool="index_workspace",
+                args=args,
+            )
+        try:
+            stats = await self._rag.index_path(
+                str(self._workspace),
+                incremental=incremental,
+                generate_map=True,
+            )
+            current = get_store().get_current()
+            if current:
+                from datetime import datetime
+                get_store().update_project(
+                    current.id,
+                    indexed=True,
+                    files_count=stats.get("files_found", 0),
+                    last_indexed=datetime.now().isoformat(),
+                )
+            summary = f"Indexed: {stats.get('files_found', 0)} files, {stats.get('total_chunks', 0)} chunks."
+            return ToolResult(success=True, content=summary, tool="index_workspace", args=args)
+        except Exception as e:
+            return ToolResult(
+                success=False,
+                content="",
+                error=str(e),
+                tool="index_workspace",
+                args=args,
+            )

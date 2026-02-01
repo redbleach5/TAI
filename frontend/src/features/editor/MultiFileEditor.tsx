@@ -138,16 +138,15 @@ export function MultiFileEditor({ externalOpenFile }: MultiFileEditorProps) {
 
   return (
     <div className="multi-editor">
-      <EditorTabs
-        files={files}
-        activeFile={activeFile}
-        onSelect={setActiveFile}
-        onClose={closeFile}
-      />
-      
-      <div className="multi-editor__toolbar">
+      <div className="multi-editor__header">
+        <EditorTabs
+          files={files}
+          activeFile={activeFile}
+          onSelect={setActiveFile}
+          onClose={closeFile}
+        />
         {currentFile && (
-          <>
+          <div className="multi-editor__toolbar">
             <span className="multi-editor__path">
               {currentFile.path}
               {currentFile.isDirty && <span className="multi-editor__unsaved"> ●</span>}
@@ -187,7 +186,7 @@ export function MultiFileEditor({ externalOpenFile }: MultiFileEditorProps) {
                 Download
               </button>
             </div>
-          </>
+          </div>
         )}
       </div>
 

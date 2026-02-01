@@ -1,7 +1,34 @@
-import { useState } from 'react'
-import { User, Bot, Wrench, CheckCircle } from 'lucide-react'
+import { useState, useCallback } from 'react'
+import { User, Bot, Wrench, CheckCircle, Copy, Check } from 'lucide-react'
 import Markdown from 'react-markdown'
 import type { ChatMessage as ChatMessageType } from '../../api/client'
+
+function CodeBlockWithCopy({ children, className }: { children: React.ReactNode; className?: string }) {
+  const [copied, setCopied] = useState(false)
+  const text = typeof children === 'string' ? children : String(children ?? '')
+  const copy = useCallback(() => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }, [text])
+  return (
+    <div className="chat-message__code-wrapper">
+      <pre className="chat-message__code-block">
+        <code className={className}>{children}</code>
+      </pre>
+      <button
+        type="button"
+        className="chat-message__copy-btn"
+        onClick={copy}
+        title={copied ? 'Скопировано' : 'Копировать'}
+      >
+        {copied ? <Check size={14} /> : <Copy size={14} />}
+        <span>{copied ? 'Скопировано' : 'Копировать'}</span>
+      </button>
+    </div>
+  )
+}
 
 interface Props {
   message: ChatMessageType
@@ -58,11 +85,9 @@ export function ChatMessage({ message }: Props) {
                   const match = /language-(\w+)/.exec(className || '')
                   const isBlock = match || (typeof children === 'string' && children.includes('\n'))
                   return isBlock ? (
-                    <pre className="chat-message__code-block">
-                      <code className={className} {...props}>
-                        {children}
-                      </code>
-                    </pre>
+                    <CodeBlockWithCopy className={className}>
+                      {children}
+                    </CodeBlockWithCopy>
                   ) : (
                     <code className="chat-message__inline-code" {...props}>
                       {children}

@@ -23,10 +23,10 @@ def parse_reasoning_chunk(
 
     while i < len(buffer):
         if buffer[i : i + len(THINK_OPEN)] == THINK_OPEN:
-            # Emit any content before this tag
+            # Emit any content before this tag (preserve spaces — don't strip)
             if i > 0:
-                prev = buffer[:i].strip()
-                if prev:
+                prev = buffer[:i]
+                if prev.strip():
                     emitted.append(("content", prev))
             # Find closing tag
             end = buffer.find(THINK_CLOSE, i + len(THINK_OPEN))
@@ -39,12 +39,12 @@ def parse_reasoning_chunk(
         else:
             next_think = buffer.find(THINK_OPEN, i)
             if next_think == -1:
-                rest = buffer[i:].strip()
-                if rest:
+                rest = buffer[i:]
+                if rest.strip():
                     emitted.append(("content", rest))
                 return ("", emitted)
-            content = buffer[i:next_think].strip()
-            if content:
+            content = buffer[i:next_think]
+            if content.strip():
                 emitted.append(("content", content))
             i = next_think
 
@@ -95,4 +95,4 @@ async def stream_reasoning_chunks(
         for kind, text in emitted:
             yield (kind, text)
     if buffer.strip():
-        yield ("content", buffer.strip())
+        yield ("content", buffer)

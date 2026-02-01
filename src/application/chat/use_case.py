@@ -1,7 +1,7 @@
 """Chat use case - orchestration layer."""
 
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING
 
 from src.application.chat.dto import ChatRequest, ChatResponse
@@ -31,6 +31,8 @@ class ChatUseCase:
         rag: "RAGPort | None" = None,
         command_registry: CommandRegistry | None = None,
         agent_use_case: "AgentUseCase | None" = None,
+        workspace_path_getter: "Callable[[], str] | None" = None,
+        is_indexed_getter: "Callable[[], bool] | None" = None,
     ) -> None:
         self._llm = llm
         self._model_selector = model_selector
@@ -40,6 +42,8 @@ class ChatUseCase:
         self._intent_detector = IntentDetector()
         self._command_registry = command_registry or get_default_registry()
         self._agent_use_case = agent_use_case
+        self._workspace_path_getter = workspace_path_getter
+        self._is_indexed_getter = is_indexed_getter
 
     async def execute(self, request: ChatRequest) -> ChatResponse:
         """Process chat request: detect intent, process commands, call LLM."""
@@ -137,18 +141,47 @@ class ChatUseCase:
             if auto_rag:
                 extra_context = f"{auto_rag}\n\n---\n\n{extra_context}" if extra_context else auto_rag
         
-        # Build user message
+        # Build user message — Cursor-like: model automatically sees open files, no @ needed
         user_content = parsed.text or request.message
-        # Prepend context: open files (Cursor-like) first, then commands
+        # Optional: short project structure so model sees layout (like agent mode)
+        project_map_prefix = ""
+        if self._rag and hasattr(self._rag, "get_project_map_markdown"):
+            try:
+                map_md = self._rag.get_project_map_markdown()
+                if map_md:
+                    project_map_prefix = f"[Project structure]\n{map_md[:1500]}\n\n---\n\n"
+            except Exception:
+                pass
+        if project_map_prefix:
+            user_content = project_map_prefix + user_content
+        # Current file hint (so model knows which file user is focused on)
+        current_file_hint = ""
+        if request.active_file_path:
+            current_file_hint = f"Current file (user is focused on): {request.active_file_path}\n\n"
+        # Open files context — always prepended so model sees them without @code/@file
         if request.context_files:
             file_context = "\n\n".join(
                 f"[file: {f.path}]\n```\n{f.content}\n```"
                 for f in request.context_files
             )
-            user_content = f"[Context - open files in IDE]\n\n{file_context}\n\n---\n\n{user_content}"
+            user_content = (
+                f"{current_file_hint}[Open files in editor — use these for context]\n\n{file_context}\n\n---\n\n{user_content}"
+            )
+        elif current_file_hint:
+            user_content = f"{current_file_hint}---\n\n{user_content}"
         if extra_context:
             user_content = f"{extra_context}\n\n---\n\n{user_content}"
-        
+        # When project is not indexed, hint so model can suggest indexing (user may forget)
+        if (
+            self._rag
+            and self._is_indexed_getter
+            and not self._is_indexed_getter()
+            and (parsed.text or request.message).strip()
+        ):
+            user_content += (
+                "\n\n[Note: Project not indexed. To search the codebase, user can run Index in the UI "
+                "or switch to Agent mode and ask to index the project.]"
+            )
         messages.append(LLMMessage(role="user", content=user_content))
         return messages
 
@@ -176,6 +209,8 @@ class ChatUseCase:
         import asyncio
         
         # Prepare command execution tasks
+        workspace_path = self._workspace_path_getter() if self._workspace_path_getter else None
+
         async def execute_cmd(cmd):
             cmd_type = cmd.type.value if hasattr(cmd.type, "value") else str(cmd.type)
             if cmd_type == "clear":
@@ -184,6 +219,7 @@ class ChatUseCase:
                 cmd_type,
                 cmd.argument,
                 rag=self._rag,
+                workspace_path=workspace_path,
             )
             return result.content if result.content else None
         

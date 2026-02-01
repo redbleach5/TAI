@@ -35,10 +35,10 @@ export function ModeSelector({ modes, currentMode, onSelect, compact }: Props) {
         type="button"
         className="mode-selector__trigger"
         onClick={() => setOpen(!open)}
-        title={current.description}
+        title={current.description || current.name}
       >
         <span className="mode-selector__icon">{current.icon}</span>
-        <span className="mode-selector__name">{current.name}</span>
+        <span className="mode-selector__name" title={current.name}>{current.name}</span>
         <ChevronDown size={12} className={`mode-selector__chevron ${open ? 'mode-selector__chevron--open' : ''}`} />
       </button>
       {open && (

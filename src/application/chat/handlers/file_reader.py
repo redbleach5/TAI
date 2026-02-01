@@ -21,7 +21,8 @@ class FileReaderHandler(CommandHandler):
         """Read file and return content.
         
         Args:
-            argument: File path
+            argument: File path (relative to workspace_root when provided)
+            **context: Optional workspace_path — project root for resolving paths (Cursor-like).
         """
         if not argument.strip():
             return CommandResult(
@@ -31,20 +32,24 @@ class FileReaderHandler(CommandHandler):
             )
         
         try:
-            file_path = Path(argument.strip())
-            
-            # Security: don't allow absolute paths outside cwd
-            if file_path.is_absolute():
-                # Check if it's within current working directory
-                try:
-                    file_path.relative_to(Path.cwd())
-                except ValueError:
-                    return CommandResult(
-                        content=f"[Access denied: {argument}]",
-                        success=False,
-                        error="Cannot access files outside project directory",
-                    )
-            
+            raw = argument.strip()
+            # Use workspace root when provided (same as Files API / Agent), else cwd
+            workspace_path = context.get("workspace_path")
+            if workspace_path:
+                base = Path(workspace_path).resolve()
+            else:
+                base = Path.cwd().resolve()
+            # Resolve path relative to base to prevent path traversal (e.g. ../../etc/passwd)
+            file_path = (base / raw).resolve()
+            try:
+                file_path.relative_to(base)
+            except ValueError:
+                return CommandResult(
+                    content=f"[Access denied: {argument}]",
+                    success=False,
+                    error="Cannot access files outside project directory",
+                )
+
             if not file_path.exists():
                 return CommandResult(
                     content=f"[File not found: {argument}]",
