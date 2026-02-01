@@ -29,6 +29,12 @@ async def test_config_get_returns_editable_fields(client: AsyncClient):
     assert "simple" in data["models"]["defaults"]
     assert "embeddings" in data
     assert "model" in data["embeddings"]
+    assert "web_search" in data
+    assert "searxng_url" in data["web_search"]
+    assert "brave_api_key" in data["web_search"]
+    assert "tavily_api_key" in data["web_search"]
+    assert "google_api_key" in data["web_search"]
+    assert "google_cx" in data["web_search"]
     assert "logging" in data
     assert "level" in data["logging"]
 

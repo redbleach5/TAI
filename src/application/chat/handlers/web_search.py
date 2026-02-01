@@ -28,12 +28,22 @@ class WebSearchHandler(CommandHandler):
             )
         
         try:
-            # Use multi-engine parallel search with caching
+            # Use multi-engine parallel search (config/context or env for keys)
+            searxng_url = context.get("web_search_searxng_url")
+            brave_api_key = context.get("web_search_brave_api_key")
+            tavily_api_key = context.get("web_search_tavily_api_key")
+            google_api_key = context.get("web_search_google_api_key")
+            google_cx = context.get("web_search_google_cx")
             results = await multi_search(
                 argument,
-                max_results=8,
-                timeout=8.0,
+                max_results=10,
+                timeout=12.0,
                 use_cache=True,
+                searxng_url=searxng_url,
+                brave_api_key=brave_api_key,
+                tavily_api_key=tavily_api_key,
+                google_api_key=google_api_key,
+                google_cx=google_cx,
             )
             content = format_search_results(results)
             return CommandResult(content=content)

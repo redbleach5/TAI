@@ -259,7 +259,18 @@ export function useChat(options: UseChatOptions = {}) {
                 if (line.startsWith('event: ')) eventType = line.slice(7).trim()
                 if (line.startsWith('data: ')) data = line.slice(6).trim()
               }
-              if (eventType === 'content' && data) content += data
+              if (eventType === 'content' && data) {
+                // Heuristic: insert space where the model omitted it; only between letters (not digits — fixes "2 0 2 3") and after punctuation
+                if (content.length > 0 && data.length > 0) {
+                  const last = content.slice(-1)
+                  const first = data.charAt(0)
+                  const needSpace =
+                    (/\p{L}/u.test(last) && /\p{L}/u.test(first)) || // letter + letter: "sorry" "but" -> "sorry but"
+                    (/[.,;:!?)]/.test(last) && /\p{L}/u.test(first))  // punctuation + letter: "," "but" -> ", but"
+                  if (needSpace) content += ' '
+                }
+                content += data
+              }
               else if (eventType === 'thinking' && data) thinking += data
               else if (eventType === 'tool_call' && data) {
                 toolEvents.push({ type: 'tool_call', data })

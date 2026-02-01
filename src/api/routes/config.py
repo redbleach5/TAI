@@ -19,7 +19,11 @@ class ConfigPatch(BaseModel):
 
     llm: dict | None = None
     models: dict | None = None
+    ollama: dict | None = None
+    openai_compatible: dict | None = None
     embeddings: dict | None = None
+    persistence: dict | None = None
+    web_search: dict | None = None
     logging: dict | None = None
 
 
@@ -50,13 +54,39 @@ async def get_config_route(config: AppConfig = Depends(get_config)):
             "complex": o.complex or defaults["complex"],
             "fallback": o.fallback or defaults["fallback"],
         }
+    ollama: dict = {
+        "host": config.ollama.host,
+        "timeout": config.ollama.timeout,
+    }
+    if config.ollama.num_ctx is not None:
+        ollama["num_ctx"] = config.ollama.num_ctx
+    if config.ollama.num_predict is not None:
+        ollama["num_predict"] = config.ollama.num_predict
+    openai_compatible: dict = {
+        "base_url": config.openai_compatible.base_url,
+        "timeout": config.openai_compatible.timeout,
+    }
+    if config.openai_compatible.max_tokens is not None:
+        openai_compatible["max_tokens"] = config.openai_compatible.max_tokens
+    ws = config.web_search
+    web_search = {
+        "searxng_url": ws.searxng_url or "",
+        "brave_api_key": ws.brave_api_key or "",
+        "tavily_api_key": ws.tavily_api_key or "",
+        "google_api_key": ws.google_api_key or "",
+        "google_cx": ws.google_cx or "",
+    }
     return {
         "llm": {"provider": config.llm.provider},
         "models": {
             "defaults": defaults,
             "lm_studio": lm_studio,
         },
+        "ollama": ollama,
+        "openai_compatible": openai_compatible,
         "embeddings": {"model": config.embeddings.model},
+        "persistence": {"max_context_messages": config.persistence.max_context_messages},
+        "web_search": web_search,
         "logging": {"level": config.log_level},
     }
 
@@ -66,8 +96,21 @@ def _to_toml_structure(updates: dict) -> dict:
     result: dict = {}
     if "llm" in updates:
         result["llm"] = updates["llm"]
+    if "ollama" in updates:
+        result["ollama"] = {k: v for k, v in updates["ollama"].items() if v is not None}
+    if "openai_compatible" in updates:
+        result["openai_compatible"] = {
+            k: v for k, v in updates["openai_compatible"].items() if v is not None
+        }
     if "embeddings" in updates:
         result["embeddings"] = updates["embeddings"]
+    if "persistence" in updates:
+        result["persistence"] = updates["persistence"]
+    if "web_search" in updates:
+        result["web_search"] = {
+            k: v for k, v in updates["web_search"].items()
+            if k in ("searxng_url", "brave_api_key", "tavily_api_key", "google_api_key", "google_cx")
+        }
     if "logging" in updates:
         result["logging"] = updates["logging"]
     if "models" in updates:

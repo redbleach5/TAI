@@ -108,11 +108,27 @@ OLLAMA_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the internet for current information. Use for: news, best practices, documentation, recent APIs, refactoring advice, or any up-to-date information. Prefer this over claiming you have no internet.",
+            "parameters": {
+                "type": "object",
+                "required": ["query"],
+                "properties": {
+                    "query": {"type": "string", "description": "Search phrase, e.g. 'Python asyncio best practices 2024', 'today news summary'"},
+                },
+            },
+        },
+    },
 ]
 
-AGENT_SYSTEM_PROMPT_NATIVE = """You are an autonomous coding agent. You can read files, write files, search the codebase, run terminal commands, list directories, and index the project.
+AGENT_SYSTEM_PROMPT_NATIVE = """You are an autonomous coding agent. You can read files, write files, search the codebase, run terminal commands, list directories, index the project, and search the web.
 
 Your goal: accomplish the user's task step by step. Use tools when needed. Think before acting.
+
+For current information (news, best practices, recent docs, refactoring advice): use web_search(query). Do not claim you have no internet — call web_search first.
 
 If the user asks about the codebase (e.g. "how does X work?", "where is Y?") and search_rag returns no results, check get_index_status(). If the project is not indexed, call index_workspace() so you can search the code — the user may have forgotten to index.
 
@@ -120,6 +136,7 @@ If the user asks to analyze the project (e.g. "проанализируй про
 
 Rules:
 - Use ONE tool at a time. After receiving the result, analyze it and either call another tool or give your final answer.
+- After every tool result you MUST reply with a short summary or final answer to the user in plain text (e.g. "Tests passed: 12, failed: 0" or "Command completed. Output: ..."). Never end your turn with only a tool call — always add a brief text response for the user.
 - For write_file: only suggest safe changes. Do not overwrite critical files without explicit user request.
 - For run_terminal: use simple commands. Avoid destructive commands (rm -rf, etc).
 - When done, respond with your final answer without calling any tool.

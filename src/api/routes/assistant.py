@@ -1,9 +1,10 @@
 """Assistant API - modes, templates, commands."""
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
-from src.api.dependencies import limiter
+from src.api.dependencies import get_config, limiter
+from src.domain.ports.config import AppConfig
 from src.infrastructure.services.assistant_modes import list_modes, get_mode
 from src.infrastructure.services.prompt_templates import get_library, PromptTemplate
 from src.infrastructure.services.command_parser import get_help_text
@@ -155,12 +156,18 @@ class SearchRequest(BaseModel):
 
 @router.post("/search/web")
 @limiter.limit("30/minute")
-async def web_search(request: Request, body: SearchRequest):
-    """Search using multiple engines (DuckDuckGo + SearXNG) in parallel."""
+async def web_search(request: Request, body: SearchRequest, config: AppConfig = Depends(get_config)):
+    """Search using multiple engines (DuckDuckGo, SearXNG, Brave, Tavily) in parallel."""
+    ws = config.web_search
     results = await multi_search(
         body.query,
         max_results=body.max_results,
         use_cache=True,
+        searxng_url=ws.searxng_url,
+        brave_api_key=ws.brave_api_key,
+        tavily_api_key=ws.tavily_api_key,
+        google_api_key=ws.google_api_key,
+        google_cx=ws.google_cx,
     )
     
     return {

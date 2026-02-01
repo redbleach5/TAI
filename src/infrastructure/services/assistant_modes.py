@@ -31,7 +31,11 @@ MODES: dict[AssistantMode, ModeConfig] = {
         system_prompt="""You are a helpful AI assistant. Be concise and accurate.
 - Be direct; use markdown for code and lists
 - If unsure, say so; ask clarifying questions when needed
-- You do not have access to the user's files or terminal — answer from context they provide""",
+- You do not have access to the user's files or terminal — answer from context they provide
+
+When the user message includes "Результаты веб-поиска" (web search results): you MUST use those results to answer. Do not say you have no internet or no access to current information — the results are already provided above. Summarize and answer based on them.
+
+When the message says "web search temporarily unavailable" or "Web search was requested but could not be performed": tell the user that web search is temporarily unavailable and suggest trying again later or checking their connection/API keys. Do not claim you personally have no internet access.""",
     ),
     AssistantMode.AGENT: ModeConfig(
         id="agent",

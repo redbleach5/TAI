@@ -12,6 +12,7 @@ from src.application.analysis.deep_analyzer import DeepAnalyzer, summary_from_re
 from src.application.chat.dto import ChatRequest, ChatResponse
 from src.domain.ports.llm import LLMMessage, LLMPort
 from src.domain.services.model_selector import ModelSelector
+from src.infrastructure.services.web_search import multi_search, format_search_results
 
 if TYPE_CHECKING:
     from src.domain.ports.rag import RAGPort
@@ -33,11 +34,21 @@ class AgentUseCase:
         model_selector: ModelSelector,
         rag: "RAGPort | None" = None,
         max_iterations: int = 15,
+        web_search_searxng_url: str | None = None,
+        web_search_brave_api_key: str | None = None,
+        web_search_tavily_api_key: str | None = None,
+        web_search_google_api_key: str | None = None,
+        web_search_google_cx: str | None = None,
     ) -> None:
         self._llm = llm
         self._model_selector = model_selector
         self._rag = rag
         self._max_iterations = max_iterations
+        self._web_search_searxng_url = (web_search_searxng_url or "").strip() or None
+        self._web_search_brave_api_key = (web_search_brave_api_key or "").strip() or None
+        self._web_search_tavily_api_key = (web_search_tavily_api_key or "").strip() or None
+        self._web_search_google_api_key = (web_search_google_api_key or "").strip() or None
+        self._web_search_google_cx = (web_search_google_cx or "").strip() or None
 
     def _use_native_tools(self) -> bool:
         """Check if LLM supports native tool calling (Ollama)."""
@@ -104,6 +115,24 @@ class AgentUseCase:
         summary = summary_from_report(full_md, report_rel)
         return summary, report_rel
 
+    async def _run_web_search(self, query: str) -> str:
+        """Run web search via multi_search; return formatted results for agent tool."""
+        try:
+            results = await multi_search(
+                query,
+                max_results=10,
+                timeout=12.0,
+                use_cache=True,
+                searxng_url=self._web_search_searxng_url,
+                brave_api_key=self._web_search_brave_api_key,
+                tavily_api_key=self._web_search_tavily_api_key,
+                google_api_key=self._web_search_google_api_key,
+                google_cx=self._web_search_google_cx,
+            )
+            return format_search_results(results) if results else ""
+        except Exception as e:
+            return f"[Web search error: {e}]"
+
     async def execute(self, request: ChatRequest) -> ChatResponse:
         """Run agent loop until done or max iterations (sync: writes to disk, no proposed_edits)."""
         model, fallback = await self._model_selector.select_model(request.message)
@@ -113,6 +142,7 @@ class AgentUseCase:
             rag=self._rag,
             propose_edits=False,
             deep_analyzer_run=self._run_project_analysis,
+            web_search_run=self._run_web_search,
         )
 
         if self._use_native_tools():
@@ -221,6 +251,7 @@ class AgentUseCase:
             rag=self._rag,
             propose_edits=propose_edits,
             deep_analyzer_run=self._run_project_analysis,
+            web_search_run=self._run_web_search,
         )
 
         if self._use_native_tools():

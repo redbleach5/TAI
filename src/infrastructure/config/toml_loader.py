@@ -17,6 +17,7 @@ from src.domain.ports.config import (
     RAGConfig,
     SecurityConfig,
     ServerConfig,
+    WebSearchConfig,
 )
 
 
@@ -63,6 +64,16 @@ def _apply_env_overrides(config: dict) -> dict:
             config.setdefault("agent", {})["max_iterations"] = int(iterations)
         except ValueError:
             pass
+    if url := os.getenv("SEARXNG_URL"):
+        config.setdefault("web_search", {})["searxng_url"] = url.strip() or None
+    if key := os.getenv("BRAVE_API_KEY"):
+        config.setdefault("web_search", {})["brave_api_key"] = key.strip() or None
+    if key := os.getenv("TAVILY_API_KEY"):
+        config.setdefault("web_search", {})["tavily_api_key"] = key.strip() or None
+    if key := os.getenv("GOOGLE_API_KEY"):
+        config.setdefault("web_search", {})["google_api_key"] = key.strip() or None
+    if cx := os.getenv("GOOGLE_CX"):
+        config.setdefault("web_search", {})["google_cx"] = cx.strip() or None
     return config
 
 
@@ -101,6 +112,7 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
     persistence = PersistenceConfig(**(config.get("persistence") or {}))
     rag = RAGConfig(**(config.get("rag") or {}))
     agent = AgentConfig(**(config.get("agent") or {}))
+    web_search = WebSearchConfig(**(config.get("web_search") or {}))
     log_level = config.get("logging", {}).get("level", "INFO")
 
     return AppConfig(
@@ -114,5 +126,6 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         persistence=persistence,
         rag=rag,
         agent=agent,
+        web_search=web_search,
         log_level=log_level,
     )

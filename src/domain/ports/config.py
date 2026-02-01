@@ -75,6 +75,9 @@ class OllamaConfig(BaseModel):
     host: str = "http://localhost:11434"
     timeout: int = 120
     pool_size: int = 4
+    # Optional: maximize context/throughput. None = use model defaults.
+    num_ctx: int | None = None   # Context window (e.g. 32768, 131072). More = longer chats, more VRAM.
+    num_predict: int | None = None  # Max tokens to generate (-1 = no limit). None = model default.
 
 
 class OpenAICompatibleConfig(BaseModel):
@@ -83,6 +86,8 @@ class OpenAICompatibleConfig(BaseModel):
     base_url: str = "http://localhost:1234/v1"
     api_key: str = ""
     timeout: int = 120
+    # Optional: max tokens to generate. None = server/model default.
+    max_tokens: int | None = None
 
 
 class EmbeddingsConfig(BaseModel):
@@ -122,6 +127,20 @@ class AgentConfig(BaseModel):
     max_iterations: int = 15  # Max tool-call iterations per request (ROADMAP Part 4)
 
 
+class WebSearchConfig(BaseModel):
+    """Web search engines (Cherry Studio–style: SearXNG, Brave, Tavily, Google Custom Search)."""
+
+    # Custom SearXNG instance URL (e.g. http://localhost:8080). If set, used first; else public instances.
+    searxng_url: str | None = None
+    # Brave Search API key (2000 free/month). Optional.
+    brave_api_key: str | None = None
+    # Tavily API key (app.tavily.com). Optional; when set, Tavily is included in parallel search.
+    tavily_api_key: str | None = None
+    # Google Custom Search: API key (Google Cloud) + Programmable Search Engine ID (cx). 100 free queries/day.
+    google_api_key: str | None = None
+    google_cx: str | None = None  # Search engine ID from programmablesearchengine.google.com
+
+
 class ServerConfig(BaseModel):
     """Server configuration."""
 
@@ -142,6 +161,7 @@ class AppConfig(BaseModel):
     persistence: PersistenceConfig = PersistenceConfig()
     rag: RAGConfig = RAGConfig()
     agent: AgentConfig = AgentConfig()
+    web_search: WebSearchConfig = WebSearchConfig()
     log_level: str = "INFO"
 
 

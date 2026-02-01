@@ -32,6 +32,15 @@ class OllamaAdapter:
             ),
         )
 
+    def _ollama_options(self, temperature: float) -> dict:
+        """Build options dict: temperature + optional num_ctx, num_predict from config."""
+        opts: dict = {"temperature": temperature}
+        if self._config.num_ctx is not None:
+            opts["num_ctx"] = self._config.num_ctx
+        if self._config.num_predict is not None:
+            opts["num_predict"] = self._config.num_predict
+        return opts
+
     async def generate(
         self,
         messages: list[LLMMessage],
@@ -41,12 +50,13 @@ class OllamaAdapter:
         """Generate a single response with Circuit Breaker protection."""
         model = model or "llama2"
         msg_dicts = [{"role": m.role, "content": m.content} for m in messages]
-        
+        options = self._ollama_options(temperature)
+
         async def _call():
             response = await self._client.chat(
                 model=model,
                 messages=msg_dicts,
-                options={"temperature": temperature},
+                options=options,
             )
             content = response.message.content if response.message else ""
             return LLMResponse(content=content, model=response.model, done=True)
@@ -70,10 +80,11 @@ class OllamaAdapter:
         """Generate response with streaming (yields content chunks)."""
         model = model or "llama2"
         msg_dicts = [{"role": m.role, "content": m.content} for m in messages]
+        options = self._ollama_options(temperature)
         stream = await self._client.chat(
             model=model,
             messages=msg_dicts,
-            options={"temperature": temperature},
+            options=options,
             stream=True,
         )
         async for chunk in stream:
@@ -113,12 +124,13 @@ class OllamaAdapter:
     ) -> tuple[str, list[dict]]:
         """Chat with native tool calling. Returns (content, tool_calls)."""
         model = model or "llama2"
+        options = self._ollama_options(temperature)
         try:
             response = await self._client.chat(
                 model=model,
                 messages=messages,
                 tools=tools,
-                options={"temperature": temperature},
+                options=options,
             )
             content = response.message.content if response.message else ""
             tool_calls = getattr(response.message, "tool_calls", None) or []
@@ -151,12 +163,13 @@ class OllamaAdapter:
         """
         import json as _json
         model = model or "llama2"
+        options = self._ollama_options(temperature)
         try:
             stream = await self._client.chat(
                 model=model,
                 messages=messages,
                 tools=tools,
-                options={"temperature": temperature},
+                options=options,
                 stream=True,
             )
             content_buf = ""

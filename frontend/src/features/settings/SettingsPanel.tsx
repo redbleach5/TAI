@@ -46,13 +46,44 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
     setSaving(true)
     setMessage(null)
     setError(null)
+    const ollama = config.ollama
+      ? {
+          host: config.ollama.host,
+          timeout: config.ollama.timeout,
+          ...(config.ollama.num_ctx != null && { num_ctx: config.ollama.num_ctx }),
+          ...(config.ollama.num_predict != null && { num_predict: config.ollama.num_predict }),
+        }
+      : undefined
+    const openai_compatible = config.openai_compatible
+      ? {
+          base_url: config.openai_compatible.base_url,
+          timeout: config.openai_compatible.timeout,
+          ...(config.openai_compatible.max_tokens != null && {
+            max_tokens: config.openai_compatible.max_tokens,
+          }),
+        }
+      : undefined
     const updates: ConfigPatch = {
       llm: { provider: config.llm.provider },
       models: {
         defaults: config.models.defaults,
         lm_studio: config.models.lm_studio ?? undefined,
       },
+      ...(ollama && { ollama }),
+      ...(openai_compatible && { openai_compatible }),
       embeddings: { model: config.embeddings.model },
+      ...(config.persistence != null && {
+        persistence: { max_context_messages: config.persistence.max_context_messages },
+      }),
+      ...(config.web_search != null && {
+        web_search: {
+          searxng_url: config.web_search.searxng_url ?? '',
+          brave_api_key: config.web_search.brave_api_key ?? '',
+          tavily_api_key: config.web_search.tavily_api_key ?? '',
+          google_api_key: config.web_search.google_api_key ?? '',
+          google_cx: config.web_search.google_cx ?? '',
+        },
+      }),
       logging: { level: config.logging.level },
     }
     try {
@@ -105,6 +136,256 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             <option value="ollama">Ollama</option>
             <option value="lm_studio">LM Studio</option>
           </select>
+        </label>
+      </div>
+
+      <div className="settings-panel__section">
+        <h4>Ollama (хост и производительность)</h4>
+        <div className="settings-panel__fields">
+          <label>
+            Host (URL)
+            <input
+              type="text"
+              value={config.ollama?.host ?? 'http://localhost:11434'}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  ollama: { ...(config.ollama ?? {}), host: e.target.value, timeout: config.ollama?.timeout ?? 120 } as ConfigResponse['ollama'],
+                })
+              }
+            />
+          </label>
+          <label>
+            Timeout (сек)
+            <input
+              type="number"
+              min={30}
+              max={600}
+              value={config.ollama?.timeout ?? 120}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  ollama: { ...(config.ollama ?? {}), host: config.ollama?.host ?? 'http://localhost:11434', timeout: parseInt(e.target.value, 10) || 120 } as ConfigResponse['ollama'],
+                })
+              }
+            />
+          </label>
+          <label>
+            num_ctx (контекст, пусто = по умолчанию)
+            <input
+              type="number"
+              min={0}
+              placeholder="4096, 32768, 131072"
+              value={config.ollama?.num_ctx ?? ''}
+              onChange={(e) => {
+                const v = e.target.value
+                const n = v === '' ? undefined : parseInt(v, 10)
+                setConfig({
+                  ...config,
+                  ollama: { ...(config.ollama ?? {}), num_ctx: n === undefined || Number.isNaN(n) ? undefined : n } as ConfigResponse['ollama'],
+                })
+              }}
+            />
+          </label>
+          <label>
+            num_predict (макс. токенов, −1 = без лимита)
+            <input
+              type="number"
+              min={-1}
+              placeholder="пусто = по умолчанию"
+              value={config.ollama?.num_predict ?? ''}
+              onChange={(e) => {
+                const v = e.target.value
+                const n = v === '' ? undefined : parseInt(v, 10)
+                setConfig({
+                  ...config,
+                  ollama: { ...(config.ollama ?? {}), num_predict: n === undefined || Number.isNaN(n) ? undefined : n } as ConfigResponse['ollama'],
+                })
+              }}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="settings-panel__section">
+        <h4>LM Studio / OpenAI-совместимый</h4>
+        <div className="settings-panel__fields">
+          <label>
+            Base URL
+            <input
+              type="text"
+              value={config.openai_compatible?.base_url ?? 'http://localhost:1234/v1'}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  openai_compatible: { ...(config.openai_compatible ?? {}), base_url: e.target.value, timeout: config.openai_compatible?.timeout ?? 120 } as ConfigResponse['openai_compatible'],
+                })
+              }
+            />
+          </label>
+          <label>
+            Timeout (сек)
+            <input
+              type="number"
+              min={30}
+              max={600}
+              value={config.openai_compatible?.timeout ?? 120}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  openai_compatible: { ...(config.openai_compatible ?? {}), base_url: config.openai_compatible?.base_url ?? 'http://localhost:1234/v1', timeout: parseInt(e.target.value, 10) || 120 } as ConfigResponse['openai_compatible'],
+                })
+              }
+            />
+          </label>
+          <label>
+            max_tokens (пусто = по умолчанию)
+            <input
+              type="number"
+              min={1}
+              placeholder="8192, 16384"
+              value={config.openai_compatible?.max_tokens ?? ''}
+              onChange={(e) => {
+                const v = e.target.value
+                const n = v === '' ? undefined : parseInt(v, 10)
+                setConfig({
+                  ...config,
+                  openai_compatible: { ...(config.openai_compatible ?? {}), max_tokens: n === undefined || Number.isNaN(n) ? undefined : n } as ConfigResponse['openai_compatible'],
+                })
+              }}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="settings-panel__section">
+        <h4>Веб-поиск (@web)</h4>
+        <p className="settings-panel__muted">
+          SearXNG (свой URL или публичные), Brave, Tavily — по образцу Cherry Studio.
+        </p>
+        <div className="settings-panel__fields">
+          <label>
+            SearXNG URL (пусто = публичные инстансы)
+            <input
+              type="text"
+              placeholder="http://localhost:8080"
+              value={config.web_search?.searxng_url ?? ''}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  web_search: {
+                    searxng_url: e.target.value,
+                    brave_api_key: config.web_search?.brave_api_key ?? '',
+                    tavily_api_key: config.web_search?.tavily_api_key ?? '',
+                    google_api_key: config.web_search?.google_api_key ?? '',
+                    google_cx: config.web_search?.google_cx ?? '',
+                  },
+                })
+              }
+            />
+          </label>
+          <label>
+            Brave API Key (2000 бесплатно/мес)
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder="опционально"
+              value={config.web_search?.brave_api_key ?? ''}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  web_search: {
+                    searxng_url: config.web_search?.searxng_url ?? '',
+                    brave_api_key: e.target.value,
+                    tavily_api_key: config.web_search?.tavily_api_key ?? '',
+                    google_api_key: config.web_search?.google_api_key ?? '',
+                    google_cx: config.web_search?.google_cx ?? '',
+                  },
+                })
+              }
+            />
+          </label>
+          <label>
+            Tavily API Key (app.tavily.com)
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder="опционально"
+              value={config.web_search?.tavily_api_key ?? ''}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  web_search: {
+                    searxng_url: config.web_search?.searxng_url ?? '',
+                    brave_api_key: config.web_search?.brave_api_key ?? '',
+                    tavily_api_key: e.target.value,
+                    google_api_key: config.web_search?.google_api_key ?? '',
+                    google_cx: config.web_search?.google_cx ?? '',
+                  },
+                })
+              }
+            />
+          </label>
+          <label>
+            Google API Key (Custom Search, 100 бесплатно/день)
+            <input
+              type="password"
+              autoComplete="off"
+              placeholder="опционально"
+              value={config.web_search?.google_api_key ?? ''}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  web_search: {
+                    searxng_url: config.web_search?.searxng_url ?? '',
+                    brave_api_key: config.web_search?.brave_api_key ?? '',
+                    tavily_api_key: config.web_search?.tavily_api_key ?? '',
+                    google_api_key: e.target.value,
+                    google_cx: config.web_search?.google_cx ?? '',
+                  },
+                })
+              }
+            />
+          </label>
+          <label>
+            Google Search Engine ID (cx, programmablesearchengine.google.com)
+            <input
+              type="text"
+              placeholder="опционально, нужен вместе с Google API Key"
+              value={config.web_search?.google_cx ?? ''}
+              onChange={(e) =>
+                setConfig({
+                  ...config,
+                  web_search: {
+                    searxng_url: config.web_search?.searxng_url ?? '',
+                    brave_api_key: config.web_search?.brave_api_key ?? '',
+                    tavily_api_key: config.web_search?.tavily_api_key ?? '',
+                    google_api_key: config.web_search?.google_api_key ?? '',
+                    google_cx: e.target.value,
+                  },
+                })
+              }
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className="settings-panel__section">
+        <h4>Контекст чата</h4>
+        <label>
+          Макс. сообщений в контексте (история для модели)
+          <input
+            type="number"
+            min={5}
+            max={200}
+            value={config.persistence?.max_context_messages ?? 20}
+            onChange={(e) =>
+              setConfig({
+                ...config,
+                persistence: { max_context_messages: parseInt(e.target.value, 10) || 20 },
+              })
+            }
+          />
         </label>
       </div>
 

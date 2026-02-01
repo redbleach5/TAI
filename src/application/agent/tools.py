@@ -10,6 +10,9 @@ from src.api.routes.projects import get_store
 from src.infrastructure.services.file_service import FileService
 from src.infrastructure.services.terminal_service import TerminalService
 
+# Type for optional web search: (query: str) -> formatted results string
+WebSearchRun = Callable[[str], Awaitable[str]]
+
 
 def _is_project_indexed() -> bool:
     """Whether current project is marked as indexed in store."""
@@ -54,11 +57,13 @@ Available tools:
 6. get_index_status() - Check if project is indexed for code search. Use when user asks about codebase but search_rag returns nothing.
 7. index_workspace(incremental?) - Index the project for semantic search. Call when user needs codebase search but project is not indexed. incremental: optional, default true (faster).
 8. run_project_analysis(question?) - Run deep project analysis (architecture, quality, recommendations). Saves report to docs/ANALYSIS_REPORT.md. Use when user asks to analyze the project or "проанализируй проект". question: optional, specific question to answer in the report.
+9. web_search(query) - Search the internet for current information. Use for: news, best practices, documentation, recent APIs, refactoring advice, or any up-to-date information. query: search phrase (e.g. "Python asyncio best practices 2024", "today news summary").
 
 Rules:
+- For current information (news, best practices, recent docs, refactoring advice): use web_search(query). Do not claim you have no internet — call web_search first.
 - You can use multiple tool calls in one response when editing several files (e.g. several write_file blocks).
 - For other tools (read_file, search_rag, etc.), use one at a time, wait for result, then call next.
-- After receiving tool result (Observation), analyze it and either call another tool or give final answer.
+- After receiving tool result (Observation), analyze it and either call another tool or give final answer. You MUST always add a short summary or final answer in plain text for the user (e.g. "Tests passed: 12" or "Command completed. Output: ..."). Never end your turn with only a tool call.
 - For write_file: only suggest safe changes. Do not overwrite critical files without explicit user request.
 - For run_terminal: use simple commands. Avoid destructive commands (rm -rf, etc).
 - When done, respond with your final answer WITHOUT a tool_call block.
@@ -78,6 +83,7 @@ class ToolExecutor:
         rag=None,
         propose_edits: bool = False,
         deep_analyzer_run: DeepAnalyzerRun | None = None,
+        web_search_run: WebSearchRun | None = None,
     ) -> None:
         self._workspace = Path(workspace_path or _get_workspace_path()).resolve()
         self._file_service = FileService(root_path=str(self._workspace))
@@ -85,6 +91,7 @@ class ToolExecutor:
         self._rag = rag
         self._propose_edits = propose_edits
         self._deep_analyzer_run = deep_analyzer_run
+        self._web_search_run = web_search_run
 
     async def execute(self, tool: str, args: dict[str, Any]) -> ToolResult:
         """Execute tool with given args."""
@@ -105,6 +112,8 @@ class ToolExecutor:
             return await self._index_workspace(args)
         if tool_lower == "run_project_analysis":
             return await self._run_project_analysis(args)
+        if tool_lower == "web_search":
+            return await self._web_search(args)
         return ToolResult(
             success=False,
             content="",
@@ -326,5 +335,37 @@ class ToolExecutor:
                 content="",
                 error=str(e),
                 tool="run_project_analysis",
+                args=args,
+            )
+
+    async def _web_search(self, args: dict) -> ToolResult:
+        """Search the web for current info, best practices, news. Uses backend multi_search if configured."""
+        query = args.get("query", "").strip()
+        if not query:
+            return ToolResult(success=False, content="", error="query required", tool="web_search", args=args)
+        if not self._web_search_run:
+            return ToolResult(
+                success=False,
+                content="",
+                error="Web search is not configured. User can set BRAVE_API_KEY or TAVILY_API_KEY in settings.",
+                tool="web_search",
+                args=args,
+            )
+        try:
+            content = await self._web_search_run(query)
+            if not content or not content.strip():
+                return ToolResult(
+                    success=True,
+                    content="No results found. Try different keywords or check API keys (Brave/Tavily) in settings.",
+                    tool="web_search",
+                    args=args,
+                )
+            return ToolResult(success=True, content=content, tool="web_search", args=args)
+        except Exception as e:
+            return ToolResult(
+                success=False,
+                content="",
+                error=str(e),
+                tool="web_search",
                 args=args,
             )

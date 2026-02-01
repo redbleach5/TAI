@@ -11,8 +11,16 @@ from src.domain.ports.rag import RAGPort
 from src.domain.services.intent_detector import IntentDetector
 from src.domain.services.model_selector import ModelSelector
 from src.infrastructure.llm.reasoning_parser import stream_reasoning_chunks
-from src.infrastructure.services.command_parser import parse_message
+from src.infrastructure.services.command_parser import parse_message, CommandType
 from src.infrastructure.services.assistant_modes import get_mode
+
+# When @web was requested but search failed — we return this in context and then short-circuit (no LLM)
+WEB_FAILED_MARKER = "Web search was requested but could not be performed"
+WEB_FAILED_USER_MESSAGE = (
+    "Веб-поиск не выполнен: сервис недоступен или нет результатов. "
+    "Проверьте подключение к интернету и попробуйте позже. "
+    "Для надёжного поиска можно настроить API-ключ Brave (переменная BRAVE_API_KEY, см. документацию)."
+)
 
 if TYPE_CHECKING:
     from src.application.agent.use_case import AgentUseCase
@@ -33,6 +41,11 @@ class ChatUseCase:
         agent_use_case: "AgentUseCase | None" = None,
         workspace_path_getter: "Callable[[], str] | None" = None,
         is_indexed_getter: "Callable[[], bool] | None" = None,
+        web_search_searxng_url: str | None = None,
+        web_search_brave_api_key: str | None = None,
+        web_search_tavily_api_key: str | None = None,
+        web_search_google_api_key: str | None = None,
+        web_search_google_cx: str | None = None,
     ) -> None:
         self._llm = llm
         self._model_selector = model_selector
@@ -44,6 +57,11 @@ class ChatUseCase:
         self._agent_use_case = agent_use_case
         self._workspace_path_getter = workspace_path_getter
         self._is_indexed_getter = is_indexed_getter
+        self._web_search_searxng_url = (web_search_searxng_url or "").strip() or None
+        self._web_search_brave_api_key = (web_search_brave_api_key or "").strip() or None
+        self._web_search_tavily_api_key = (web_search_tavily_api_key or "").strip() or None
+        self._web_search_google_api_key = (web_search_google_api_key or "").strip() or None
+        self._web_search_google_cx = (web_search_google_cx or "").strip() or None
 
     async def execute(self, request: ChatRequest) -> ChatResponse:
         """Process chat request: detect intent, process commands, call LLM."""
@@ -60,9 +78,15 @@ class ChatUseCase:
 
         # Build messages with command processing
         messages = await self._build_messages(request)
-        
-        # Generate LLM response
-        model, fallback = await self._model_selector.select_model(request.message)
+        user_content = messages[-1].content if messages else ""
+        if "@web" in request.message.lower() and WEB_FAILED_MARKER in user_content:
+            return self._create_response(request, WEB_FAILED_USER_MESSAGE, "system")
+
+        # Generate LLM response (use request.model if user selected one in UI)
+        if request.model and request.model.strip():
+            model, fallback = request.model.strip(), request.model.strip()
+        else:
+            model, fallback = await self._model_selector.select_model(request.message)
         temperature = self._get_temperature(request)
         llm_response = await self._generate_with_fallback(messages, model, fallback, temperature)
         
@@ -93,7 +117,18 @@ class ChatUseCase:
 
         # Build messages with command processing
         messages = await self._build_messages(request)
-        model, fallback = await self._model_selector.select_model(request.message)
+        user_content = messages[-1].content if messages else ""
+        if "@web" in request.message.lower() and WEB_FAILED_MARKER in user_content:
+            yield ("content", WEB_FAILED_USER_MESSAGE)
+            conv_id = self._save_to_memory(request, WEB_FAILED_USER_MESSAGE, "system") if self._memory else None
+            yield ("done", json.dumps({"conversation_id": conv_id or request.conversation_id or "", "model": "system"}))
+            return
+
+        # Use request.model if user selected one in UI
+        if request.model and request.model.strip():
+            model, fallback = request.model.strip(), request.model.strip()
+        else:
+            model, fallback = await self._model_selector.select_model(request.message)
         temperature = self._get_temperature(request)
         
         # Stream response
@@ -167,6 +202,8 @@ class ChatUseCase:
         elif current_file_hint:
             user_content = f"{current_file_hint}---\n\n{user_content}"
         if extra_context:
+            if any(c.type == CommandType.WEB for c in parsed.commands) and WEB_FAILED_MARKER not in extra_context:
+                extra_context = "Результаты веб-поиска (обязательно используй их для ответа на вопрос пользователя):\n\n" + extra_context
             user_content = f"{extra_context}\n\n---\n\n{user_content}"
         # When project is not indexed, hint so model can suggest indexing (user may forget)
         if (
@@ -217,16 +254,36 @@ class ChatUseCase:
                 cmd.argument,
                 rag=self._rag,
                 workspace_path=workspace_path,
+                web_search_searxng_url=self._web_search_searxng_url,
+                web_search_brave_api_key=self._web_search_brave_api_key,
+                web_search_tavily_api_key=self._web_search_tavily_api_key,
+                web_search_google_api_key=self._web_search_google_api_key,
+                web_search_google_cx=self._web_search_google_cx,
             )
             return result.content if result.content else None
         
         # Execute ALL commands in parallel
         tasks = [execute_cmd(cmd) for cmd in commands]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Collect successful results
-        context_parts = [r for r in results if r and not isinstance(r, Exception)]
-        
+
+        # Collect successful results; when @web was requested but failed, add a note so we
+        # short-circuit and show "web search unavailable" instead of calling the LLM with "[No search results found]"
+        WEB_FAILED_NOTE = (
+            f"[{WEB_FAILED_MARKER} (temporarily unavailable or no results). "
+            "Do not claim you have no internet. Tell the user that web search is temporarily unavailable.]"
+        )
+        NO_RESULTS_PLACEHOLDER = "[No search results found]"
+        context_parts = []
+        for cmd, r in zip(commands, results):
+            if cmd.type == CommandType.WEB and (
+                r is None
+                or isinstance(r, Exception)
+                or (isinstance(r, str) and (not r.strip() or r.strip() == NO_RESULTS_PLACEHOLDER))
+            ):
+                context_parts.append(WEB_FAILED_NOTE)
+            elif r and not isinstance(r, Exception) and (r.strip() != NO_RESULTS_PLACEHOLDER):
+                context_parts.append(r)
+
         return "\n\n---\n\n".join(context_parts)
 
     def _get_temperature(self, request: ChatRequest) -> float:
@@ -246,6 +303,10 @@ class ChatUseCase:
                 history=loaded[-self._max_context:],
                 conversation_id=request.conversation_id,
                 mode_id=request.mode_id,
+                model=request.model,
+                context_files=request.context_files,
+                active_file_path=request.active_file_path,
+                apply_edits_required=request.apply_edits_required,
             )
         return request
 

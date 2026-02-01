@@ -61,7 +61,11 @@ export interface ConfigResponse {
     defaults: { simple: string; medium: string; complex: string; fallback: string }
     lm_studio: { simple: string; medium: string; complex: string; fallback: string } | null
   }
+  ollama?: { host: string; timeout: number; num_ctx?: number; num_predict?: number }
+  openai_compatible?: { base_url: string; timeout: number; max_tokens?: number }
   embeddings: { model: string }
+  persistence?: { max_context_messages: number }
+  web_search?: { searxng_url: string; brave_api_key: string; tavily_api_key: string; google_api_key: string; google_cx: string }
   logging: { level: string }
 }
 
@@ -71,7 +75,11 @@ export interface ConfigPatch {
     defaults?: { simple?: string; medium?: string; complex?: string; fallback?: string }
     lm_studio?: { simple?: string; medium?: string; complex?: string; fallback?: string }
   }
+  ollama?: { host?: string; timeout?: number; num_ctx?: number | null; num_predict?: number | null }
+  openai_compatible?: { base_url?: string; timeout?: number; max_tokens?: number | null }
   embeddings?: { model?: string }
+  persistence?: { max_context_messages?: number }
+  web_search?: { searxng_url?: string; brave_api_key?: string; tavily_api_key?: string; google_api_key?: string; google_cx?: string }
   logging?: { level?: string }
 }
 

@@ -185,10 +185,37 @@ export function ChatMessage({ message, messageIndex = 0, onApplyEdit, onRejectEd
             </div>
           </details>
         )}
+        {!isUser && hasToolEvents && message.toolEvents!.length > 0 && (() => {
+          const lastResult = [...message.toolEvents!].reverse().find((e) => e.type === 'tool_result')
+          const contentEmpty = !message.content || !message.content.trim()
+          const looksLikeToolCall = typeof message.content === 'string' && (
+            message.content.includes('<tool_call>') ||
+            (message.content.includes('"name"') && message.content.includes('"arguments"')) ||
+            (message.content.includes('"tool"') && /"path"|"command"|"query"|"content"|"incremental"|"question"/.test(message.content))
+          )
+          if (lastResult && (contentEmpty || looksLikeToolCall)) {
+            return (
+              <div className="chat-message__content chat-message__content--tool-result">
+                <p className="chat-message__result-label">Результат выполнения:</p>
+                <pre className="chat-message__result-output">{lastResult.data}</pre>
+              </div>
+            )
+          }
+          return null
+        })()}
         <div className="chat-message__content">
           {isUser ? (
             message.content
-          ) : (
+          ) : (() => {
+            const contentEmpty = !message.content || !message.content.trim()
+            const looksLikeToolCall = typeof message.content === 'string' && (
+              message.content.includes('<tool_call>') ||
+              (message.content.includes('"name"') && message.content.includes('"arguments"')) ||
+              (message.content.includes('"tool"') && /"path"|"command"|"query"|"content"|"incremental"|"question"/.test(message.content))
+            )
+            const hasResultBlock = hasToolEvents && message.toolEvents!.some((e) => e.type === 'tool_result') && (contentEmpty || looksLikeToolCall)
+            if (hasResultBlock) return <span className="chat-message__content-placeholder">Вызов инструмента (результат выше)</span>
+            return (
             <Markdown
               remarkPlugins={[remarkGfm]}
               components={{
@@ -209,7 +236,8 @@ export function ChatMessage({ message, messageIndex = 0, onApplyEdit, onRejectEd
             >
               {message.content}
             </Markdown>
-          )}
+            )
+          })()}
         </div>
         {hasReportPath && (
           <div className="chat-message__report-actions">

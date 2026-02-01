@@ -8,11 +8,11 @@
 
 | Область | Реализовано | Осталось |
 |---------|-------------|----------|
-| **Чат** | context_files, @rag, @web, @code, auto-RAG, active_file_path, project map в контексте | — |
-| **Agent** | read_file, write_file (multi-file), search_rag, run_terminal (cwd, timeout), list_files, get_index_status, index_workspace; **применить/отклонить** предложенные правки (Cursor-like) | max_iterations в конфиг |
+| **Чат** | context_files, @rag, @web, @code, auto-RAG, active_file_path, project map, **выбор модели в UI** (request.model) | — |
+| **Agent** | read_file, write_file (multi-file), search_rag, run_terminal (cwd, timeout), list_files, get_index_status, index_workspace; **применить/отклонить** правки; **max_iterations в конфиге** (default.toml, [agent]) | — |
 | **Workspace** | Открыть папку, индексация, **создать проект с нуля** (POST /workspace/create, UI «Создать проект») | — |
-| **Анализ** | DeepAnalyzer: многошаговость (A1), RAG 8 запросов, targeted RAG, отчёт в docs/ANALYSIS_REPORT.md, граф зависимостей (A2), Git-контекст (A3) | Покрытие тестами (A4) |
-| **Improvement** | plan → code → validate → retry, RAG, related_files, project_map | Контекст ошибок (B5), стриминг plan→code (C3) |
+| **Анализ** | DeepAnalyzer: многошаговость (A1), RAG 8 запросов, targeted RAG, отчёт в docs/ANALYSIS_REPORT.md, граф зависимостей (A2), Git-контекст (A3), **покрытие тестами (A4)** — pytest-cov/coverage в промпт | — |
+| **Improvement** | plan → code → validate → retry, RAG, related_files, project_map, **контекст ошибок (B5)** — stack trace + RAG по ошибке при retry | Стриминг plan→code (C3) |
 | **Workflow** | planner → researcher → tests → coder, RAG, project_map | — |
 
 ---
@@ -24,7 +24,10 @@
 - **Контекст чата:** workspace в @code/@file, active_file_path, project map и auto-RAG в обычном чате, подсказка про индексацию.
 - **Агент:** get_index_status, index_workspace — модель может сама предложить/запустить индексацию.
 - **Анализ:** полный отчёт сохраняется в `docs/ANALYSIS_REPORT.md`, в чате — краткое резюме и кнопка «Открыть отчёт».
-- **Применить/отклонить правки (Cursor-like):** в режиме агента вызовы `write_file` не пишут на диск сразу; в чате показываются «Предложенные изменения» с diff и кнопками «Применить» и «Отклонить». Применить — запись через API; отклонить — правка снимается. Параметр запроса `apply_edits_required` (по умолчанию true в режиме agent).
+- **Применить/отклонить правки (Cursor-like):** в режиме агента вызовы `write_file` не пишут на диск сразу; в чате показываются «Предложенные изменения» с diff и кнопками «Применить» и «Отклонить». Параметр запроса `apply_edits_required` (по умолчанию true в режиме agent).
+- **Выбор модели в чате:** выбранная в UI модель передаётся в `request.model` и используется бэкендом (обычный чат и стрим).
+- **Настройки (расширение):** в разделе «Настройки» — Ollama (host, timeout, num_ctx, num_predict), LM Studio (base_url, timeout, max_tokens), контекст чата (max_context_messages). Сохранение в `development.toml`.
+- **Производительность моделей:** опциональные num_ctx/num_predict (Ollama) и max_tokens (OpenAI-совместимый) в конфиге и в UI для максимума контекста и длины ответа.
 
 ---
 
@@ -37,7 +40,7 @@
 | **A1** Многошаговый анализ | Статика + ключевые файлы → RAG по модулям → финальный синтез | ✅ |
 | **A2** Граф зависимостей | Парсер импортов (Python/TS), граф, циклы, неиспользуемые импорты | ✅ |
 | **A3** Git-контекст | git log (недавние/часто меняющиеся файлы) в промпт анализа | ✅ |
-| **A4** Покрытие тестами | pytest-cov/coverage в промпт | ⬜ |
+| **A4** Покрытие тестами | pytest-cov/coverage в промпт | ✅ |
 
 ### Часть 2: Написание кода
 
@@ -103,21 +106,21 @@
 - [x] **Генерация:** RAG + project_map в контексте, multi-file (agent + improvement).
 - [x] **Agent:** богатый контекст, multi-file write, применить/отклонить предложенные правки, run_terminal в подпапках с таймаутом, индексация по запросу.
 - [x] **Проект с нуля:** создать папку из UI → агент пишет файлы и запускает команды.
-- [ ] **Анализ:** многошаговый + граф зависимостей ✅ + Git ✅ + тесты.
+- [x] **Анализ:** многошаговый + граф зависимостей ✅ + Git ✅ + покрытие тестами (A4) ✅.
 - [x] **Improvement:** полный stack trace при retry, контекст ошибок (B5).
 
 ---
 
 ## Рекомендуемый порядок работ
 
-1. **A2** Граф зависимостей (2–3 дня).
-2. **B5** Контекст ошибок в Improvement (1 день).
-3. **A3** Git-контекст в анализ (1 день).
-4. **max_iterations** в конфиг (0.5 дня).
-5. **C3.1** Свобода действий модели: tool run_project_analysis, убрать хардкод намерений во фронте (1–2 дня).
-6. **A4** Покрытие тестами (1–2 дня).
-7. **B6** Inline-редактирование (2–3 дня).
-8. **C3** Стриминг улучшений (низкий приоритет).
+**Уже сделано:** A2 (граф зависимостей), B5 (контекст ошибок), A3 (Git-контекст), A4 (покрытие тестами в анализе), max_iterations в конфиг, C3.1 (run_project_analysis, сообщения в чат).
+
+**Дальше по приоритету:**
+
+1. ~~**A4** Покрытие тестами в анализе~~ — ✅ сделано (coverage_collector, промпт A4).
+2. **B6** Inline-редактирование («Улучшить выделенное», diff preview, partial edits) — 2–3 дня.
+3. **C3** Стриминг улучшений (Improvement: plan → code в реальном времени) — низкий приоритет.
+4. **Качество кода (Часть 5):** глобальные переменные → DI, разбиение project_analyzer, вынос логики из больших файлов — по возможности.
 
 ---
 
@@ -128,6 +131,7 @@
 | A1 | `deep_analyzer.py` |
 | A2 | Новый `dependency_graph.py`, `deep_analyzer.py` |
 | A3 | `deep_analyzer.py`, git commands |
+| A4 | `coverage_collector.py`, `deep_analyzer.py` |
 | B1 | `improvement_graph.py`, `use_case.py` (improvement) |
 | B2 | `workflow/` (coder node), `improvement_graph.py` |
 | B3 | `agent/tools.py`, `improvement/use_case.py`, API, UI: Improve форма + related_files |
@@ -166,7 +170,7 @@
 
 - **Path traversal в FileReaderHandler** — исправлено (пути относительно workspace, проверка relative_to).
 - **Тест `test_chat_code_returns_response`** падает без Ollama — рекомендуется мок LLM или skip при недоступности.
-- **Хост Ollama в конфиге** — по умолчанию лучше `http://localhost:11434`, переопределение через development.toml / .env.
+- **Хост Ollama и LM Studio** — настраиваются в разделе «Настройки» (Ollama host, LM Studio base_url) и в development.toml / .env (OLLAMA_HOST, OPENAI_BASE_URL).
 - **FileService._is_safe_path** — предпочтительно проверять через `relative_to(root)` вместо `startswith`.
 - **Frontend: история в sync-чате** — исправлено (messagesRef для актуальной истории).
 - **Container.reset()** — после reset кэш очищается, но `_config_override` остаётся (учитывать в тестах).

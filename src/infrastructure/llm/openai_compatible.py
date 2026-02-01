@@ -22,6 +22,27 @@ class OpenAICompatibleAdapter:
         if config.api_key:
             self._headers["Authorization"] = f"Bearer {config.api_key}"
 
+    def _chat_body(
+        self,
+        model: str,
+        messages: list,
+        temperature: float,
+        stream: bool,
+        tools: list | None = None,
+    ) -> dict:
+        """Build request body; optional max_tokens from config."""
+        body: dict = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": stream,
+        }
+        if self._config.max_tokens is not None:
+            body["max_tokens"] = self._config.max_tokens
+        if tools is not None:
+            body["tools"] = tools
+        return body
+
     async def generate(
         self,
         messages: list[LLMMessage],
@@ -30,12 +51,12 @@ class OpenAICompatibleAdapter:
     ) -> LLMResponse:
         """Generate a single response (non-streaming)."""
         model = model or "default"
-        body = {
-            "model": model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
-            "temperature": temperature,
-            "stream": False,
-        }
+        body = self._chat_body(
+            model,
+            [{"role": m.role, "content": m.content} for m in messages],
+            temperature,
+            stream=False,
+        )
         async with httpx.AsyncClient(timeout=self._config.timeout) as client:
             resp = await client.post(
                 f"{self._base_url}/chat/completions",
@@ -64,12 +85,12 @@ class OpenAICompatibleAdapter:
     ) -> AsyncIterator[str]:
         """Generate response with streaming."""
         model = model or "default"
-        body = {
-            "model": model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
-            "temperature": temperature,
-            "stream": True,
-        }
+        body = self._chat_body(
+            model,
+            [{"role": m.role, "content": m.content} for m in messages],
+            temperature,
+            stream=True,
+        )
         async with httpx.AsyncClient(timeout=self._config.timeout) as client:
             async with client.stream(
                 "POST",
@@ -167,13 +188,13 @@ class OpenAICompatibleAdapter:
     ) -> tuple[str, list[dict]]:
         """Chat with tools (OpenAI / LM Studio tool use). Returns (content, tool_calls with id)."""
         model = model or "default"
-        body = {
-            "model": model,
-            "messages": self._messages_to_openai(messages),
-            "tools": tools,
-            "temperature": temperature,
-            "stream": False,
-        }
+        body = self._chat_body(
+            model,
+            self._messages_to_openai(messages),
+            temperature,
+            stream=False,
+            tools=tools,
+        )
         try:
             async with httpx.AsyncClient(timeout=self._config.timeout) as client:
                 resp = await client.post(
@@ -218,13 +239,13 @@ class OpenAICompatibleAdapter:
     ) -> AsyncIterator[tuple[str, str | list[dict] | None]]:
         """Stream chat with tools. Yields (kind, data): content chunks, then ('tool_calls', [...]) or ('done', None)."""
         model = model or "default"
-        body = {
-            "model": model,
-            "messages": self._messages_to_openai(messages),
-            "tools": tools,
-            "temperature": temperature,
-            "stream": True,
-        }
+        body = self._chat_body(
+            model,
+            self._messages_to_openai(messages),
+            temperature,
+            stream=True,
+            tools=tools,
+        )
         try:
             async with httpx.AsyncClient(timeout=self._config.timeout) as client:
                 async with client.stream(

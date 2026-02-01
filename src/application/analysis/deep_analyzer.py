@@ -20,6 +20,7 @@ from src.infrastructure.analyzer.dependency_graph import (
     build_dependency_graph,
     format_dependency_graph_markdown,
 )
+from src.infrastructure.analyzer.coverage_collector import collect_coverage_for_analysis
 from src.infrastructure.analyzer.project_analyzer import get_analyzer
 from src.infrastructure.services.git_service import GitService
 from src.infrastructure.analyzer.report_generator import ReportGenerator
@@ -113,6 +114,9 @@ DEEP_ANALYSIS_PROMPT_GENERIC = """Ты — эксперт по анализу к
 ### Git (A3: недавние коммиты и изменённые файлы)
 {git_context}
 
+### Покрытие тестами (A4: pytest-cov/coverage)
+{coverage_context}
+
 ### Карта проекта (структура)
 {project_map}
 
@@ -157,6 +161,9 @@ DEEP_ANALYSIS_PROMPT_FASTAPI = """Ты — эксперт по FastAPI и Python
 ### Git (A3: недавние коммиты и изменённые файлы)
 {git_context}
 
+### Покрытие тестами (A4)
+{coverage_context}
+
 ### Карта проекта
 {project_map}
 
@@ -192,6 +199,9 @@ DEEP_ANALYSIS_PROMPT_REACT = """Ты — эксперт по React/TypeScript fr
 ### Git (A3: недавние коммиты и изменённые файлы)
 {git_context}
 
+### Покрытие тестами (A4)
+{coverage_context}
+
 ### Карта проекта
 {project_map}
 
@@ -226,6 +236,9 @@ DEEP_ANALYSIS_PROMPT_DJANGO = """Ты — эксперт по Django. Проан
 
 ### Git (A3: недавние коммиты и изменённые файлы)
 {git_context}
+
+### Покрытие тестами (A4)
+{coverage_context}
 
 ### Карта проекта
 {project_map}
@@ -428,6 +441,11 @@ class DeepAnalyzer:
         except Exception:
             pass
 
+        # 3c. Coverage (A4): pytest-cov/coverage in prompt
+        coverage_context = await asyncio.to_thread(
+            collect_coverage_for_analysis, str(project_path)
+        )
+
         # 4. Initial RAG context (expanded)
         rag_context = "Не доступен. Выполните индексацию workspace."
         if self._rag:
@@ -470,6 +488,7 @@ class DeepAnalyzer:
             key_files=key_files,
             static_report=static_report[:12000],
             git_context=git_context[:3000] if git_context else "Не доступен.",
+            coverage_context=coverage_context,
             project_map=project_map,
             rag_context=rag_context[:12000],
         )

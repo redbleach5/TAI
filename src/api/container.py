@@ -108,11 +108,17 @@ class Container:
     def agent_use_case(self) -> "AgentUseCase":
         """Agent use case for autonomous tool execution."""
         from src.application.agent.use_case import AgentUseCase
+        ws = self.config.web_search
         return AgentUseCase(
             llm=self.llm,
             model_selector=self.model_selector,
             rag=self.rag,
             max_iterations=self.config.agent.max_iterations,
+            web_search_searxng_url=ws.searxng_url,
+            web_search_brave_api_key=ws.brave_api_key,
+            web_search_tavily_api_key=ws.tavily_api_key,
+            web_search_google_api_key=ws.google_api_key,
+            web_search_google_cx=ws.google_cx,
         )
 
     @cached_property
@@ -130,6 +136,7 @@ class Container:
             current = get_store().get_current()
             return bool(current and getattr(current, "indexed", False))
 
+        ws = self.config.web_search
         return ChatUseCase(
             llm=self.llm,
             model_selector=self.model_selector,
@@ -139,6 +146,11 @@ class Container:
             agent_use_case=self.agent_use_case,
             workspace_path_getter=_workspace_path,
             is_indexed_getter=_is_indexed,
+            web_search_searxng_url=ws.searxng_url,
+            web_search_brave_api_key=ws.brave_api_key,
+            web_search_tavily_api_key=ws.tavily_api_key,
+            web_search_google_api_key=ws.google_api_key,
+            web_search_google_cx=ws.google_cx,
         )
     
     @cached_property

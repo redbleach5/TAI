@@ -10,11 +10,12 @@ import asyncio
 import hashlib
 import html
 import logging
+import os
 import re
 import threading
 import time
 from collections import OrderedDict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from urllib.parse import urlparse, urlunparse
 
 from src.infrastructure.services.http_pool import get_http_client
@@ -144,15 +145,38 @@ SEARXNG_INSTANCES = [
 ]
 
 
+def _resolve_web_search_options(
+    searxng_url: str | None = None,
+    brave_api_key: str | None = None,
+    tavily_api_key: str | None = None,
+    google_api_key: str | None = None,
+    google_cx: str | None = None,
+) -> tuple[str | None, str | None, str | None, str | None, str | None]:
+    """Resolve options from args or env (config overrides env when passed)."""
+    return (
+        (searxng_url or os.environ.get("SEARXNG_URL", "") or "").strip() or None,
+        (brave_api_key if brave_api_key is not None else os.environ.get("BRAVE_API_KEY", "") or "").strip() or None,
+        (tavily_api_key if tavily_api_key is not None else os.environ.get("TAVILY_API_KEY", "") or "").strip() or None,
+        (google_api_key if google_api_key is not None else os.environ.get("GOOGLE_API_KEY", "") or "").strip() or None,
+        (google_cx if google_cx is not None else os.environ.get("GOOGLE_CX", "") or "").strip() or None,
+    )
+
+
 async def multi_search(
     query: str,
-    max_results: int = 8,
-    timeout: float = 8.0,
+    max_results: int = 10,
+    timeout: float = 12.0,
     use_cache: bool = True,
+    *,
+    searxng_url: str | None = None,
+    brave_api_key: str | None = None,
+    tavily_api_key: str | None = None,
+    google_api_key: str | None = None,
+    google_cx: str | None = None,
 ) -> list[SearchResult]:
-    """Search using multiple engines in parallel with fallback.
+    """Search using multiple engines in parallel with fallback (Cherry Studio–style).
     
-    Tries DuckDuckGo, SearXNG instances, and Brave (if key provided).
+    Tries DuckDuckGo, SearXNG (custom URL or public instances), Brave, Tavily, and Google Custom Search when keys set.
     Returns merged, deduplicated results.
     
     Args:
@@ -160,6 +184,11 @@ async def multi_search(
         max_results: Maximum results to return
         timeout: Timeout per engine
         use_cache: Whether to use cache
+        searxng_url: Optional custom SearXNG instance URL (e.g. http://localhost:8080)
+        brave_api_key: Optional Brave Search API key
+        tavily_api_key: Optional Tavily API key
+        google_api_key: Optional Google Custom Search API key (100 free/day)
+        google_cx: Optional Google Programmable Search Engine ID (required with google_api_key)
     
     Returns:
         List of SearchResult from best available source
@@ -174,8 +203,17 @@ async def multi_search(
         if cached:
             return cached
     
-    # Run searches in parallel
-    results = await _parallel_search(query, max_results, timeout)
+    s_url, b_key, t_key, g_key, g_cx = _resolve_web_search_options(
+        searxng_url, brave_api_key, tavily_api_key, google_api_key, google_cx
+    )
+    results = await _parallel_search(
+        query, max_results, timeout,
+        searxng_url=s_url,
+        brave_api_key=b_key,
+        tavily_api_key=t_key,
+        google_api_key=g_key,
+        google_cx=g_cx,
+    )
     
     # Cache results
     if use_cache and results:
@@ -188,11 +226,16 @@ async def _parallel_search(
     query: str,
     max_results: int,
     timeout: float,
+    *,
+    searxng_url: str | None = None,
     brave_api_key: str | None = None,
+    tavily_api_key: str | None = None,
+    google_api_key: str | None = None,
+    google_cx: str | None = None,
 ) -> list[SearchResult]:
-    """Run multiple search engines in parallel.
+    """Run multiple search engines in parallel (Cherry Studio–style).
     
-    Runs all engines simultaneously for best latency.
+    Uses custom SearXNG URL if set, else first public instance. Adds Brave/Tavily/Google when keys set.
     Falls back to additional SearXNG instances in parallel if no results.
     """
     
@@ -207,20 +250,26 @@ async def _parallel_search(
             logger.debug(f"Search '{name}' failed: {e}")
             return (name, [])
     
-    # Create search tasks - run all engines in parallel
+    searxng_base = (searxng_url or "").strip()
+    if not searxng_base:
+        searxng_base = SEARXNG_INSTANCES[0]
+    else:
+        # Ensure no trailing slash for consistency
+        searxng_base = searxng_base.rstrip("/")
+    
     tasks = [
         safe_search(search_duckduckgo(query, max_results, timeout), "duckduckgo"),
-        safe_search(search_searxng(query, max_results, SEARXNG_INSTANCES[0], timeout), "searxng"),
+        safe_search(search_searxng(query, max_results, searxng_base, timeout), "searxng"),
     ]
-    
-    # Include Brave if API key is available
     if brave_api_key:
         tasks.append(safe_search(search_brave(query, max_results, brave_api_key), "brave"))
+    if tavily_api_key:
+        tasks.append(safe_search(search_tavily(query, max_results, tavily_api_key, timeout), "tavily"))
+    if google_api_key and google_cx:
+        tasks.append(safe_search(search_google(query, max_results, google_api_key, google_cx, timeout), "google"))
     
-    # Run in parallel
     done = await asyncio.gather(*tasks, return_exceptions=True)
     
-    # Collect results with URL normalization for deduplication
     all_results: list[SearchResult] = []
     seen_urls: set[str] = set()
     
@@ -237,8 +286,8 @@ async def _parallel_search(
                     all_results.append(r)
                     seen_urls.add(normalized)
     
-    # If no results, try remaining SearXNG instances in parallel
-    if not all_results and len(SEARXNG_INSTANCES) > 1:
+    # If no results, try remaining SearXNG instances only when not using custom URL
+    if not all_results and not (searxng_url or "").strip() and len(SEARXNG_INSTANCES) > 1:
         logger.debug("Primary search failed, trying fallback instances in parallel")
         fallback_tasks = [
             safe_search(search_searxng(query, max_results, inst, timeout), f"searxng-{i}")
@@ -382,6 +431,114 @@ async def search_searxng(
                 await asyncio.sleep(wait_time)
     
     logger.debug(f"SearXNG {instance} failed: {last_error}")
+    return []
+
+
+async def search_tavily(
+    query: str,
+    max_results: int = 5,
+    api_key: str | None = None,
+    timeout: float = 10.0,
+    retries: int = 2,
+) -> list[SearchResult]:
+    """Search using Tavily API (Cherry Studio–style; app.tavily.com).
+    
+    POST https://api.tavily.com/search, Bearer token. Retries on transient errors.
+    """
+    if not query.strip() or not api_key:
+        return []
+    
+    url = "https://api.tavily.com/search"
+    payload = {
+        "query": query,
+        "max_results": min(max_results, 20),
+        "search_depth": "basic",
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+    
+    last_error: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            async with get_http_client() as client:
+                response = await client.post(
+                    url,
+                    json=payload,
+                    headers=headers,
+                    timeout=timeout,
+                )
+                response.raise_for_status()
+                data = response.json()
+            
+            results = []
+            for item in data.get("results", [])[:max_results]:
+                results.append(SearchResult(
+                    title=item.get("title", ""),
+                    url=item.get("url", ""),
+                    snippet=(item.get("content") or "")[:300],
+                ))
+            return results
+        except Exception as e:
+            last_error = e
+            if attempt < retries:
+                wait_time = (2 ** attempt)
+                logger.debug(f"Tavily retry {attempt + 1}: {e}")
+                await asyncio.sleep(wait_time)
+    
+    logger.debug(f"Tavily search failed: {last_error}")
+    return []
+
+
+async def search_google(
+    query: str,
+    max_results: int = 5,
+    api_key: str | None = None,
+    cx: str | None = None,
+    timeout: float = 10.0,
+    retries: int = 2,
+) -> list[SearchResult]:
+    """Search using Google Custom Search JSON API (Cherry Studio–style).
+    
+    Requires API key (Google Cloud) and Programmable Search Engine ID (cx).
+    Free tier: 100 queries/day. Create engine at programmablesearchengine.google.com.
+    """
+    if not query.strip() or not api_key or not cx:
+        return []
+    
+    url = "https://customsearch.googleapis.com/customsearch/v1"
+    params = {
+        "key": api_key,
+        "cx": cx,
+        "q": query,
+        "num": min(max_results, 10),
+    }
+    
+    last_error: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            async with get_http_client() as client:
+                response = await client.get(url, params=params, timeout=timeout)
+                response.raise_for_status()
+                data = response.json()
+            
+            results = []
+            for item in data.get("items", [])[:max_results]:
+                results.append(SearchResult(
+                    title=item.get("title", ""),
+                    url=item.get("link", ""),
+                    snippet=item.get("snippet", "")[:300],
+                ))
+            return results
+        except Exception as e:
+            last_error = e
+            if attempt < retries:
+                wait_time = 2 ** attempt
+                logger.debug(f"Google retry {attempt + 1}: {e}")
+                await asyncio.sleep(wait_time)
+    
+    logger.debug(f"Google search failed: {last_error}")
     return []
 
 
