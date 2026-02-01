@@ -13,7 +13,8 @@ provider = "ollama"  # "ollama" | "lm_studio"
 # num_predict: max tokens to generate; -1 = no limit. Leave unset for model default.
 [ollama]
 host = "http://192.168.178.126:11434"
-timeout = 120
+# timeout: read для ответа LLM (сек). Для удалённого сервера и тяжёлых моделей (20B+) лучше 300
+timeout = 300
 pool_size = 4
 # num_ctx = 32768
 # num_predict = -1

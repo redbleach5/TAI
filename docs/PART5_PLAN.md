@@ -13,10 +13,10 @@
 | `api/container.py` | `_container` | dependencies.py, main.py — оставляем как единую точку DI |
 | `api/routes/projects.py` | `_store` (ProjectsStore) | container (chat), workspace, agent/tools, improve |
 | `infrastructure/analyzer/project_analyzer.py` | `_analyzer` | analyze.py, deep_analyzer.py |
-| `infrastructure/services/code_security.py` | `_checker` | code.py |
-| `infrastructure/services/performance_metrics.py` | `_metrics` | code.py |
-| `application/chat/handlers/registry.py` | `_default_registry` | chat/use_case.py |
-| `infrastructure/services/prompt_templates.py` | `_library` | api/routes/assistant.py |
+| ~~`infrastructure/services/code_security.py`~~ | ~~`_checker`~~ | → Container (code.py через Depends) |
+| ~~`infrastructure/services/performance_metrics.py`~~ | ~~`_metrics`~~ | → Container (code.py через Depends) |
+| ~~`application/chat/handlers/registry.py`~~ | ~~`_default_registry`~~ | → Container (chat_use_case получает из container) |
+| ~~`infrastructure/services/prompt_templates.py`~~ | ~~`_library`~~ | → Container (assistant.py через Depends) |
 
 Опционально (низкий приоритет): `circuit_breaker.py` (_breakers), `http_pool.py` (HTTPPool) — используются LLM и web_search.
 
@@ -109,11 +109,11 @@
 
 ### 1.7 PromptLibrary в Container
 
-- [ ] **1.7.1** В `container.py`: добавить `@cached_property def prompt_library(self) -> PromptLibrary` (создать PromptLibrary — из prompt_templates.py посмотреть, как создаётся библиотека).
-- [ ] **1.7.2** В `dependencies.py`: добавить `def get_library() -> PromptLibrary: return get_container().prompt_library`.
-- [ ] **1.7.3** В `api/routes/assistant.py`: заменить вызовы get_library() на Depends(get_library), импорт get_library из dependencies.
-- [ ] **1.7.4** В `prompt_templates.py`: удалить _library и синглтон из get_library.
-- [ ] **1.7.5** Тесты: проверить assistant routes.
+- [x] **1.7.1** В `container.py`: добавить `@cached_property def prompt_library(self) -> PromptLibrary` (создать PromptLibrary — из prompt_templates.py посмотреть, как создаётся библиотека).
+- [x] **1.7.2** В `dependencies.py`: добавить `def get_library() -> PromptLibrary: return get_container().prompt_library`.
+- [x] **1.7.3** В `api/routes/assistant.py`: заменить вызовы get_library() на Depends(get_library), импорт get_library из dependencies.
+- [x] **1.7.4** В `prompt_templates.py`: удалить _library и синглтон из get_library.
+- [x] **1.7.5** Тесты: проверить assistant routes.
 
 **Критерий:** Библиотека промптов из Container.
 

@@ -13,13 +13,25 @@ from src.infrastructure.resilience import (
     CircuitOpenError,
 )
 
+# Таймаут подключения к удалённому серверу — при недоступности не зависать бесконечно
+DEFAULT_CONNECT_TIMEOUT = 15.0
+
 
 class OllamaAdapter:
     """Ollama implementation of LLMPort with Circuit Breaker protection."""
 
     def __init__(self, config: OllamaConfig) -> None:
         self._config = config
-        self._client = AsyncClient(host=config.host)
+        # Передаём timeout в ollama-клиент: connect — быстрый фейл при недоступности хоста,
+        # read — полный таймаут на ответ (config.timeout в секундах). Все 4 параметра заданы явно (требование httpx).
+        read_timeout = float(config.timeout) if config.timeout else 120.0
+        timeout = httpx.Timeout(
+            connect=DEFAULT_CONNECT_TIMEOUT,
+            read=read_timeout,
+            write=read_timeout,
+            pool=30.0,
+        )
+        self._client = AsyncClient(host=config.host, timeout=timeout)
         self._available: bool | None = None
         
         # Circuit Breaker для защиты от каскадных сбоев
