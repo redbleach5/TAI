@@ -219,6 +219,9 @@ export interface ImprovementRequest {
   auto_write?: boolean
   max_retries?: number
   related_files?: string[]
+  /** B6: inline selection (1-based inclusive); when set, only that range is improved */
+  selection_start_line?: number
+  selection_end_line?: number
 }
 
 export interface ImprovementResponse {
@@ -228,6 +231,10 @@ export interface ImprovementResponse {
   validation_output?: string | null
   error?: string | null
   retries: number
+  /** B6: full file content after edit (for diff preview / apply in UI) */
+  proposed_full_content?: string | null
+  selection_start_line?: number | null
+  selection_end_line?: number | null
 }
 
 export async function postImprove(request: ImprovementRequest): Promise<ImprovementResponse> {

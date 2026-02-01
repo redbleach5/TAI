@@ -23,7 +23,12 @@ class ImprovementState(TypedDict, total=False):
     original_code: str
     related_files: list[str]  # B3: paths for context (imports, tests)
     related_files_context: str  # B3: content of related files
-    
+    # B6: inline selection (1-based); full_file_content = whole file for partial replace
+    selection_start_line: int
+    selection_end_line: int
+    full_file_content: str
+    auto_write: bool
+
     # RAG context (B1) + project map (B2)
     rag_context: str
     project_map: str
@@ -61,11 +66,23 @@ class ImprovementResult:
     retries: int
 
 
+def _extract_selection(content: str, start_line: int, end_line: int) -> str:
+    """Extract lines [start_line, end_line] (1-based inclusive)."""
+    lines = content.splitlines()
+    if not lines:
+        return ""
+    lo = max(0, start_line - 1)
+    hi = min(len(lines), end_line)
+    if lo >= hi:
+        return ""
+    return "\n".join(lines[lo:hi])
+
+
 async def _analyze_node(
     state: ImprovementState,
     file_writer: FileWriter,
 ) -> ImprovementState:
-    """Read original file and related files (B3) for improvement."""
+    """Read original file and related files (B3) for improvement. B6: optional selection."""
     file_path = state.get("file_path", "")
     result = file_writer.read_file(file_path)
     
@@ -75,6 +92,27 @@ async def _analyze_node(
             "error": result["error"],
             "current_step": "error",
         }
+    
+    content = result["content"] or ""
+    selection_start = state.get("selection_start_line")
+    selection_end = state.get("selection_end_line")
+    
+    if (
+        selection_start is not None
+        and selection_end is not None
+        and 1 <= selection_start <= selection_end
+    ):
+        original_code = _extract_selection(content, selection_start, selection_end)
+        if not original_code.strip():
+            return {
+                **state,
+                "error": "Selection is empty or out of range",
+                "current_step": "error",
+            }
+        full_file_content = content
+    else:
+        original_code = content
+        full_file_content = ""
     
     # B3: Read related files (imports, tests) for context
     related_files_context = ""
@@ -86,14 +124,19 @@ async def _analyze_node(
         if r.get("success") and r.get("content"):
             related_files_context += f"\n### {rel_path}\n```\n{r['content'][:1500]}\n```\n"
     
-    return {
+    out: ImprovementState = {
         **state,
-        "original_code": result["content"],
+        "original_code": original_code,
         "related_files_context": related_files_context[:6000] if related_files_context else "",
         "retry_count": 0,
         "max_retries": state.get("max_retries", 3),
         "current_step": "rag",
     }
+    if full_file_content:
+        out["full_file_content"] = full_file_content
+        out["selection_start_line"] = selection_start
+        out["selection_end_line"] = selection_end
+    return out
 
 
 async def _rag_node(
@@ -413,25 +456,56 @@ async def _retry_node(
     }
 
 
+def _build_full_content_for_selection(
+    full_file_content: str,
+    selection_start_line: int,
+    selection_end_line: int,
+    improved_code: str,
+) -> str:
+    """Build full file content with selection replaced by improved_code (B6)."""
+    lines = full_file_content.splitlines()
+    lo = max(0, selection_start_line - 1)
+    hi = min(len(lines), selection_end_line)
+    improved_lines = improved_code.rstrip().split("\n")
+    new_lines = lines[:lo] + improved_lines + lines[hi:]
+    return "\n".join(new_lines) + ("\n" if full_file_content.endswith("\n") else "")
+
+
 async def _write_node(
     state: ImprovementState,
     file_writer: FileWriter,
 ) -> ImprovementState:
-    """Write improved code to file."""
+    """Write improved code to file. B6: partial edit when selection range set."""
     file_path = state.get("file_path", "")
     improved_code = state.get("improved_code", "")
+    full_file_content = state.get("full_file_content")
+    selection_start = state.get("selection_start_line")
+    selection_end = state.get("selection_end_line")
+    auto_write = state.get("auto_write", True)
     
-    result = file_writer.write_file(
-        path=file_path,
-        content=improved_code,
-        create_backup=True,
-    )
+    if full_file_content and selection_start is not None and selection_end is not None:
+        content_to_write = _build_full_content_for_selection(
+            full_file_content, selection_start, selection_end, improved_code
+        )
+    else:
+        content_to_write = improved_code
+    
+    write_result: dict = {"proposed_full_content": content_to_write}
+    if auto_write:
+        result = file_writer.write_file(
+            path=file_path,
+            content=content_to_write,
+            create_backup=True,
+        )
+        write_result.update(result)
+    else:
+        write_result["success"] = True
     
     return {
         **state,
-        "write_result": result,
-        "current_step": "done" if result["success"] else "error",
-        "error": result.get("error"),
+        "write_result": write_result,
+        "current_step": "done" if write_result.get("success", True) else "error",
+        "error": write_result.get("error"),
     }
 
 

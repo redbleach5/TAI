@@ -14,7 +14,7 @@ import { useWorkspace } from '../workspace/useWorkspace'
 import { useOpenFilesContext } from '../editor/OpenFilesContext'
 import { useToast } from '../toast/ToastContext'
 import { Tooltip } from '../ui/Tooltip'
-import { postImprove, API_BASE } from '../../api/client'
+import { postImprove, writeFile, API_BASE, type ImprovementResponse } from '../../api/client'
 
 interface ChatPanelProps {
   hasEditorContext?: boolean
@@ -34,6 +34,7 @@ export function ChatPanel({ hasEditorContext, onCollapse }: ChatPanelProps) {
   const [showImproveForm, setShowImproveForm] = useState(false)
   const [improveIssue, setImproveIssue] = useState('')
   const [improveRelatedFiles, setImproveRelatedFiles] = useState('')
+  const [improveDiffModal, setImproveDiffModal] = useState<{ path: string; current: string; proposed: string } | null>(null)
   const [useStream, setUseStream] = useState(true)
   const [model, setModel] = useState('')
   const [searchWeb, setSearchWeb] = useState(false)
@@ -45,7 +46,6 @@ export function ChatPanel({ hasEditorContext, onCollapse }: ChatPanelProps) {
     streaming,
     error,
     send,
-    clear,
     addMessage,
     updateLastAssistant,
     applyEdit,
@@ -85,6 +85,7 @@ export function ChatPanel({ hasEditorContext, onCollapse }: ChatPanelProps) {
   useEffect(() => {
     function handleEscape(e: KeyboardEvent) {
       if (e.key === 'Escape') {
+        setImproveDiffModal(null)
         setShowConversations(false)
         setShowTemplates(false)
       }
@@ -126,27 +127,42 @@ export function ChatPanel({ hasEditorContext, onCollapse }: ChatPanelProps) {
       return
     }
     if (improving) return
+    const selection = (openFilesCtx as { getActiveSelection?: () => { startLine: number; endLine: number; text: string } | null })?.getActiveSelection?.() ?? null
+    const issueMsg = improveIssue.trim() || (selection ? 'Улучшить выделенный фрагмент' : 'Общее улучшение кода')
+    addMessage('user', selection ? `Улучшить выделенное (${activeFile.path}, строки ${selection.startLine}–${selection.endLine}): ${issueMsg}` : `Улучшить ${activeFile.path}: ${issueMsg}`)
     setImproving(true)
-    const issueMsg = improveIssue.trim() || 'Общее улучшение кода'
-    addMessage('user', `Улучшить ${activeFile.path}: ${issueMsg}`)
     try {
       const related = improveRelatedFiles
         .split(/[,\s]+/)
         .map((s) => s.trim())
         .filter(Boolean)
         .filter((p) => p !== activeFile.path)
-      const result = await postImprove({
+      const payload = {
         file_path: activeFile.path,
         issue: { message: issueMsg, severity: 'medium', issue_type: 'refactor' },
         related_files: related,
-      })
+      } as Parameters<typeof postImprove>[0]
+      if (selection) {
+        payload.selection_start_line = selection.startLine
+        payload.selection_end_line = selection.endLine
+        payload.auto_write = false
+      }
+      const result: ImprovementResponse = await postImprove(payload)
       if (result.success) {
-        addMessage('assistant', `Готово. Файл обновлён: ${result.file_path}${result.backup_path ? ` (бэкап: ${result.backup_path})` : ''}`)
-        showToast('Улучшение применено', 'success')
-        setShowImproveForm(false)
-        setImproveIssue('')
-        setImproveRelatedFiles('')
-        window.dispatchEvent(new CustomEvent('file-updated', { detail: { path: result.file_path } }))
+        if (result.proposed_full_content != null && selection) {
+          setImproveDiffModal({ path: result.file_path, current: activeFile.content, proposed: result.proposed_full_content })
+          addMessage('assistant', 'Предложенные изменения готовы. Проверьте diff и нажмите «Применить» или «Отклонить».')
+        } else if (!selection) {
+          addMessage('assistant', `Готово. Файл обновлён: ${result.file_path}${result.backup_path ? ` (бэкап: ${result.backup_path})` : ''}`)
+          showToast('Улучшение применено', 'success')
+          setShowImproveForm(false)
+          setImproveIssue('')
+          setImproveRelatedFiles('')
+          window.dispatchEvent(new CustomEvent('file-updated', { detail: { path: result.file_path } }))
+        } else {
+          addMessage('assistant', `Готово: ${result.file_path}`)
+          showToast('Улучшение готово', 'success')
+        }
       } else {
         addMessage('assistant', `Ошибка: ${result.error || 'Не удалось применить изменения'}`)
         showToast(result.error || 'Ошибка улучшения', 'error')
@@ -158,6 +174,29 @@ export function ChatPanel({ hasEditorContext, onCollapse }: ChatPanelProps) {
       setImproving(false)
     }
   }, [openFilesCtx, improving, improveIssue, improveRelatedFiles, addMessage, showToast])
+
+  const handleApplyImproveDiff = useCallback(async () => {
+    if (!improveDiffModal) return
+    const { path, proposed } = improveDiffModal
+    try {
+      const res = await writeFile(path, proposed)
+      if (res.success) {
+        openFilesCtx?.updateContent?.(path, proposed)
+        window.dispatchEvent(new CustomEvent('file-updated', { detail: { path } }))
+        showToast('Изменения применены', 'success')
+        setImproveDiffModal(null)
+        setShowImproveForm(false)
+        setImproveIssue('')
+        setImproveRelatedFiles('')
+        addMessage('assistant', `Изменения применены: ${path}`)
+      } else {
+        showToast(res.error || 'Ошибка записи', 'error')
+      }
+    } catch (e) {
+      showToast(e instanceof Error ? e.message : 'Ошибка', 'error')
+    }
+  }, [improveDiffModal, openFilesCtx, addMessage, showToast])
+
 
   const handleGenerate = async () => {
     const task = generateTask.trim() || 'Напиши функцию hello world на Python'
@@ -351,6 +390,11 @@ export function ChatPanel({ hasEditorContext, onCollapse }: ChatPanelProps) {
                   <div className="chat-panel__improve-file">
                     Файл: {openFilesCtx.getActiveFile()?.path}
                   </div>
+                  {(openFilesCtx as { getActiveSelection?: () => unknown })?.getActiveSelection && (
+                    <div className="chat-panel__improve-hint-inline">
+                      Выделите фрагмент в редакторе — будет «Улучшить выделенное» с diff preview
+                    </div>
+                  )}
                   <input
                     type="text"
                     className="chat-panel__improve-input"
@@ -367,7 +411,7 @@ export function ChatPanel({ hasEditorContext, onCollapse }: ChatPanelProps) {
                     onChange={(e) => setImproveRelatedFiles(e.target.value)}
                     disabled={improving}
                   />
-                  <Tooltip text="Запустить улучшение" side="bottom">
+                  <Tooltip text="Весь файл или выделенный фрагмент (с diff)" side="bottom">
                     <button
                       type="button"
                       className="chat-panel__action chat-panel__action--primary chat-panel__improve-run"
@@ -508,6 +552,40 @@ export function ChatPanel({ hasEditorContext, onCollapse }: ChatPanelProps) {
         modeSelector={<ModeSelector modes={modes} currentMode={currentMode} onSelect={setCurrentMode} compact />}
         modelSelector={<ModelSelector value={model} onChange={setModel} />}
       />
+
+      {improveDiffModal && (
+        <div
+          className="chat-panel__diff-overlay"
+          role="dialog"
+          aria-label="Diff улучшения"
+          onClick={() => setImproveDiffModal(null)}
+        >
+          <div className="chat-panel__diff-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="chat-panel__diff-header">
+              <span>Изменения: {improveDiffModal.path}</span>
+              <button type="button" className="chat-panel__diff-close" onClick={() => setImproveDiffModal(null)} aria-label="Закрыть">✕</button>
+            </div>
+            <div className="chat-panel__diff-body">
+              <div className="chat-panel__diff-block">
+                <div className="chat-panel__diff-label">Было</div>
+                <pre className="chat-panel__diff-pre">{improveDiffModal.current}</pre>
+              </div>
+              <div className="chat-panel__diff-block">
+                <div className="chat-panel__diff-label">Стало</div>
+                <pre className="chat-panel__diff-pre">{improveDiffModal.proposed}</pre>
+              </div>
+            </div>
+            <div className="chat-panel__diff-actions">
+              <button type="button" className="chat-panel__action chat-panel__action--primary" onClick={handleApplyImproveDiff}>
+                Применить
+              </button>
+              <button type="button" className="chat-panel__action" onClick={() => setImproveDiffModal(null)}>
+                Отклонить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

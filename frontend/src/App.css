@@ -2387,6 +2387,111 @@
   z-index: 10;
 }
 
+.chat-panel__improve-hint-inline {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* B6: diff preview modal */
+.chat-panel__diff-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: var(--spacing-md);
+}
+
+.chat-panel__diff-modal {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  max-width: 90vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.chat-panel__diff-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.chat-panel__diff-header span {
+  font-size: 0.9rem;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-panel__diff-close {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0.25rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.chat-panel__diff-close:hover {
+  color: var(--color-text-primary);
+}
+
+.chat-panel__diff-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  overflow: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.chat-panel__diff-block {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.chat-panel__diff-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: var(--spacing-xs);
+}
+
+.chat-panel__diff-pre {
+  margin: 0;
+  padding: var(--spacing-sm);
+  font-size: 0.8rem;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 50vh;
+}
+
+.chat-panel__diff-actions {
+  display: flex;
+  gap: var(--spacing-sm);
+  justify-content: flex-end;
+  padding: var(--spacing-md);
+  border-top: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
 .chat-panel__generate {
   display: flex;
   gap: var(--spacing-sm);

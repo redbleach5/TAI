@@ -2,7 +2,7 @@ import { useEffect, useCallback, useState, useRef } from 'react'
 import Editor from '@monaco-editor/react'
 import { API_BASE } from '../../api/client'
 import { useToast } from '../toast/ToastContext'
-import { useOpenFilesContext } from './OpenFilesContext'
+import { useOpenFilesContext, type OpenFilesContextValue } from './OpenFilesContext'
 import { useOpenFiles } from './useOpenFiles'
 import { EditorTabs } from './EditorTabs'
 
@@ -38,6 +38,13 @@ export function MultiFileEditor({ externalOpenFile }: MultiFileEditorProps) {
       openFileRef.current(externalOpenFile)
     }
   }, [externalOpenFile])
+
+  // B6: unregister editor ref on unmount
+  useEffect(() => {
+    return () => {
+      (ctx as OpenFilesContextValue | null)?.setEditorRef?.(null)
+    }
+  }, [ctx])
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -198,6 +205,9 @@ export function MultiFileEditor({ externalOpenFile }: MultiFileEditorProps) {
             language={currentFile.language}
             value={currentFile.content}
             onChange={handleEditorChange}
+            onMount={(editor) => {
+              (ctx as OpenFilesContextValue | null)?.setEditorRef?.(editor)
+            }}
             theme="vs-dark"
             options={{
               minimap: { enabled: false },

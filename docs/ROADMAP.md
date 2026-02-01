@@ -12,7 +12,7 @@
 | **Agent** | read_file, write_file (multi-file), search_rag, run_terminal (cwd, timeout), list_files, get_index_status, index_workspace; **применить/отклонить** правки; **max_iterations в конфиге** (default.toml, [agent]) | — |
 | **Workspace** | Открыть папку, индексация, **создать проект с нуля** (POST /workspace/create, UI «Создать проект») | — |
 | **Анализ** | DeepAnalyzer: многошаговость (A1), RAG 8 запросов, targeted RAG, отчёт в docs/ANALYSIS_REPORT.md, граф зависимостей (A2), Git-контекст (A3), **покрытие тестами (A4)** — pytest-cov/coverage в промпт | — |
-| **Improvement** | plan → code → validate → retry, RAG, related_files, project_map, **контекст ошибок (B5)** — stack trace + RAG по ошибке при retry | Стриминг plan→code (C3) |
+| **Improvement** | plan → code → validate → retry, RAG, related_files, project_map, контекст ошибок (B5), **inline (B6)** — выделенное + diff preview | Стриминг plan→code (C3) |
 | **Workflow** | planner → researcher → tests → coder, RAG, project_map | — |
 
 ---
@@ -51,7 +51,7 @@
 | **B3** Multi-file edits | Agent: несколько write_file за ответ; Improvement: related_files | ✅ |
 | **B4** Авто-RAG в чат | RAG по запросу при отправке, топ-5 чанков в контекст | ✅ |
 | **B5** Контекст ошибок | Retry с полным stack trace, RAG по ошибке, промпт «похожий код» | ✅ |
-| **B6** Inline-редактирование | «Улучшить выделенное», diff preview, partial edits | ⬜ |
+| **B6** Inline-редактирование | «Улучшить выделенное», diff preview, partial edits | ✅ |
 
 ### Часть 3: Agent и UX
 
@@ -113,12 +113,12 @@
 
 ## Рекомендуемый порядок работ
 
-**Уже сделано:** A2 (граф зависимостей), B5 (контекст ошибок), A3 (Git-контекст), A4 (покрытие тестами в анализе), max_iterations в конфиг, C3.1 (run_project_analysis, сообщения в чат).
+**Уже сделано:** A2 (граф зависимостей), B5 (контекст ошибок), A3 (Git-контекст), A4 (покрытие тестами в анализе), B6 (inline-редактирование: выделенное + diff preview), max_iterations в конфиг, C3.1 (run_project_analysis, сообщения в чат).
 
 **Дальше по приоритету:**
 
 1. ~~**A4** Покрытие тестами в анализе~~ — ✅ сделано (coverage_collector, промпт A4).
-2. **B6** Inline-редактирование («Улучшить выделенное», diff preview, partial edits) — 2–3 дня.
+2. ~~**B6** Inline-редактирование~~ — ✅ сделано (selection в API, diff modal, partial edit в графе).
 3. **C3** Стриминг улучшений (Improvement: plan → code в реальном времени) — низкий приоритет.
 4. **Качество кода (Часть 5):** глобальные переменные → DI, разбиение project_analyzer, вынос логики из больших файлов — по возможности.
 
@@ -135,6 +135,7 @@
 | B1 | `improvement_graph.py`, `use_case.py` (improvement) |
 | B2 | `workflow/` (coder node), `improvement_graph.py` |
 | B3 | `agent/tools.py`, `improvement/use_case.py`, API, UI: Improve форма + related_files |
+| B6 | `improvement/dto.py`, `improvement_graph.py`, `improve.py`, `OpenFilesContext`, `MultiFileEditor`, `ChatPanel`, API client |
 | B4 | `chat/use_case.py`, `_build_messages` |
 | B5 | `improvement_graph.py` |
 | C1 | `agent/use_case.py`, `_build_initial_messages` |

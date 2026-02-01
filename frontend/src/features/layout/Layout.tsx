@@ -11,7 +11,6 @@ import {
   Database,
   FolderOpen,
   MessageSquare,
-  PanelRightClose,
 } from 'lucide-react'
 
 const CHAT_PANEL_WIDTH_KEY = 'tai-chat-panel-width'
@@ -101,7 +100,7 @@ export function Layout() {
       const main = mainRef.current?.getBoundingClientRect()
       if (!main) return
       const newWidth = main.right - e.clientX
-      setChatPanelWidth((w) => Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, newWidth)))
+      setChatPanelWidth(() => Math.min(MAX_CHAT_WIDTH, Math.max(MIN_CHAT_WIDTH, newWidth)))
     }
     const up = () => setResizing(false)
     document.addEventListener('mousemove', move)

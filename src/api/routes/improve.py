@@ -76,6 +76,9 @@ class ImprovementRequestModel(BaseModel):
     auto_write: bool = True
     max_retries: int = 3
     related_files: list[str] = []  # B3: imports, tests for context
+    # B6: inline selection (1-based inclusive); when set, only that range is improved
+    selection_start_line: int | None = None
+    selection_end_line: int | None = None
 
 
 class AddTaskRequestModel(BaseModel):
@@ -156,6 +159,8 @@ async def run_improvement(
         auto_write=body.auto_write,
         max_retries=body.max_retries,
         related_files=body.related_files,
+        selection_start_line=body.selection_start_line,
+        selection_end_line=body.selection_end_line,
     )
     result = await use_case.improve_file(req)
     
@@ -166,6 +171,9 @@ async def run_improvement(
         "validation_output": result.validation_output,
         "error": result.error,
         "retries": result.retries,
+        "proposed_full_content": result.proposed_full_content,
+        "selection_start_line": result.selection_start_line,
+        "selection_end_line": result.selection_end_line,
     }
 
 
@@ -183,6 +191,8 @@ async def run_improvement_stream(
         auto_write=body.auto_write,
         max_retries=body.max_retries,
         related_files=body.related_files,
+        selection_start_line=body.selection_start_line,
+        selection_end_line=body.selection_end_line,
     )
     
     async def generate() -> AsyncIterator[str]:

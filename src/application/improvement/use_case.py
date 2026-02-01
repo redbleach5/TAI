@@ -205,20 +205,28 @@ class SelfImprovementUseCase:
                     },
                     "max_retries": request.max_retries,
                     "related_files": request.related_files,
+                    "auto_write": request.auto_write,
                 }
+                if request.selection_start_line is not None and request.selection_end_line is not None:
+                    initial["selection_start_line"] = request.selection_start_line
+                    initial["selection_end_line"] = request.selection_end_line
                 
                 final = await graph.ainvoke(initial, config=config)
                 
                 write_result = final.get("write_result", {})
+                success = final.get("validation_passed", False) and write_result.get("success", False)
                 
                 return ImprovementResponse(
-                    success=final.get("validation_passed", False) and write_result.get("success", False),
+                    success=success,
                     file_path=request.file_path,
                     backup_path=write_result.get("backup_path"),
                     improved_code=final.get("improved_code"),
                     validation_output=final.get("validation_output"),
                     error=final.get("error"),
                     retries=final.get("retry_count", 0),
+                    proposed_full_content=write_result.get("proposed_full_content"),
+                    selection_start_line=final.get("selection_start_line"),
+                    selection_end_line=final.get("selection_end_line"),
                 )
             finally:
                 os.chdir(original_cwd)

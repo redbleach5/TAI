@@ -72,6 +72,9 @@ class ImprovementRequest:
     auto_write: bool = True
     max_retries: int = 3
     related_files: list[str] = field(default_factory=list)  # B3: imports, tests for context
+    # B6: inline selection (1-based inclusive); when set, only that range is improved
+    selection_start_line: int | None = None
+    selection_end_line: int | None = None
 
 
 @dataclass
@@ -85,6 +88,10 @@ class ImprovementResponse:
     validation_output: str | None = None
     error: str | None = None
     retries: int = 0
+    # B6: full file content after edit (for diff preview / apply in UI)
+    proposed_full_content: str | None = None
+    selection_start_line: int | None = None
+    selection_end_line: int | None = None
 
 
 @dataclass

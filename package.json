@@ -1,0 +1,11 @@
+{
+  "name": "tai",
+  "private": true,
+  "description": "Local AI code generation system - Cursor alternative",
+  "scripts": {
+    "dev": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "lint": "npm run lint --prefix frontend",
+    "preview": "npm run preview --prefix frontend"
+  }
+}
