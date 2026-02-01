@@ -48,6 +48,7 @@ import { Tooltip } from '../ui/Tooltip'
 import { FileBrowser } from '../files/FileBrowser'
 import { ProjectSelector } from '../projects/ProjectSelector'
 import { FolderPicker } from '../workspace/FolderPicker'
+import { CreateProjectDialog } from '../workspace/CreateProjectDialog'
 import { useWorkspace } from '../workspace/useWorkspace'
 import { MultiFileEditor } from '../editor/MultiFileEditor'
 import { OpenFilesProvider } from '../editor/OpenFilesContext'
@@ -63,6 +64,7 @@ export function Layout() {
   const [terminalCollapsed, setTerminalCollapsed] = useState(true)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [showFolderPicker, setShowFolderPicker] = useState(false)
+  const [showCreateProject, setShowCreateProject] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [chatPanelWidth, setChatPanelWidth] = useState(loadChatPanelWidth)
   const [chatPanelCollapsed, setChatPanelCollapsed] = useState(loadChatPanelCollapsed)
@@ -70,7 +72,7 @@ export function Layout() {
   const mainRef = useRef<HTMLDivElement>(null)
   const { fileStatusMap } = useGitStatus()
   const { show: showToast } = useToast()
-  const { workspace, openFolder } = useWorkspace()
+  const { workspace, openFolder, createProject } = useWorkspace()
 
   useEffect(() => {
     try {
@@ -127,6 +129,16 @@ export function Layout() {
     }
   }
 
+  const handleCreateProject = async (path: string, name?: string) => {
+    try {
+      const data = await createProject(path, name)
+      showToast(`Проект создан: ${data.name}`, 'success')
+      window.dispatchEvent(new CustomEvent('workspace-changed'))
+    } catch (e) {
+      throw e
+    }
+  }
+
   return (
     <div className="layout layout--ide">
       <div className="layout__workspace-bar">
@@ -138,6 +150,14 @@ export function Layout() {
         >
           <FolderOpen size={14} />
           <span>{workspace ? workspace.name : 'Открыть папку...'}</span>
+        </button>
+        <button
+          type="button"
+          className="layout__workspace-btn layout__workspace-btn--create"
+          onClick={() => setShowCreateProject(true)}
+          title="Создать новый проект (папка будет создана)"
+        >
+          Создать проект
         </button>
         <Tooltip text="Настройки" side="bottom">
           <button
@@ -152,11 +172,17 @@ export function Layout() {
       </div>
 
       <div className="layout__content">
-        {showSettings ? (
+        {showCreateProject ? (
+          <CreateProjectDialog
+            onCreate={handleCreateProject}
+            onCancel={() => setShowCreateProject(false)}
+          />
+        ) : showSettings ? (
           <div className="layout__settings-overlay">
             <SettingsPanel onClose={() => setShowSettings(false)} />
           </div>
-        ) : (
+        ) : null}
+        {!showCreateProject && !showSettings ? (
           <OpenFilesProvider>
             <div className="layout__main" ref={mainRef}>
               {/* Sidebar */}

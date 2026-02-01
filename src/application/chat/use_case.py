@@ -104,14 +104,11 @@ class ChatUseCase:
                 full_content.append(text)
             yield (kind, text)
 
-        # Save conversation and send conversation_id in done event
+        # Save conversation and send conversation_id + model in done event (always JSON for watermark)
         conv_id: str | None = None
         if full_content:
             conv_id = self._save_to_memory(request, "".join(full_content), model)
-        # done event: JSON with conversation_id and model for watermark
-        done_data = conv_id or ""
-        if model:
-            done_data = json.dumps({"conversation_id": conv_id or "", "model": model})
+        done_data = json.dumps({"conversation_id": conv_id or "", "model": model or ""})
         yield ("done", done_data)
 
     async def _build_messages(self, request: ChatRequest) -> list[LLMMessage]:

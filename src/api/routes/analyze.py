@@ -232,7 +232,32 @@ class DeepAnalyzeRequest(BaseModel):
     path: str
 
 
-@router.post("/project/deep", response_class=PlainTextResponse)
+class DeepAnalyzeResponse(BaseModel):
+    """Ответ глубокого анализа: полный отчёт в файле проекта, в чат — краткая сводка (как Cursor)."""
+    report_path: str  # относительный путь в проекте, например docs/ANALYSIS_REPORT.md
+    summary: str      # краткая сводка для чата
+
+
+def _summary_from_report(full_md: str, report_path: str) -> str:
+    """Из полного отчёта выделить краткую сводку для чата (первый абзац/блок + ссылка на файл)."""
+    if not full_md or not full_md.strip():
+        return f"Отчёт сохранён в `{report_path}`. Откройте файл для просмотра."
+    # Берём первый осмысленный блок (до --- или до второго заголовка ##)
+    lines = full_md.strip().split("\n")
+    summary_lines: list[str] = []
+    for line in lines:
+        if line.strip() == "---":
+            break
+        if line.startswith("## ") and summary_lines:
+            break
+        summary_lines.append(line)
+    summary_text = "\n".join(summary_lines).strip()
+    if len(summary_text) > 500:
+        summary_text = summary_text[:500].rsplit(" ", 1)[0] + "…"
+    return f"{summary_text}\n\n📄 **Полный отчёт сохранён в проекте:** `{report_path}` — откройте файл для всех разделов и рекомендаций."
+
+
+@router.post("/project/deep")
 @limiter.limit("3/minute")
 async def get_project_deep_report(
     request: Request,
@@ -240,11 +265,12 @@ async def get_project_deep_report(
     llm: LLMPort = Depends(get_llm_adapter),
     model_selector: ModelSelector = Depends(get_model_selector),
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
-) -> str:
+) -> DeepAnalyzeResponse:
     """Глубокий анализ уровня Cursor AI: статика + RAG + LLM.
     
+    Полный отчёт сохраняется в проекте (docs/ANALYSIS_REPORT.md).
+    В ответе — краткая сводка для чата (как в Cursor).
     Требует: LLM (Ollama/LM Studio), опционально RAG (индексация workspace).
-    Возвращает приоритизированные рекомендации с конкретными ссылками.
     """
     path = Path(body.path).expanduser().resolve()
     
@@ -255,7 +281,16 @@ async def get_project_deep_report(
         raise HTTPException(status_code=400, detail="Path must be a directory")
     
     deep_analyzer = DeepAnalyzer(llm=llm, model_selector=model_selector, rag=rag)
-    return await deep_analyzer.analyze(str(path))
+    full_md = await deep_analyzer.analyze(str(path))
+    
+    # Сохраняем полный отчёт в проекте (как Cursor)
+    report_rel = "docs/ANALYSIS_REPORT.md"
+    report_file = path / report_rel
+    report_file.parent.mkdir(parents=True, exist_ok=True)
+    report_file.write_text(full_md, encoding="utf-8")
+    
+    summary = _summary_from_report(full_md, report_rel)
+    return DeepAnalyzeResponse(report_path=report_rel, summary=summary)
 
 
 @router.post("/security")

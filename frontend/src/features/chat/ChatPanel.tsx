@@ -110,9 +110,10 @@ export function ChatPanel({ hasEditorContext, onCollapse }: ChatPanelProps) {
         body: JSON.stringify({ path: workspace.path }),
       })
       if (!res.ok) throw new Error(await res.text().catch(() => `${res.status}`))
-      const report = await res.text()
-      addMessage('assistant', report)
-      showToast('Анализ завершён', 'success')
+      const data = await res.json()
+      const { summary, report_path: reportPath } = data
+      addMessage('assistant', summary, reportPath)
+      showToast('Анализ завершён. Отчёт в проекте.', 'success')
     } catch (e) {
       addMessage('assistant', `Ошибка анализа: ${e instanceof Error ? e.message : 'Unknown'}`)
       showToast('Ошибка анализа', 'error')

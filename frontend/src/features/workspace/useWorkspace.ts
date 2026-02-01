@@ -42,6 +42,21 @@ export function useWorkspace() {
     return data
   }, [])
 
+  const createProject = useCallback(async (path: string, name?: string) => {
+    const res = await fetch(`${API_BASE}/workspace/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path, name: name || undefined }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.detail || 'Failed to create project')
+    }
+    const data = await res.json()
+    setWorkspace({ path: data.path, name: data.name })
+    return data
+  }, [])
+
   const indexWorkspace = useCallback(async (incremental = true) => {
     const res = await fetch(
       `${API_BASE}/workspace/index?incremental=${incremental}`,
@@ -133,6 +148,7 @@ export function useWorkspace() {
     loading,
     fetchWorkspace,
     openFolder,
+    createProject,
     indexWorkspace,
     indexWorkspaceStream,
     clearIndex,

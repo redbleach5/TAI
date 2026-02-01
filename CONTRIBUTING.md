@@ -45,6 +45,8 @@ ruff check src/
 
 Подробнее: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
+План развития и приоритеты: [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## Стиль кода
 
 - **Python:** ruff для линтинга, black-совместимый формат

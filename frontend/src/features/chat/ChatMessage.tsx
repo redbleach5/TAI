@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react'
-import { User, Bot, Wrench, CheckCircle, Copy, Check } from 'lucide-react'
+import { User, Bot, Wrench, CheckCircle, Copy, Check, FileText } from 'lucide-react'
 import Markdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
+import { useOpenFilesContext } from '../editor/OpenFilesContext'
 import type { ChatMessage as ChatMessageType } from '../../api/client'
 
 function CodeBlockWithCopy({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -36,10 +38,12 @@ interface Props {
 
 export function ChatMessage({ message }: Props) {
   const isUser = message.role === 'user'
+  const openFilesCtx = useOpenFilesContext()
   const [showThinking, setShowThinking] = useState(false)
   const [showTools, setShowTools] = useState(true)
   const hasThinking = !isUser && message.thinking && message.thinking.length > 0
   const hasToolEvents = !isUser && message.toolEvents && message.toolEvents.length > 0
+  const hasReportPath = !isUser && message.reportPath
 
   return (
     <div className={`chat-message chat-message--${message.role}`}>
@@ -80,6 +84,7 @@ export function ChatMessage({ message }: Props) {
             message.content
           ) : (
             <Markdown
+              remarkPlugins={[remarkGfm]}
               components={{
                 code({ className, children, ...props }) {
                   const match = /language-(\w+)/.exec(className || '')
@@ -100,6 +105,19 @@ export function ChatMessage({ message }: Props) {
             </Markdown>
           )}
         </div>
+        {hasReportPath && (
+          <div className="chat-message__report-actions">
+            <button
+              type="button"
+              className="chat-message__open-report-btn"
+              onClick={() => openFilesCtx?.openFile(message.reportPath!)}
+              title="Открыть полный отчёт в редакторе"
+            >
+              <FileText size={14} />
+              <span>Открыть отчёт</span>
+            </button>
+          </div>
+        )}
         {!isUser && message.model && (
           <span className="chat-message__watermark">Модель: {message.model}</span>
         )}

@@ -18,6 +18,8 @@ export interface ChatMessage {
   toolEvents?: Array<{ type: 'tool_call' | 'tool_result'; data: string }>
   /** Model that processed this message (watermark) */
   model?: string
+  /** Path to analysis report file (docs/ANALYSIS_REPORT.md) — показать кнопку «Открыть отчёт» */
+  reportPath?: string
 }
 
 export interface ContextFile {

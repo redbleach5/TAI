@@ -21,6 +21,12 @@ class WorkspaceSet(BaseModel):
     path: str
 
 
+class WorkspaceCreate(BaseModel):
+    """Create new project folder and set as workspace."""
+    path: str
+    name: str | None = None
+
+
 def _get_workspace_path() -> str:
     """Get current workspace path (current project or cwd)."""
     store = get_store()
@@ -40,6 +46,27 @@ async def get_workspace(request: Request):
     return {"path": str(path), "name": path.name}
 
 
+def _ensure_path_allowed(path: Path) -> None:
+    """Raise if path is not under home or cwd (safety for create)."""
+    path = path.resolve()
+    home = Path.home().resolve()
+    cwd = Path.cwd().resolve()
+    try:
+        path.relative_to(home)
+        return
+    except ValueError:
+        pass
+    try:
+        path.relative_to(cwd)
+        return
+    except ValueError:
+        pass
+    raise HTTPException(
+        status_code=400,
+        detail="Path must be under your home directory or current working directory",
+    )
+
+
 @router.post("")
 @limiter.limit("30/minute")
 async def set_workspace(request: Request, body: WorkspaceSet):
@@ -57,6 +84,39 @@ async def set_workspace(request: Request, body: WorkspaceSet):
 
     name = p.name
     # Add or get existing project
+    existing = next((pr for pr in store.list_projects() if pr.path == str(p)), None)
+    if existing:
+        store.set_current(existing.id)
+        return {"path": str(p), "name": name, "project_id": existing.id}
+    project = store.add_project(name, str(p))
+    store.set_current(project.id)
+    return {"path": str(p), "name": name, "project_id": project.id}
+
+
+@router.post("/create")
+@limiter.limit("20/minute")
+async def create_workspace(request: Request, body: WorkspaceCreate):
+    """Create project folder if missing, then set as current workspace (Cursor-like: new project)."""
+    store = get_store()
+    raw = body.path.strip()
+    raw = os.path.expanduser(raw)
+    p = Path(raw)
+    if not p.is_absolute():
+        p = Path.cwd() / p
+    p = p.resolve()
+
+    _ensure_path_allowed(p)
+
+    if p.exists():
+        if not p.is_dir():
+            raise HTTPException(status_code=400, detail="Path exists and is not a directory")
+    else:
+        try:
+            p.mkdir(parents=True, exist_ok=False)
+        except OSError as e:
+            raise HTTPException(status_code=400, detail=f"Cannot create directory: {e}") from e
+
+    name = (body.name or "").strip() or p.name
     existing = next((pr for pr in store.list_projects() if pr.path == str(p)), None)
     if existing:
         store.set_current(existing.id)

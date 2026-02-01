@@ -49,12 +49,14 @@ OLLAMA_TOOLS = [
         "type": "function",
         "function": {
             "name": "run_terminal",
-            "description": "Run shell command. Use simple commands like ls, pytest, git status.",
+            "description": "Run shell command in project root or subfolder. Use for ls, pytest, npm install, pip install. For long commands (npm install, pip install) set timeout_seconds to 120-300.",
             "parameters": {
                 "type": "object",
                 "required": ["command"],
                 "properties": {
                     "command": {"type": "string", "description": "Shell command to run"},
+                    "cwd": {"type": "string", "description": "Subfolder relative to project root, e.g. 'bot' or 'frontend'"},
+                    "timeout_seconds": {"type": "integer", "description": "Timeout in seconds (max 300). Use 120+ for npm install, pip install."},
                 },
             },
         },

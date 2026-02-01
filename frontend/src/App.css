@@ -252,6 +252,17 @@
   border-color: var(--color-accent);
 }
 
+.layout__workspace-btn--create {
+  background: var(--color-accent);
+  color: var(--color-bg-primary);
+  border-color: var(--color-accent);
+}
+
+.layout__workspace-btn--create:hover {
+  filter: brightness(1.1);
+  color: var(--color-bg-primary);
+}
+
 .layout__settings {
   flex: 1;
   min-height: 0;
@@ -1044,6 +1055,13 @@
   min-width: 0;
 }
 
+.chat-message--assistant .chat-message__body {
+  padding: 0.65rem 0.85rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
 .chat-message__role {
   font-size: 0.7rem;
   font-weight: 600;
@@ -1052,6 +1070,29 @@
   letter-spacing: 0.04em;
   margin-bottom: 0.35rem;
   display: block;
+}
+
+.chat-message__report-actions {
+  margin-top: 0.5rem;
+}
+
+.chat-message__open-report-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+  color: var(--color-accent);
+  background: var(--color-accent-muted);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.chat-message__open-report-btn:hover {
+  background: var(--color-accent);
+  color: white;
 }
 
 .chat-message__watermark {
@@ -1086,6 +1127,86 @@
 
 .chat-message__content li {
   margin-bottom: 0.25rem;
+}
+
+/* Markdown: headings — чёткая иерархия и отступы */
+.chat-message__content h1,
+.chat-message__content h2,
+.chat-message__content h3,
+.chat-message__content h4 {
+  margin: 1rem 0 0.5rem;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-text-primary);
+}
+.chat-message__content h1 { font-size: 1.25rem; margin-top: 0; padding-bottom: 0.35rem; border-bottom: 1px solid var(--color-border); }
+.chat-message__content h2 { font-size: 1.1rem; }
+.chat-message__content h3 { font-size: 1rem; }
+.chat-message__content h4 { font-size: 0.95rem; color: var(--color-text-secondary); }
+
+/* Markdown: таблицы — современный карточный вид */
+.chat-message__content table {
+  width: 100%;
+  margin: 0.75rem 0;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-sm);
+}
+.chat-message__content thead {
+  background: var(--color-bg-elevated);
+  border-bottom: 1px solid var(--color-border);
+}
+.chat-message__content th {
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+.chat-message__content td {
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+}
+.chat-message__content tbody tr:hover {
+  background: rgba(255, 255, 255, 0.03);
+}
+.chat-message__content tbody tr:first-child td {
+  border-top: none;
+}
+
+/* Markdown: blockquote — заметки и примечания */
+.chat-message__content blockquote {
+  margin: 0.75rem 0;
+  padding: 0.5rem 0 0.5rem 0.85rem;
+  border-left: 3px solid var(--color-accent);
+  background: var(--color-accent-muted);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9em;
+}
+
+/* Markdown: strong — выделение важного */
+.chat-message__content strong {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+/* Markdown: горизонтальная линия */
+.chat-message__content hr {
+  margin: 1rem 0;
+  border: none;
+  border-top: 1px solid var(--color-border);
+}
+
+/* Markdown: первый абзац после заголовка — чуть плотнее */
+.chat-message__content h1 + p,
+.chat-message__content h2 + p,
+.chat-message__content h3 + p {
+  margin-top: 0.25rem;
 }
 
 .chat-message__code-wrapper {
@@ -3518,6 +3639,57 @@
 
 .folder-picker__select-current:hover {
   opacity: 0.9;
+}
+
+.create-project-dialog h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.create-project-dialog__hint {
+  font-size: 0.85rem;
+  color: var(--color-muted, #888);
+  margin: 0 0 1rem;
+  padding: 0 1rem;
+}
+
+.create-project-dialog__label {
+  display: block;
+  margin-bottom: 0.75rem;
+  padding: 0 1rem;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary, #aaa);
+}
+
+.create-project-dialog__input {
+  display: block;
+  width: 100%;
+  margin-top: 0.25rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border, #333);
+  border-radius: 4px;
+  background: var(--color-bg-msg, #1a1a1a);
+  color: inherit;
+  font-size: 0.9rem;
+}
+
+.create-project-dialog__input:focus {
+  outline: none;
+  border-color: var(--color-accent, #646cff);
+}
+
+.create-project-dialog__error {
+  padding: 0.5rem 1rem;
+  margin: 0 1rem 0.5rem;
+  font-size: 0.85rem;
+  color: var(--color-error, #e57373);
+}
+
+.create-project-dialog__submit {
+  background: var(--color-accent, #646cff) !important;
+  color: white !important;
+  border-color: var(--color-accent, #646cff) !important;
 }
 
 .settings-panel__divider {

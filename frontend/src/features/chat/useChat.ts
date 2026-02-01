@@ -256,20 +256,22 @@ export function useChat(options: UseChatOptions = {}) {
               } else if (eventType === 'tool_result' && data) {
                 toolEvents.push({ type: 'tool_result', data })
                 onToolResult?.(data)
-              } else if (eventType === 'done' && data) {
-                try {
-                  const parsed = JSON.parse(data)
-                  if (parsed.conversation_id) {
-                    setConversationId(parsed.conversation_id)
-                    saveTitle(parsed.conversation_id, firstUserMessageTitle(messagesRef.current))
+              } else if (eventType === 'done') {
+                if (data) {
+                  try {
+                    const parsed = JSON.parse(data)
+                    if (parsed.conversation_id) {
+                      setConversationId(parsed.conversation_id)
+                      saveTitle(parsed.conversation_id, firstUserMessageTitle(messagesRef.current))
+                    }
+                    if (parsed.model != null && parsed.model !== '') modelName = String(parsed.model)
+                  } catch {
+                    setConversationId(data)
                   }
-                  if (parsed.model != null) modelName = String(parsed.model)
-                } catch {
-                  setConversationId(data)
                 }
+                updateMessage()
+                break
               }
-              updateMessage()
-              if (eventType === 'done') break
             }
           }
           // Final update so watermark (model) is applied after stream ends
@@ -308,8 +310,8 @@ export function useChat(options: UseChatOptions = {}) {
   }, [startNewConversation])
 
   /** Add message (for Analyze, Generate results) */
-  const addMessage = useCallback((role: 'user' | 'assistant', content: string) => {
-    setMessages((prev) => [...prev, { role, content }])
+  const addMessage = useCallback((role: 'user' | 'assistant', content: string, reportPath?: string) => {
+    setMessages((prev) => [...prev, { role, content, ...(reportPath ? { reportPath } : {}) }])
   }, [])
 
   /** Update last assistant message (for streaming Generate) */

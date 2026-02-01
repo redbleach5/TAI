@@ -118,9 +118,9 @@ npm run dev
 ## Документация
 
 - [CONTRIBUTING.md](CONTRIBUTING.md) — как внести вклад
+- [docs/ROADMAP.md](docs/ROADMAP.md) — план развития (единый документ)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — архитектура
-- [docs/CURSOR_LEVEL_ROADMAP.md](docs/CURSOR_LEVEL_ROADMAP.md) — план развития (уровень Cursor)
-- [docs/CHAT_PROJECT_CONTEXT_ANALYSIS.md](docs/CHAT_PROJECT_CONTEXT_ANALYSIS.md) — контекст чата и открытый проект
+- [docs/README.md](docs/README.md) — индекс всей документации
 - [docs/CHECKLIST.md](docs/CHECKLIST.md) — чеклист ручной проверки
 
 ## Лицензия

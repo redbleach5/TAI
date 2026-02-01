@@ -46,7 +46,7 @@ Available tools:
 1. read_file(path) - Read file content. path: relative to project root.
 2. write_file(path, content) - Write content to file. path: relative to project root.
 3. search_rag(query) - Search codebase semantically. query: search question. If no results, project may need indexing — use get_index_status then index_workspace if needed.
-4. run_terminal(command) - Run shell command. command: e.g. "ls -la", "pytest tests/".
+4. run_terminal(command, cwd?, timeout_seconds?) - Run shell command in project root or subfolder. command: e.g. "ls -la", "npm install", "pytest tests/". cwd: optional subfolder relative to project root (e.g. "bot", "frontend"). timeout_seconds: optional, max 300 (use for npm install, pip install).
 5. list_files(path?) - List files in directory. path: optional, default ".".
 6. get_index_status() - Check if project is indexed for code search. Use when user asks about codebase but search_rag returns nothing.
 7. index_workspace(incremental?) - Index the project for semantic search. Call when user needs codebase search but project is not indexed. incremental: optional, default true (faster).
@@ -152,7 +152,38 @@ class ToolExecutor:
         command = args.get("command", "").strip()
         if not command:
             return ToolResult(success=False, content="", error="command required", tool="run_terminal", args=args)
-        result = await self._terminal.execute(command)
+        cwd = args.get("cwd", "").strip() or None
+        work_dir = str(self._workspace)
+        if cwd:
+            sub = (self._workspace / cwd).resolve()
+            try:
+                sub.relative_to(self._workspace)
+            except ValueError:
+                return ToolResult(
+                    success=False,
+                    content="",
+                    error="cwd must be inside project",
+                    tool="run_terminal",
+                    args=args,
+                )
+            if not sub.exists() or not sub.is_dir():
+                return ToolResult(
+                    success=False,
+                    content="",
+                    error=f"Directory does not exist: {cwd}",
+                    tool="run_terminal",
+                    args=args,
+                )
+            work_dir = str(sub)
+        timeout_sec = args.get("timeout_seconds")
+        if timeout_sec is not None:
+            try:
+                timeout_sec = min(300, max(5, int(timeout_sec)))
+            except (TypeError, ValueError):
+                timeout_sec = 30
+        else:
+            timeout_sec = 30
+        result = await self._terminal.execute(command, cwd=work_dir, timeout=timeout_sec)
         if result.error:
             return ToolResult(
                 success=False,
