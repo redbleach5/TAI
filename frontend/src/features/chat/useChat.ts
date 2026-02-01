@@ -139,11 +139,11 @@ export function useChat(options: UseChatOptions = {}) {
               } else if (eventType === 'tool_result' && data) {
                 toolEvents.push({ type: 'tool_result', data })
                 onToolResult?.(data)
-              }               else if (eventType === 'done' && data) {
+              } else if (eventType === 'done' && data) {
                 try {
                   const parsed = JSON.parse(data)
                   if (parsed.conversation_id) setConversationId(parsed.conversation_id)
-                  if (parsed.model) modelName = parsed.model
+                  if (parsed.model != null) modelName = String(parsed.model)
                 } catch {
                   setConversationId(data)
                 }
@@ -152,6 +152,8 @@ export function useChat(options: UseChatOptions = {}) {
               if (eventType === 'done') break
             }
           }
+          // Final update so watermark (model) is applied after stream ends
+          updateMessage()
         } else {
           const history = messages.map((m) => ({ role: m.role, content: m.content }))
           const response = await postChat({

@@ -819,11 +819,13 @@
 }
 
 .chat-message__watermark {
-  font-size: 0.65rem;
+  font-size: 0.7rem;
   color: var(--color-text-muted);
-  opacity: 0.8;
+  opacity: 0.9;
   display: block;
-  margin-bottom: 0.25rem;
+  margin-top: 0.5rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--color-border);
 }
 
 .chat-message__content {
