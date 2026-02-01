@@ -7,8 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.api.dependencies import get_llm_adapter, get_model_selector, get_rag_adapter, limiter
-from src.api.routes.projects import get_store
+from src.api.dependencies import get_llm_adapter, get_model_selector, get_rag_adapter, get_store, limiter
 from src.application.improvement import (
     AnalyzeRequest,
     ImprovementRequest,

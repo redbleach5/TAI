@@ -66,6 +66,9 @@ RAG_MIN_SCORE = 0.35
 A1_MAX_MODULES = 5
 A1_CHUNKS_PER_MODULE = 5
 A1_TARGETED_QUERY_TEMPLATE = "код логика проблемы рефакторинг {module}"
+# Порог для шага 2: тот же, что и для начального RAG — не снижаем качество чанков.
+# Fallback-запрос по пути модуля компенсирует случаи, когда длинный запрос не матчится.
+A1_MIN_SCORE = 0.35
 
 # Step 1 prompt: identify problematic modules
 STEP1_MODULES_PROMPT = """Ты — эксперт по анализу кода. На основе статического анализа и карты проекта определи 3–5 **наиболее проблемных модулей** (файлов или директорий), требующих углублённого анализа.
@@ -557,21 +560,29 @@ class DeepAnalyzer:
             return None
 
     async def _step2_targeted_rag(self, modules: list[str]) -> str:
-        """Step 2: RAG search per module for deeper context."""
+        """Step 2: RAG search per module for deeper context.
+        Uses lower min_score (A1_MIN_SCORE) than initial RAG — запрос по пути модуля
+        часто даёт меньший semantic score; при отсутствии результатов пробуем запрос по пути."""
         parts: list[str] = []
         seen: set[str] = set()
         for module in modules[:A1_MAX_MODULES]:
-            query = A1_TARGETED_QUERY_TEMPLATE.format(module=module)
-            try:
-                results = await self._rag.search(
-                    query, limit=A1_CHUNKS_PER_MODULE, min_score=RAG_MIN_SCORE
-                )
-                for c in results:
-                    src = c.metadata.get("source", "")
-                    key = f"{src}:{c.content[:100]}"
-                    if key not in seen:
-                        seen.add(key)
-                        parts.append(f"#### {module}\n```\n{c.content[:600]}\n```")
-            except Exception:
-                continue
+            for query in (
+                A1_TARGETED_QUERY_TEMPLATE.format(module=module),
+                module,  # fallback: поиск по пути модуля
+            ):
+                try:
+                    results = await self._rag.search(
+                        query, limit=A1_CHUNKS_PER_MODULE, min_score=A1_MIN_SCORE
+                    )
+                    if not results:
+                        continue
+                    for c in results:
+                        src = c.metadata.get("source", "")
+                        key = f"{src}:{c.content[:100]}"
+                        if key not in seen:
+                            seen.add(key)
+                            parts.append(f"#### {module}\n```\n{c.content[:600]}\n```")
+                    break  # по этому модулю уже нашли чанки
+                except Exception:
+                    continue
         return "\n\n".join(parts) if parts else ""

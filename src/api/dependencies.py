@@ -4,6 +4,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from src.api.container import get_container
+from src.api.store import ProjectsStore
 from src.application.chat.use_case import ChatUseCase
 from src.application.workflow.use_case import WorkflowUseCase
 from src.application.improvement.use_case import SelfImprovementUseCase
@@ -16,6 +17,11 @@ from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
+
+
+def get_store() -> ProjectsStore:
+    """Get projects store from container."""
+    return get_container().projects_store
 
 
 def get_config() -> AppConfig:

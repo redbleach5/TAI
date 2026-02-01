@@ -247,6 +247,53 @@ export async function postImprove(request: ImprovementRequest): Promise<Improvem
   return res.json()
 }
 
+/** C3: stream improvement events (plan → code → done). */
+export interface ImprovementStreamEvent {
+  event: 'plan' | 'code' | 'done' | 'error'
+  chunk?: string
+  result?: ImprovementResponse
+  error?: string
+}
+
+export async function* streamImprove(
+  request: ImprovementRequest
+): AsyncGenerator<ImprovementStreamEvent> {
+  const res = await fetch(`${API_BASE}/improve/run/stream`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request),
+  })
+  if (!res.ok) throw new Error(await res.text().catch(() => `Improve stream failed: ${res.status}`))
+  const reader = res.body?.getReader()
+  if (!reader) throw new Error('No response body')
+  const decoder = new TextDecoder()
+  let buffer = ''
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const blocks = buffer.split('\n\n')
+    buffer = blocks.pop() ?? ''
+    for (const block of blocks) {
+      let data = ''
+      for (const line of block.split('\n')) {
+        if (line.startsWith('data: ')) data = line.slice(6)
+      }
+      if (data) {
+        try {
+          const evt = JSON.parse(data) as ImprovementStreamEvent
+          if (evt.event === 'done' && evt.result != null) {
+            evt.result = evt.result as unknown as ImprovementResponse
+          }
+          yield evt
+        } catch {
+          // skip malformed
+        }
+      }
+    }
+  }
+}
+
 export async function* streamWorkflow(
   request: WorkflowRequest
 ): AsyncGenerator<WorkflowStreamEvent> {

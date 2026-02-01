@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from src.api.routes.projects import get_store
+from src.api.dependencies import get_store
 from src.infrastructure.services.file_service import FileService
 from src.infrastructure.services.terminal_service import TerminalService
 

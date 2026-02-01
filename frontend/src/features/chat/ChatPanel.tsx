@@ -14,7 +14,7 @@ import { useWorkspace } from '../workspace/useWorkspace'
 import { useOpenFilesContext } from '../editor/OpenFilesContext'
 import { useToast } from '../toast/ToastContext'
 import { Tooltip } from '../ui/Tooltip'
-import { postImprove, writeFile, API_BASE, type ImprovementResponse } from '../../api/client'
+import { postImprove, streamImprove, writeFile, API_BASE, type ImprovementResponse } from '../../api/client'
 
 interface ChatPanelProps {
   hasEditorContext?: boolean
@@ -131,41 +131,83 @@ export function ChatPanel({ hasEditorContext, onCollapse }: ChatPanelProps) {
     const issueMsg = improveIssue.trim() || (selection ? 'Улучшить выделенный фрагмент' : 'Общее улучшение кода')
     addMessage('user', selection ? `Улучшить выделенное (${activeFile.path}, строки ${selection.startLine}–${selection.endLine}): ${issueMsg}` : `Улучшить ${activeFile.path}: ${issueMsg}`)
     setImproving(true)
+    const related = improveRelatedFiles
+      .split(/[,\s]+/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .filter((p) => p !== activeFile.path)
+    const payload = {
+      file_path: activeFile.path,
+      issue: { message: issueMsg, severity: 'medium', issue_type: 'refactor' },
+      related_files: related,
+    } as Parameters<typeof postImprove>[0]
+    if (selection) {
+      payload.selection_start_line = selection.startLine
+      payload.selection_end_line = selection.endLine
+      payload.auto_write = false
+    }
     try {
-      const related = improveRelatedFiles
-        .split(/[,\s]+/)
-        .map((s) => s.trim())
-        .filter(Boolean)
-        .filter((p) => p !== activeFile.path)
-      const payload = {
-        file_path: activeFile.path,
-        issue: { message: issueMsg, severity: 'medium', issue_type: 'refactor' },
-        related_files: related,
-      } as Parameters<typeof postImprove>[0]
-      if (selection) {
-        payload.selection_start_line = selection.startLine
-        payload.selection_end_line = selection.endLine
-        payload.auto_write = false
-      }
-      const result: ImprovementResponse = await postImprove(payload)
-      if (result.success) {
-        if (result.proposed_full_content != null && selection) {
-          setImproveDiffModal({ path: result.file_path, current: activeFile.content, proposed: result.proposed_full_content })
-          addMessage('assistant', 'Предложенные изменения готовы. Проверьте diff и нажмите «Применить» или «Отклонить».')
-        } else if (!selection) {
-          addMessage('assistant', `Готово. Файл обновлён: ${result.file_path}${result.backup_path ? ` (бэкап: ${result.backup_path})` : ''}`)
-          showToast('Улучшение применено', 'success')
-          setShowImproveForm(false)
-          setImproveIssue('')
-          setImproveRelatedFiles('')
-          window.dispatchEvent(new CustomEvent('file-updated', { detail: { path: result.file_path } }))
-        } else {
-          addMessage('assistant', `Готово: ${result.file_path}`)
-          showToast('Улучшение готово', 'success')
+      if (useStream) {
+        // C3: стриминг plan → code в реальном времени
+        addMessage('assistant', '')
+        let planText = ''
+        let codeText = ''
+        for await (const evt of streamImprove(payload)) {
+          if (evt.event === 'plan' && evt.chunk != null) {
+            planText += evt.chunk
+            updateLastAssistant(planText ? `## План\n\n${planText}` : 'План…')
+          } else if (evt.event === 'code' && evt.chunk != null) {
+            codeText += evt.chunk
+            const codeSection = codeText ? `\n\n## Код\n\n\`\`\`\n${codeText}\n\`\`\`` : ''
+            updateLastAssistant((planText ? `## План\n\n${planText}` : '') + codeSection || 'Код…')
+          } else if (evt.event === 'done' && evt.result != null) {
+            const result = evt.result as ImprovementResponse
+            if (result.success) {
+              if (result.proposed_full_content != null && selection) {
+                setImproveDiffModal({ path: result.file_path, current: activeFile.content, proposed: result.proposed_full_content })
+                updateLastAssistant((planText ? `## План\n\n${planText}` : '') + (codeText ? `\n\n## Код\n\n\`\`\`\n${codeText}\n\`\`\`` : '') + '\n\nПредложенные изменения готовы. Проверьте diff и нажмите «Применить» или «Отклонить».')
+                showToast('Улучшение готово', 'success')
+              } else if (!selection) {
+                updateLastAssistant((planText ? `## План\n\n${planText}` : '') + (codeText ? `\n\n## Код\n\n\`\`\`\n${codeText}\n\`\`\`` : '') + `\n\nГотово. Файл обновлён: ${result.file_path}${result.backup_path ? ` (бэкап: ${result.backup_path})` : ''}`)
+                showToast('Улучшение применено', 'success')
+                setShowImproveForm(false)
+                setImproveIssue('')
+                setImproveRelatedFiles('')
+                window.dispatchEvent(new CustomEvent('file-updated', { detail: { path: result.file_path } }))
+              } else {
+                updateLastAssistant((planText ? `## План\n\n${planText}` : '') + (codeText ? `\n\n## Код\n\n\`\`\`\n${codeText}\n\`\`\`` : '') + `\n\nГотово: ${result.file_path}`)
+                showToast('Улучшение готово', 'success')
+              }
+            } else {
+              updateLastAssistant((planText ? `## План\n\n${planText}` : '') + (codeText ? `\n\n## Код\n\n\`\`\`\n${codeText}\n\`\`\`` : '') + `\n\nОшибка: ${result.error || 'Не удалось применить изменения'}`)
+              showToast(result.error || 'Ошибка улучшения', 'error')
+            }
+          } else if (evt.event === 'error') {
+            updateLastAssistant((planText ? `## План\n\n${planText}` : '') + (codeText ? `\n\n## Код\n\n\`\`\`\n${codeText}\n\`\`\`` : '') + `\n\nОшибка: ${evt.error ?? 'Unknown'}`)
+            showToast(evt.error ?? 'Ошибка улучшения', 'error')
+          }
         }
       } else {
-        addMessage('assistant', `Ошибка: ${result.error || 'Не удалось применить изменения'}`)
-        showToast(result.error || 'Ошибка улучшения', 'error')
+        const result: ImprovementResponse = await postImprove(payload)
+        if (result.success) {
+          if (result.proposed_full_content != null && selection) {
+            setImproveDiffModal({ path: result.file_path, current: activeFile.content, proposed: result.proposed_full_content })
+            addMessage('assistant', 'Предложенные изменения готовы. Проверьте diff и нажмите «Применить» или «Отклонить».')
+          } else if (!selection) {
+            addMessage('assistant', `Готово. Файл обновлён: ${result.file_path}${result.backup_path ? ` (бэкап: ${result.backup_path})` : ''}`)
+            showToast('Улучшение применено', 'success')
+            setShowImproveForm(false)
+            setImproveIssue('')
+            setImproveRelatedFiles('')
+            window.dispatchEvent(new CustomEvent('file-updated', { detail: { path: result.file_path } }))
+          } else {
+            addMessage('assistant', `Готово: ${result.file_path}`)
+            showToast('Улучшение готово', 'success')
+          }
+        } else {
+          addMessage('assistant', `Ошибка: ${result.error || 'Не удалось применить изменения'}`)
+          showToast(result.error || 'Ошибка улучшения', 'error')
+        }
       }
     } catch (e) {
       addMessage('assistant', `Ошибка: ${e instanceof Error ? e.message : 'Unknown'}`)
@@ -173,7 +215,7 @@ export function ChatPanel({ hasEditorContext, onCollapse }: ChatPanelProps) {
     } finally {
       setImproving(false)
     }
-  }, [openFilesCtx, improving, improveIssue, improveRelatedFiles, addMessage, showToast])
+  }, [openFilesCtx, improving, improveIssue, improveRelatedFiles, useStream, addMessage, updateLastAssistant, showToast])
 
   const handleApplyImproveDiff = useCallback(async () => {
     if (!improveDiffModal) return

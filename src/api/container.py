@@ -3,6 +3,7 @@
 from functools import cached_property
 from typing import TYPE_CHECKING
 
+from src.api.store import ProjectsStore
 from src.domain.ports.config import AppConfig
 from src.domain.ports.llm import LLMPort
 from src.domain.ports.embeddings import EmbeddingsPort
@@ -88,6 +89,11 @@ class Container:
         )
 
     @cached_property
+    def projects_store(self) -> ProjectsStore:
+        """Projects store (current workspace, list of projects)."""
+        return ProjectsStore()
+
+    @cached_property
     def conversation_memory(self) -> "ConversationMemory":
         """Conversation memory for chat history."""
         from src.infrastructure.persistence.conversation_memory import ConversationMemory
@@ -125,15 +131,14 @@ class Container:
     def chat_use_case(self) -> "ChatUseCase":
         """Chat use case with all dependencies."""
         from pathlib import Path
-        from src.api.routes.projects import get_store
         from src.application.chat.use_case import ChatUseCase
 
         def _workspace_path() -> str:
-            current = get_store().get_current()
+            current = self.projects_store.get_current()
             return current.path if current else str(Path.cwd().resolve())
 
         def _is_indexed() -> bool:
-            current = get_store().get_current()
+            current = self.projects_store.get_current()
             return bool(current and getattr(current, "indexed", False))
 
         ws = self.config.web_search

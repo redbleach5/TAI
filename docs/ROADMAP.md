@@ -12,7 +12,7 @@
 | **Agent** | read_file, write_file (multi-file), search_rag, run_terminal (cwd, timeout), list_files, get_index_status, index_workspace; **применить/отклонить** правки; **max_iterations в конфиге** (default.toml, [agent]) | — |
 | **Workspace** | Открыть папку, индексация, **создать проект с нуля** (POST /workspace/create, UI «Создать проект») | — |
 | **Анализ** | DeepAnalyzer: многошаговость (A1), RAG 8 запросов, targeted RAG, отчёт в docs/ANALYSIS_REPORT.md, граф зависимостей (A2), Git-контекст (A3), **покрытие тестами (A4)** — pytest-cov/coverage в промпт | — |
-| **Improvement** | plan → code → validate → retry, RAG, related_files, project_map, контекст ошибок (B5), **inline (B6)** — выделенное + diff preview | Стриминг plan→code (C3) |
+| **Improvement** | plan → code → validate → retry, RAG, related_files, project_map, контекст ошибок (B5), **inline (B6)** — выделенное + diff preview, **стриминг plan→code (C3)** | — |
 | **Workflow** | planner → researcher → tests → coder, RAG, project_map | — |
 
 ---
@@ -28,6 +28,7 @@
 - **Выбор модели в чате:** выбранная в UI модель передаётся в `request.model` и используется бэкендом (обычный чат и стрим).
 - **Настройки (расширение):** в разделе «Настройки» — Ollama (host, timeout, num_ctx, num_predict), LM Studio (base_url, timeout, max_tokens), контекст чата (max_context_messages). Сохранение в `development.toml`.
 - **Производительность моделей:** опциональные num_ctx/num_predict (Ollama) и max_tokens (OpenAI-совместимый) в конфиге и в UI для максимума контекста и длины ответа.
+- **C3 Стриминг улучшений:** при включённом «Стрим» в чате улучшение файла идёт через POST /improve/run/stream; в сообщении ассистента в реальном времени показываются «План» и «Код», затем результат (diff/применить).
 
 ---
 
@@ -60,7 +61,7 @@
 | **C1** Agent — контекст | search_rag по запросу, project_map в system, подсказки по read_file | ✅ |
 | **C2** Multi-file write | Парсинг нескольких write_file за ответ | ✅ |
 | **C2.1** Применить/отклонить правки | Предложенные изменения по файлам, кнопки «Применить» и «Отклонить» в чате (Cursor-like) | ✅ |
-| **C3** Streaming улучшений | Improvement: стриминг plan → code в реальном времени | ⬜ |
+| **C3** Streaming улучшений | Improvement: стриминг plan → code в реальном времени | ✅ |
 | **C3.1** Без хардкода намерений | Не ветвить по ключевым словам (isAnalyzeIntent); все сообщения в чат; «анализ проекта» как tool агента (run_project_analysis), как у Cursor | ✅ |
 
 #### План реализации C3.1: свобода действий модели
@@ -98,6 +99,8 @@
 | project_analyzer: разбить на модули | ⬜ |
 | Большие файлы: вынести логику | ⬜ |
 
+**Пошаговый план:** [docs/PART5_PLAN.md](PART5_PLAN.md) — чеклист по фазам 1 (DI), 2 (project_analyzer), 3 (большие файлы).
+
 ---
 
 ## Критерии «уровня Cursor»
@@ -113,13 +116,13 @@
 
 ## Рекомендуемый порядок работ
 
-**Уже сделано:** A2 (граф зависимостей), B5 (контекст ошибок), A3 (Git-контекст), A4 (покрытие тестами в анализе), B6 (inline-редактирование: выделенное + diff preview), max_iterations в конфиг, C3.1 (run_project_analysis, сообщения в чат).
+**Уже сделано:** A2 (граф зависимостей), B5 (контекст ошибок), A3 (Git-контекст), A4 (покрытие тестами в анализе), B6 (inline-редактирование: выделенное + diff preview), max_iterations в конфиг, C3.1 (run_project_analysis, сообщения в чат), C3 (стриминг улучшений: plan → code в чате).
 
 **Дальше по приоритету:**
 
 1. ~~**A4** Покрытие тестами в анализе~~ — ✅ сделано (coverage_collector, промпт A4).
 2. ~~**B6** Inline-редактирование~~ — ✅ сделано (selection в API, diff modal, partial edit в графе).
-3. **C3** Стриминг улучшений (Improvement: plan → code в реальном времени) — низкий приоритет.
+3. ~~**C3** Стриминг улучшений~~ — ✅ сделано (POST /improve/run/stream, streamImprove в клиенте, plan/code в чате в реальном времени при включённом «Стрим»).
 4. **Качество кода (Часть 5):** глобальные переменные → DI, разбиение project_analyzer, вынос логики из больших файлов — по возможности.
 
 ---
@@ -140,6 +143,7 @@
 | B5 | `improvement_graph.py` |
 | C1 | `agent/use_case.py`, `_build_initial_messages` |
 | C2 | `agent/tool_parser.py`, `use_case.py` (подтверждение — backend) |
+| C3 | `improve.py` (POST /run/stream), `improvement/use_case.py` (improve_file_stream), `api/client.ts` (streamImprove), `ChatPanel.tsx` (handleImprove со стримом) |
 | C3.1 | `agent/tools.py`, `agent/ollama_tools.py`, `useChat.ts`, `ChatPanel.tsx`; опционально `web_search` в tools, событие report_path в стриме |
 
 ---

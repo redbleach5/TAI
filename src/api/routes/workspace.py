@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from src.api.dependencies import get_rag_adapter, limiter
-from src.api.routes.projects import get_store
+from src.api.dependencies import get_rag_adapter, get_store, limiter
+from src.api.store import ProjectsStore
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 
 router = APIRouter(prefix="/workspace", tags=["workspace"])
@@ -28,7 +28,8 @@ class WorkspaceCreate(BaseModel):
 
 
 def _get_workspace_path() -> str:
-    """Get current workspace path (current project or cwd)."""
+    """Get current workspace path (current project or cwd). Used by files router."""
+    from src.api.dependencies import get_store
     store = get_store()
     current = store.get_current()
     return current.path if current else str(Path.cwd().resolve())
@@ -36,9 +37,11 @@ def _get_workspace_path() -> str:
 
 @router.get("")
 @limiter.limit("60/minute")
-async def get_workspace(request: Request):
+async def get_workspace(
+    request: Request,
+    store: ProjectsStore = Depends(get_store),
+):
     """Get current workspace path and name."""
-    store = get_store()
     current = store.get_current()
     if current:
         return {"path": current.path, "name": current.name}
@@ -69,9 +72,12 @@ def _ensure_path_allowed(path: Path) -> None:
 
 @router.post("")
 @limiter.limit("30/minute")
-async def set_workspace(request: Request, body: WorkspaceSet):
+async def set_workspace(
+    request: Request,
+    body: WorkspaceSet,
+    store: ProjectsStore = Depends(get_store),
+):
     """Open folder - set as current workspace (add project and select)."""
-    store = get_store()
     p = Path(body.path)
     if not p.is_absolute():
         p = Path.cwd() / p
@@ -95,9 +101,12 @@ async def set_workspace(request: Request, body: WorkspaceSet):
 
 @router.post("/create")
 @limiter.limit("20/minute")
-async def create_workspace(request: Request, body: WorkspaceCreate):
+async def create_workspace(
+    request: Request,
+    body: WorkspaceCreate,
+    store: ProjectsStore = Depends(get_store),
+):
     """Create project folder if missing, then set as current workspace (Cursor-like: new project)."""
-    store = get_store()
     raw = body.path.strip()
     raw = os.path.expanduser(raw)
     p = Path(raw)
@@ -132,12 +141,12 @@ async def index_workspace(
     request: Request,
     incremental: bool = True,
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
+    store: ProjectsStore = Depends(get_store),
 ):
     """Index current workspace for RAG search.
 
     incremental: If True (default), only index new/changed files. If False, full reindex.
     """
-    store = get_store()
     current = store.get_current()
     path = current.path if current else str(Path.cwd().resolve())
     project_id = current.id if current else None
@@ -171,12 +180,12 @@ async def index_workspace_stream(
     request: Request,
     incremental: bool = True,
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
+    store: ProjectsStore = Depends(get_store),
 ):
     """Index current workspace for RAG search, stream progress via SSE.
 
     incremental: If True (default), only index new/changed files. If False, full reindex.
     """
-    store = get_store()
     current = store.get_current()
     path = current.path if current else str(Path.cwd().resolve())
     project_id = current.id if current else None

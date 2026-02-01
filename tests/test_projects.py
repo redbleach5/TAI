@@ -8,24 +8,22 @@ import pytest
 from fastapi.testclient import TestClient
 
 from src.main import app
-from src.api.routes.projects import get_store, PROJECTS_FILE
+from src.api.container import reset_container
+from src.api.store import PROJECTS_FILE
 
 client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
 def clean_projects():
-    """Clean projects store before each test."""
-    # Remove projects file if exists
+    """Clean projects store before each test (reset container so store is fresh)."""
     if PROJECTS_FILE.exists():
         PROJECTS_FILE.unlink()
-    # Reset store singleton
-    import src.api.routes.projects as projects_module
-    projects_module._store = None
+    reset_container()
     yield
-    # Cleanup after test
     if PROJECTS_FILE.exists():
         PROJECTS_FILE.unlink()
+    reset_container()
 
 
 class TestProjectsList:
