@@ -116,6 +116,12 @@ class RAGConfig(BaseModel):
     batch_size: int = 100  # Batch size for embedding requests
 
 
+class AgentConfig(BaseModel):
+    """Agent loop settings."""
+
+    max_iterations: int = 15  # Max tool-call iterations per request (ROADMAP Part 4)
+
+
 class ServerConfig(BaseModel):
     """Server configuration."""
 
@@ -135,6 +141,7 @@ class AppConfig(BaseModel):
     security: SecurityConfig = SecurityConfig()
     persistence: PersistenceConfig = PersistenceConfig()
     rag: RAGConfig = RAGConfig()
+    agent: AgentConfig = AgentConfig()
     log_level: str = "INFO"
 
 

@@ -94,8 +94,12 @@ export const ANALYZE_PATTERNS = [
   'analyze project', 'analyze the project', 'проанализируйте',
 ]
 
+/** Question-like phrases: do not trigger full analyze, send to chat instead (Cursor-like). */
+const QUESTION_LIKE = /\?|может ли|можно ли|как (это|сделать|работает|устроен)|какой|что такое/i
+
 export function isAnalyzeIntent(text: string): boolean {
   const lower = text.trim().toLowerCase()
+  if (QUESTION_LIKE.test(lower)) return false
   return ANALYZE_PATTERNS.some((p) => lower.includes(p))
 }
 

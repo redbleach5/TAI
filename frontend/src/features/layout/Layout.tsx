@@ -182,7 +182,7 @@ export function Layout() {
             <SettingsPanel onClose={() => setShowSettings(false)} />
           </div>
         ) : null}
-        {!showCreateProject && !showSettings ? (
+        {!showCreateProject && !showSettings && (
           <OpenFilesProvider>
             <div className="layout__main" ref={mainRef}>
               {/* Sidebar */}

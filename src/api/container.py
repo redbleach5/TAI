@@ -112,6 +112,7 @@ class Container:
             llm=self.llm,
             model_selector=self.model_selector,
             rag=self.rag,
+            max_iterations=self.config.agent.max_iterations,
         )
 
     @cached_property

@@ -117,7 +117,7 @@ class GitService:
         ])
         if code != 0:
             return GitResult(success=False, error=err)
-        
+
         entries = []
         for line in out.strip().split("\n"):
             if line:
@@ -129,8 +129,52 @@ class GitService:
                         author=parts[2],
                         date=parts[3],
                     ))
-        
+
         return GitResult(success=True, data={"entries": entries})
+
+    async def get_recent_changes_for_analysis(
+        self,
+        commits_limit: int = 15,
+        files_limit: int = 25,
+    ) -> str:
+        """A3: Format recent commits and recently changed files for analysis prompt."""
+        if not await self.is_repo():
+            return ""
+
+        parts: list[str] = []
+
+        # Recent commits
+        code, out, err = await self._run([
+            "log",
+            f"-{commits_limit}",
+            "--pretty=format:%h %s (%an, %ad)",
+            "--date=short",
+        ])
+        if code == 0 and out.strip():
+            lines = out.strip().split("\n")[:commits_limit]
+            parts.append("Recent commits:\n" + "\n".join(f"  {line}" for line in lines))
+
+        # Recently changed files (unique, order = most recent first)
+        code, out, err = await self._run([
+            "log",
+            f"-{files_limit * 2}",
+            "--name-only",
+            "--pretty=format:",
+        ])
+        if code == 0 and out.strip():
+            seen: set[str] = set()
+            files: list[str] = []
+            for line in out.strip().split("\n"):
+                line = line.strip()
+                if line and line not in seen:
+                    seen.add(line)
+                    files.append(line)
+                    if len(files) >= files_limit:
+                        break
+            if files:
+                parts.append("Recently changed files:\n" + "\n".join(f"  {f}" for f in files))
+
+        return "\n\n".join(parts) if parts else ""
     
     async def commit(
         self,

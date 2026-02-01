@@ -30,7 +30,7 @@ class AgentUseCase:
         llm: LLMPort,
         model_selector: ModelSelector,
         rag: "RAGPort | None" = None,
-        max_iterations: int = 10,
+        max_iterations: int = 15,
     ) -> None:
         self._llm = llm
         self._model_selector = model_selector

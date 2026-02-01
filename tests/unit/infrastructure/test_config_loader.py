@@ -21,6 +21,8 @@ class TestLoadConfig:
         assert config.llm is not None
         assert config.models is not None
         assert config.security is not None
+        assert config.agent is not None
+        assert config.agent.max_iterations == 15
 
     def test_loads_from_custom_dir(self):
         """Loads config from custom directory."""
@@ -159,3 +161,13 @@ class TestApplyEnvOverrides:
             assert result["embeddings"]["model"] == "custom-embed"
         finally:
             del os.environ["EMBEDDINGS_MODEL"]
+
+    def test_agent_max_iterations_override(self):
+        """AGENT_MAX_ITERATIONS env var overrides config."""
+        config = {}
+        os.environ["AGENT_MAX_ITERATIONS"] = "20"
+        try:
+            result = _apply_env_overrides(config)
+            assert result["agent"]["max_iterations"] == 20
+        finally:
+            del os.environ["AGENT_MAX_ITERATIONS"]

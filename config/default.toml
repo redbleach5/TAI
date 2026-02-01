@@ -54,6 +54,10 @@ collection_name = "codebase"
 chunk_size = 500
 chunk_overlap = 50
 
+# Agent: max tool-call iterations per request (Part 4 ROADMAP)
+[agent]
+max_iterations = 15
+
 [logging]
 level = "INFO"
 format = "json"

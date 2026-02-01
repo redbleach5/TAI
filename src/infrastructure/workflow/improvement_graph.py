@@ -38,7 +38,9 @@ class ImprovementState(TypedDict, total=False):
     validation_output: str
     retry_count: int
     max_retries: int
-    
+    # B5: RAG by error on retry
+    error_rag_context: str
+
     # Output
     write_result: dict
     error: str | None
@@ -222,17 +224,26 @@ async def _code_node(
     related_files_context = state.get("related_files_context", "")
     validation_output = state.get("validation_output", "")
     retry_count = state.get("retry_count", 0)
-    
+    error_rag_context = state.get("error_rag_context", "")
+
+    # B5: retry with full stack trace + RAG «похожий код»
     retry_context = ""
     if retry_count > 0 and validation_output:
         retry_context = f"""
 
-PREVIOUS ATTEMPT FAILED with error:
+PREVIOUS ATTEMPT FAILED. Full error / stack trace:
+```
 {validation_output}
-
+```
 Fix the issues and try again.
 """
-    
+        if error_rag_context:
+            retry_context += f"""
+
+Similar code from codebase (may help fix this error):
+{error_rag_context}
+"""
+
     rag_section = ""
     if project_map:
         rag_section += f"\nProject structure:\n{project_map[:1200]}\n\n"
@@ -293,30 +304,34 @@ Preserve the overall structure and imports. Make minimal necessary changes.
 
 
 async def _validate_node(state: ImprovementState) -> ImprovementState:
-    """Validate improved code (syntax check + basic tests)."""
+    """Validate improved code (syntax check + basic tests). B5: full stack trace in validation_output."""
     import ast
     import subprocess
     import tempfile
+    import traceback
     from pathlib import Path
-    
+
     improved_code = state.get("improved_code", "")
-    
-    # Syntax check
+
+    # Syntax check — B5: include line content when available
     try:
         ast.parse(improved_code)
     except SyntaxError as e:
+        line_preview = ""
+        if e.text:
+            line_preview = f" Line content: {e.text.strip()!r}"
         return {
             **state,
             "validation_passed": False,
-            "validation_output": f"Syntax error at line {e.lineno}: {e.msg}",
+            "validation_output": f"Syntax error at line {e.lineno}: {e.msg}{line_preview}",
             "current_step": "check_retry",
         }
-    
-    # Try to run basic import check
+
+    # Try to run basic import check — B5: full stderr (stack trace)
     with tempfile.TemporaryDirectory() as tmpdir:
         code_file = Path(tmpdir) / "improved.py"
         code_file.write_text(improved_code, encoding="utf-8")
-        
+
         try:
             result = subprocess.run(
                 ["python", "-m", "py_compile", str(code_file)],
@@ -325,20 +340,23 @@ async def _validate_node(state: ImprovementState) -> ImprovementState:
                 timeout=10,
             )
             if result.returncode != 0:
+                full_output = (result.stderr or "").strip()
+                if result.stdout:
+                    full_output = f"{result.stdout.strip()}\n{full_output}"
                 return {
                     **state,
                     "validation_passed": False,
-                    "validation_output": result.stderr,
+                    "validation_output": full_output or "Compilation failed (no output)",
                     "current_step": "check_retry",
                 }
         except Exception as e:
             return {
                 **state,
                 "validation_passed": False,
-                "validation_output": str(e),
+                "validation_output": traceback.format_exc(),
                 "current_step": "check_retry",
             }
-    
+
     return {
         **state,
         "validation_passed": True,
@@ -361,11 +379,36 @@ def _should_retry(state: ImprovementState) -> Literal["retry", "write", "error"]
     return "error"
 
 
-async def _retry_node(state: ImprovementState) -> ImprovementState:
-    """Increment retry counter and go back to code generation."""
+async def _retry_node(
+    state: ImprovementState,
+    rag: "RAGPort | None",
+) -> ImprovementState:
+    """B5: Increment retry, run RAG by error text for «похожий код» context."""
+    retry_count = state.get("retry_count", 0) + 1
+    validation_output = state.get("validation_output", "")
+    error_rag_context = ""
+
+    if rag and validation_output:
+        try:
+            # RAG по ошибке: ищем похожий код по тексту ошибки
+            query = validation_output[:600].replace("\n", " ")
+            chunks = await rag.search(query, limit=5, min_score=0.3)
+            if chunks:
+                parts = []
+                seen: set[str] = set()
+                for c in chunks:
+                    src = c.metadata.get("source", "")
+                    if src not in seen:
+                        seen.add(src)
+                        parts.append(f"### {src}\n```\n{c.content[:400]}\n```")
+                error_rag_context = "\n\n".join(parts)
+        except Exception:
+            pass
+
     return {
         **state,
-        "retry_count": state.get("retry_count", 0) + 1,
+        "retry_count": retry_count,
+        "error_rag_context": error_rag_context,
         "current_step": "code",
     }
 
@@ -417,7 +460,10 @@ def build_improvement_graph(
     
     async def rag_wrapper(state: ImprovementState) -> ImprovementState:
         return await _rag_node(state, rag)
-    
+
+    async def retry_wrapper(state: ImprovementState) -> ImprovementState:
+        return await _retry_node(state, rag)
+
     async def plan_wrapper(state: ImprovementState) -> ImprovementState:
         return await _plan_node(state, llm, model, on_chunk)
     
@@ -434,7 +480,7 @@ def build_improvement_graph(
     builder.add_node("plan", plan_wrapper)
     builder.add_node("code", code_wrapper)
     builder.add_node("validate", _validate_node)
-    builder.add_node("retry", _retry_node)
+    builder.add_node("retry", retry_wrapper)
     builder.add_node("write", write_wrapper)
     builder.add_node("error", _error_node)
     

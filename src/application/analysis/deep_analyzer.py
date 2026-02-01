@@ -16,7 +16,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.domain.ports.llm import LLMMessage
+from src.infrastructure.analyzer.dependency_graph import (
+    build_dependency_graph,
+    format_dependency_graph_markdown,
+)
 from src.infrastructure.analyzer.project_analyzer import get_analyzer
+from src.infrastructure.services.git_service import GitService
 from src.infrastructure.analyzer.report_generator import ReportGenerator
 
 if TYPE_CHECKING:
@@ -105,6 +110,9 @@ DEEP_ANALYSIS_PROMPT_GENERIC = """Ты — эксперт по анализу к
 ### Статический анализ
 {static_report}
 
+### Git (A3: недавние коммиты и изменённые файлы)
+{git_context}
+
 ### Карта проекта (структура)
 {project_map}
 
@@ -146,6 +154,9 @@ DEEP_ANALYSIS_PROMPT_FASTAPI = """Ты — эксперт по FastAPI и Python
 ### Статический анализ
 {static_report}
 
+### Git (A3: недавние коммиты и изменённые файлы)
+{git_context}
+
 ### Карта проекта
 {project_map}
 
@@ -178,6 +189,9 @@ DEEP_ANALYSIS_PROMPT_REACT = """Ты — эксперт по React/TypeScript fr
 ### Статический анализ
 {static_report}
 
+### Git (A3: недавние коммиты и изменённые файлы)
+{git_context}
+
 ### Карта проекта
 {project_map}
 
@@ -209,6 +223,9 @@ DEEP_ANALYSIS_PROMPT_DJANGO = """Ты — эксперт по Django. Проан
 
 ### Статический анализ
 {static_report}
+
+### Git (A3: недавние коммиты и изменённые файлы)
+{git_context}
 
 ### Карта проекта
 {project_map}
@@ -365,6 +382,12 @@ class DeepAnalyzer:
         generator = ReportGenerator()
         static_report = generator.generate_markdown(analysis)
 
+        # 1b. Dependency graph (A2): cycles, unused imports
+        dep_result = await asyncio.to_thread(build_dependency_graph, str(project_path))
+        dep_section = format_dependency_graph_markdown(dep_result)
+        if dep_section:
+            static_report = f"{static_report}\n\n{dep_section}"
+
         # 2. Framework detection
         framework = await asyncio.to_thread(_detect_framework, project_path)
 
@@ -374,6 +397,18 @@ class DeepAnalyzer:
             map_md = self._rag.get_project_map_markdown()
             if map_md:
                 project_map = map_md[:8000]
+
+        # 3b. Git context (A3): recent commits and changed files
+        git_context = "Не репозиторий Git или Git недоступен."
+        try:
+            git_service = GitService(str(project_path))
+            if await git_service.is_repo():
+                git_context = await git_service.get_recent_changes_for_analysis(
+                    commits_limit=15,
+                    files_limit=25,
+                ) or git_context
+        except Exception:
+            pass
 
         # 4. Initial RAG context (expanded)
         rag_context = "Не доступен. Выполните индексацию workspace."
@@ -416,6 +451,7 @@ class DeepAnalyzer:
         prompt = prompt_template.format(
             key_files=key_files,
             static_report=static_report[:12000],
+            git_context=git_context[:3000] if git_context else "Не доступен.",
             project_map=project_map,
             rag_context=rag_context[:12000],
         )

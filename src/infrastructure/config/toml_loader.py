@@ -5,6 +5,7 @@ import tomllib
 from pathlib import Path
 
 from src.domain.ports.config import (
+    AgentConfig,
     AppConfig,
     EmbeddingsConfig,
     LLMConfig,
@@ -57,6 +58,11 @@ def _apply_env_overrides(config: dict) -> dict:
             pass
     if model := os.getenv("EMBEDDINGS_MODEL"):
         config.setdefault("embeddings", {})["model"] = model
+    if iterations := os.getenv("AGENT_MAX_ITERATIONS"):
+        try:
+            config.setdefault("agent", {})["max_iterations"] = int(iterations)
+        except ValueError:
+            pass
     return config
 
 
@@ -94,6 +100,7 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
     security = SecurityConfig(**(config.get("security") or {}))
     persistence = PersistenceConfig(**(config.get("persistence") or {}))
     rag = RAGConfig(**(config.get("rag") or {}))
+    agent = AgentConfig(**(config.get("agent") or {}))
     log_level = config.get("logging", {}).get("level", "INFO")
 
     return AppConfig(
@@ -106,5 +113,6 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         security=security,
         persistence=persistence,
         rag=rag,
+        agent=agent,
         log_level=log_level,
     )
