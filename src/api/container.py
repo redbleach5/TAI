@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from src.application.workflow.use_case import WorkflowUseCase
     from src.application.improvement.use_case import SelfImprovementUseCase
     from src.infrastructure.agents.file_writer import FileWriter
+    from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
     from src.infrastructure.persistence.conversation_memory import ConversationMemory
     from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 
@@ -112,6 +113,12 @@ class Container:
         )
     
     @cached_property
+    def project_analyzer(self) -> "ProjectAnalyzer":
+        """Project analyzer for static analysis."""
+        from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
+        return ProjectAnalyzer()
+
+    @cached_property
     def agent_use_case(self) -> "AgentUseCase":
         """Agent use case for autonomous tool execution."""
         from src.application.agent.use_case import AgentUseCase
@@ -120,6 +127,7 @@ class Container:
             llm=self.llm,
             model_selector=self.model_selector,
             rag=self.rag,
+            project_analyzer=self.project_analyzer,
             max_iterations=self.config.agent.max_iterations,
             web_search_searxng_url=ws.searxng_url,
             web_search_brave_api_key=ws.brave_api_key,

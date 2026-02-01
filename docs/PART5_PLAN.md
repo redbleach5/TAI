@@ -41,12 +41,12 @@
 
 ### 1.2 Improvement use case и FileWriter в Container
 
-- [ ] **1.2.1** В `container.py`: добавить `@cached_property def file_writer(self) -> FileWriter` (создавать `FileWriter()`).
-- [ ] **1.2.2** В `container.py`: в `improvement_use_case` передать `file_writer=self.file_writer` и `workspace_path_getter` (лямбда/хелпер, использующий `self.projects_store.get_current()` и путь; при отсутствии current — `Path.cwd()`).
-- [ ] **1.2.3** В `api/dependencies.py`: добавить `def get_file_writer() -> FileWriter: return get_container().file_writer` (если нужен отдельно для роутов).
-- [ ] **1.2.4** В `api/routes/improve.py`: удалить `_use_case`, `_file_writer`, локальные `get_file_writer` и `get_improvement_use_case`. Импортировать `get_improvement_use_case` и при необходимости `get_file_writer` из `api.dependencies`. Все эндпоинты оставить с `Depends(get_improvement_use_case)` из dependencies.
-- [ ] **1.2.5** Убедиться, что `get_improvement_use_case` в dependencies возвращает `get_container().improvement_use_case` и что в container improvement_use_case создаётся с file_writer и workspace_path_getter.
-- [ ] **1.2.6** Тесты: `pytest tests/`, проверить улучшение (improve) и очередь.
+- [x] **1.2.1** В `container.py`: добавить `@cached_property def file_writer(self) -> FileWriter` (создавать `FileWriter()`).
+- [x] **1.2.2** В `container.py`: в `improvement_use_case` передать `file_writer=self.file_writer` и `workspace_path_getter` (лямбда/хелпер, использующий `self.projects_store.get_current()` и путь; при отсутствии current — `Path.cwd()`).
+- [x] **1.2.3** В `api/dependencies.py`: добавить `def get_file_writer() -> FileWriter: return get_container().file_writer` (если нужен отдельно для роутов).
+- [x] **1.2.4** В `api/routes/improve.py`: удалить `_use_case`, `_file_writer`, локальные `get_file_writer` и `get_improvement_use_case`. Импортировать `get_improvement_use_case` и при необходимости `get_file_writer` из `api.dependencies`. Все эндпоинты оставить с `Depends(get_improvement_use_case)` из dependencies.
+- [x] **1.2.5** Убедиться, что `get_improvement_use_case` в dependencies возвращает `get_container().improvement_use_case` и что в container improvement_use_case создаётся с file_writer и workspace_path_getter.
+- [x] **1.2.6** Тесты: `pytest tests/`, проверить улучшение (improve) и очередь.
 
 **Критерий:** В improve.py нет глобальных _use_case/_file_writer; improvement и file_writer берутся из Container через dependencies.
 

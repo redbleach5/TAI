@@ -632,15 +632,3 @@ class ProjectAnalyzer:
             weaknesses.append("⚠️ Нет явных точек входа")
         
         return weaknesses
-
-
-# Singleton
-_analyzer: ProjectAnalyzer | None = None
-
-
-def get_analyzer() -> ProjectAnalyzer:
-    """Получить анализатор."""
-    global _analyzer
-    if _analyzer is None:
-        _analyzer = ProjectAnalyzer()
-    return _analyzer

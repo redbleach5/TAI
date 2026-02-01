@@ -5,12 +5,13 @@ from pathlib import Path
 
 import pytest
 
+from src.api.container import reset_container
+from src.api.dependencies import get_analyzer
 from src.infrastructure.analyzer.project_analyzer import (
     ProjectAnalyzer,
     ProjectAnalysis,
     FileMetrics,
     SecurityIssue,
-    get_analyzer,
 )
 from src.infrastructure.analyzer.report_generator import ReportGenerator
 
@@ -182,7 +183,8 @@ def complex_func(x):
             assert analysis.file_metrics[0].complexity > 1
 
     def test_get_analyzer_singleton(self):
-        """get_analyzer should return singleton."""
+        """get_analyzer (from container) should return same instance."""
+        reset_container()
         analyzer1 = get_analyzer()
         analyzer2 = get_analyzer()
         assert analyzer1 is analyzer2

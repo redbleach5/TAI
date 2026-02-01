@@ -11,7 +11,6 @@ from src.infrastructure.analyzer.project_analyzer import (
     FileMetrics,
     SecurityIssue,
     ArchitectureInfo,
-    get_analyzer,
 )
 from src.infrastructure.analyzer.report_generator import ReportGenerator
 
@@ -22,7 +21,6 @@ __all__ = [
     "SecurityIssue",
     "ArchitectureInfo",
     "ReportGenerator",
-    "get_analyzer",
     "DependencyGraphResult",
     "build_dependency_graph",
     "format_dependency_graph_markdown",

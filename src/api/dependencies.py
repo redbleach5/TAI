@@ -10,6 +10,7 @@ from src.application.workflow.use_case import WorkflowUseCase
 from src.application.improvement.use_case import SelfImprovementUseCase
 from src.domain.ports.config import AppConfig
 from src.infrastructure.agents.file_writer import FileWriter
+from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
 from src.domain.ports.llm import LLMPort
 from src.domain.services.model_router import ModelRouter
 from src.domain.services.model_selector import ModelSelector
@@ -28,6 +29,11 @@ def get_store() -> ProjectsStore:
 def get_file_writer() -> FileWriter:
     """Get file writer from container."""
     return get_container().file_writer
+
+
+def get_analyzer() -> ProjectAnalyzer:
+    """Get project analyzer from container."""
+    return get_container().project_analyzer
 
 
 def get_config() -> AppConfig:

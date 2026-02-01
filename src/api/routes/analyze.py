@@ -7,11 +7,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
-from src.api.dependencies import get_llm_adapter, get_model_selector, get_rag_adapter, limiter
+from src.api.dependencies import get_analyzer, get_llm_adapter, get_model_selector, get_rag_adapter, limiter
 from src.application.analysis.deep_analyzer import DeepAnalyzer, summary_from_report
 from src.domain.ports.llm import LLMPort
 from src.domain.services.model_selector import ModelSelector
-from src.infrastructure.analyzer.project_analyzer import get_analyzer, ProjectAnalysis
+from src.infrastructure.analyzer.project_analyzer import ProjectAnalysis, ProjectAnalyzer
 from src.infrastructure.analyzer.report_generator import ReportGenerator
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 
@@ -142,7 +142,11 @@ def _analysis_to_detailed_response(
 
 @router.post("/project")
 @limiter.limit("10/minute")
-async def analyze_project(request: Request, body: AnalyzeRequest) -> AnalyzeResponse:
+async def analyze_project(
+    request: Request,
+    body: AnalyzeRequest,
+    analyzer: ProjectAnalyzer = Depends(get_analyzer),
+) -> AnalyzeResponse:
     """Анализирует проект и возвращает результаты.
     
     Args:
@@ -160,7 +164,6 @@ async def analyze_project(request: Request, body: AnalyzeRequest) -> AnalyzeResp
         raise HTTPException(status_code=400, detail="Path must be a directory")
     
     # Запускаем анализ в фоне
-    analyzer = get_analyzer()
     analysis = await asyncio.to_thread(analyzer.analyze, str(path))
     
     # Генерируем отчёт если нужно
@@ -179,7 +182,8 @@ async def analyze_project(request: Request, body: AnalyzeRequest) -> AnalyzeResp
 @limiter.limit("5/minute")
 async def analyze_project_detailed(
     request: Request,
-    body: AnalyzeRequest
+    body: AnalyzeRequest,
+    analyzer: ProjectAnalyzer = Depends(get_analyzer),
 ) -> DetailedAnalyzeResponse:
     """Детальный анализ проекта со всеми данными.
     
@@ -193,7 +197,6 @@ async def analyze_project_detailed(
     if not path.is_dir():
         raise HTTPException(status_code=400, detail="Path must be a directory")
     
-    analyzer = get_analyzer()
     analysis = await asyncio.to_thread(analyzer.analyze, str(path))
     
     report_path = None
@@ -209,7 +212,11 @@ async def analyze_project_detailed(
 
 @router.post("/project/report", response_class=PlainTextResponse)
 @limiter.limit("10/minute")
-async def get_project_report(request: Request, body: AnalyzeRequest) -> str:
+async def get_project_report(
+    request: Request,
+    body: AnalyzeRequest,
+    analyzer: ProjectAnalyzer = Depends(get_analyzer),
+) -> str:
     """Генерирует и возвращает Markdown отчёт напрямую.
     
     Returns:
@@ -220,7 +227,6 @@ async def get_project_report(request: Request, body: AnalyzeRequest) -> str:
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Path not found: {body.path}")
     
-    analyzer = get_analyzer()
     analysis = await asyncio.to_thread(analyzer.analyze, str(path))
     
     generator = ReportGenerator()
@@ -248,6 +254,7 @@ async def get_project_deep_report(
     llm: LLMPort = Depends(get_llm_adapter),
     model_selector: ModelSelector = Depends(get_model_selector),
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
+    analyzer: ProjectAnalyzer = Depends(get_analyzer),
 ) -> DeepAnalyzeResponse:
     """Глубокий анализ уровня Cursor AI: статика + RAG + LLM.
     
@@ -263,7 +270,12 @@ async def get_project_deep_report(
     if not path.is_dir():
         raise HTTPException(status_code=400, detail="Path must be a directory")
     
-    deep_analyzer = DeepAnalyzer(llm=llm, model_selector=model_selector, rag=rag)
+    deep_analyzer = DeepAnalyzer(
+        llm=llm,
+        model_selector=model_selector,
+        rag=rag,
+        analyzer=analyzer,
+    )
     full_md = await deep_analyzer.analyze(str(path))
     
     # Сохраняем полный отчёт в проекте (как Cursor)
@@ -278,7 +290,11 @@ async def get_project_deep_report(
 
 @router.post("/security")
 @limiter.limit("20/minute")
-async def check_security(request: Request, body: AnalyzeRequest):
+async def check_security(
+    request: Request,
+    body: AnalyzeRequest,
+    analyzer: ProjectAnalyzer = Depends(get_analyzer),
+):
     """Быстрая проверка безопасности проекта.
     
     Returns:
@@ -289,7 +305,6 @@ async def check_security(request: Request, body: AnalyzeRequest):
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Path not found: {body.path}")
     
-    analyzer = get_analyzer()
     analysis = await asyncio.to_thread(analyzer.analyze, str(path))
     
     # Группируем по severity
@@ -331,6 +346,7 @@ async def compare_projects(
     request: Request,
     path1: str,
     path2: str,
+    analyzer: ProjectAnalyzer = Depends(get_analyzer),
 ):
     """Сравнивает два проекта.
     
@@ -342,8 +358,6 @@ async def compare_projects(
     
     if not p1.exists() or not p2.exists():
         raise HTTPException(status_code=404, detail="One or both paths not found")
-    
-    analyzer = get_analyzer()
     
     # Анализируем параллельно
     analysis1, analysis2 = await asyncio.gather(

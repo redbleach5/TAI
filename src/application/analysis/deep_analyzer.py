@@ -21,13 +21,13 @@ from src.infrastructure.analyzer.dependency_graph import (
     format_dependency_graph_markdown,
 )
 from src.infrastructure.analyzer.coverage_collector import collect_coverage_for_analysis
-from src.infrastructure.analyzer.project_analyzer import get_analyzer
 from src.infrastructure.services.git_service import GitService
 from src.infrastructure.analyzer.report_generator import ReportGenerator
 
 if TYPE_CHECKING:
     from src.domain.ports.llm import LLMPort
     from src.domain.services.model_selector import ModelSelector
+    from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
     from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 
 
@@ -392,10 +392,12 @@ class DeepAnalyzer:
         llm: "LLMPort",
         model_selector: "ModelSelector",
         rag: "ChromaDBRAGAdapter | None" = None,
+        analyzer: "ProjectAnalyzer | None" = None,
     ) -> None:
         self._llm = llm
         self._model_selector = model_selector
         self._rag = rag
+        self._analyzer = analyzer
 
     async def analyze(self, path: str, multi_step: bool = True) -> str:
         """Run deep analysis and return markdown report.
@@ -411,8 +413,10 @@ class DeepAnalyzer:
         key_files = await asyncio.to_thread(_collect_key_files, project_path)
 
         # 1. Static analysis
-        analyzer = get_analyzer()
-        analysis = await asyncio.to_thread(analyzer.analyze, str(project_path))
+        if not self._analyzer:
+            from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
+            self._analyzer = ProjectAnalyzer()
+        analysis = await asyncio.to_thread(self._analyzer.analyze, str(project_path))
         generator = ReportGenerator()
         static_report = generator.generate_markdown(analysis)
 

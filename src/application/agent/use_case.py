@@ -16,6 +16,7 @@ from src.infrastructure.services.web_search import multi_search, format_search_r
 
 if TYPE_CHECKING:
     from src.domain.ports.rag import RAGPort
+    from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
 
 
 AGENT_SYSTEM_PROMPT = """You are an autonomous coding agent. You can read files, write files, search the codebase, run terminal commands, and list directories.
@@ -33,6 +34,7 @@ class AgentUseCase:
         llm: LLMPort,
         model_selector: ModelSelector,
         rag: "RAGPort | None" = None,
+        project_analyzer: "ProjectAnalyzer | None" = None,
         max_iterations: int = 15,
         web_search_searxng_url: str | None = None,
         web_search_brave_api_key: str | None = None,
@@ -43,6 +45,7 @@ class AgentUseCase:
         self._llm = llm
         self._model_selector = model_selector
         self._rag = rag
+        self._project_analyzer = project_analyzer
         self._max_iterations = max_iterations
         self._web_search_searxng_url = (web_search_searxng_url or "").strip() or None
         self._web_search_brave_api_key = (web_search_brave_api_key or "").strip() or None
@@ -106,8 +109,13 @@ class AgentUseCase:
 
     async def _run_project_analysis(self, workspace_path: str, question: str | None) -> tuple[str, str]:
         """C3.1: Run deep analysis, save to docs/ANALYSIS_REPORT.md, return (summary, report_path)."""
-        analyzer = DeepAnalyzer(llm=self._llm, model_selector=self._model_selector, rag=self._rag)
-        full_md = await analyzer.analyze(workspace_path)
+        deep = DeepAnalyzer(
+            llm=self._llm,
+            model_selector=self._model_selector,
+            rag=self._rag,
+            analyzer=self._project_analyzer,
+        )
+        full_md = await deep.analyze(workspace_path)
         report_rel = "docs/ANALYSIS_REPORT.md"
         report_file = Path(workspace_path) / report_rel
         report_file.parent.mkdir(parents=True, exist_ok=True)
