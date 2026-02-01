@@ -28,12 +28,12 @@
 
 ### 1.1 ProjectsStore в Container
 
-- [ ] **1.1.1** В `container.py`: добавить `@cached_property def projects_store(self) -> ProjectsStore`. Создавать `ProjectsStore` (логика из `projects.py`: путь к store, загрузка/сохранение). Импорт класса из `src.api.routes.projects` или вынести класс в `src.infrastructure.persistence` / `src.api.store` (по желанию).
-- [ ] **1.1.2** В `dependencies.py`: добавить `def get_store() -> ProjectsStore: return get_container().projects_store` (если ещё не из dependencies — сейчас get_store в projects.py).
-- [ ] **1.1.3** В `api/routes/projects.py`: удалить `_store`, заменить использование на `Depends(get_store)` из dependencies; `get_store` оставить в dependencies и импортировать в projects.py из dependencies.
-- [ ] **1.1.4** В `container.py`: в `chat_use_case` и везде, где вызывается `get_store()`, передавать `self.projects_store` (или getter) в use case / хелперы.
-- [ ] **1.1.5** Проверить: workspace.py, agent/tools.py, improve.py — все получают store через Depends(get_store); get_store берёт из container.
-- [ ] **1.1.6** Тесты: запустить `pytest tests/ -v`, проверить проекты и workspace.
+- [x] **1.1.1** В `container.py`: добавить `@cached_property def projects_store(self) -> ProjectsStore`. Создавать `ProjectsStore` (логика из `projects.py`: путь к store, загрузка/сохранение). Импорт класса из `src.api.routes.projects` или вынести класс в `src.infrastructure.persistence` / `src.api.store` (по желанию).
+- [x] **1.1.2** В `dependencies.py`: добавить `def get_store() -> ProjectsStore: return get_container().projects_store` (если ещё не из dependencies — сейчас get_store в projects.py).
+- [x] **1.1.3** В `api/routes/projects.py`: удалить `_store`, заменить использование на `Depends(get_store)` из dependencies; `get_store` оставить в dependencies и импортировать в projects.py из dependencies.
+- [x] **1.1.4** В `container.py`: в `chat_use_case` и везде, где вызывается `get_store()`, передавать `self.projects_store` (или getter) в use case / хелперы.
+- [x] **1.1.5** Проверить: workspace.py, agent/tools.py, improve.py — все получают store через Depends(get_store); get_store берёт из container.
+- [x] **1.1.6** Тесты: запустить `pytest tests/ -v`, проверить проекты и workspace.
 
 **Критерий:** Нет глобального `_store` в projects.py; store создаётся в Container и отдаётся через dependencies.
 

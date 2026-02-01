@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from src.application.chat.use_case import ChatUseCase
     from src.application.workflow.use_case import WorkflowUseCase
     from src.application.improvement.use_case import SelfImprovementUseCase
+    from src.infrastructure.agents.file_writer import FileWriter
     from src.infrastructure.persistence.conversation_memory import ConversationMemory
     from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 
@@ -169,13 +170,27 @@ class Container:
         )
     
     @cached_property
+    def file_writer(self) -> "FileWriter":
+        """File writer for improvement (backup, read/write)."""
+        from src.infrastructure.agents.file_writer import FileWriter
+        return FileWriter()
+
+    @cached_property
     def improvement_use_case(self) -> "SelfImprovementUseCase":
         """Self-improvement use case."""
+        from pathlib import Path
         from src.application.improvement.use_case import SelfImprovementUseCase
+
+        def _workspace_path() -> str:
+            current = self.projects_store.get_current()
+            return current.path if current else str(Path.cwd().resolve())
+
         return SelfImprovementUseCase(
             llm=self.llm,
             model_selector=self.model_selector,
+            file_writer=self.file_writer,
             rag=self.rag,
+            workspace_path_getter=_workspace_path,
         )
     
     def reset(self) -> None:

@@ -1,62 +1,19 @@
 """Self-improvement API routes."""
 
 from collections.abc import AsyncIterator
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from src.api.dependencies import get_llm_adapter, get_model_selector, get_rag_adapter, get_store, limiter
+from src.api.dependencies import get_improvement_use_case, limiter
 from src.application.improvement import (
     AnalyzeRequest,
     ImprovementRequest,
     SelfImprovementUseCase,
 )
-from src.domain.ports.llm import LLMPort
-from src.domain.services.model_selector import ModelSelector
-from src.infrastructure.agents.file_writer import FileWriter
-from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 
 router = APIRouter(prefix="/improve", tags=["improve"])
-
-# Singleton use case (with task queue state)
-_use_case: SelfImprovementUseCase | None = None
-_file_writer: FileWriter | None = None
-
-
-def get_file_writer() -> FileWriter:
-    """Get or create FileWriter."""
-    global _file_writer
-    if _file_writer is None:
-        _file_writer = FileWriter()
-    return _file_writer
-
-
-def _get_workspace_path() -> str:
-    """Get current workspace path (current project or cwd)."""
-    store = get_store()
-    current = store.get_current()
-    return current.path if current else str(Path.cwd().resolve())
-
-
-def get_improvement_use_case(
-    llm: LLMPort = Depends(get_llm_adapter),
-    model_selector: ModelSelector = Depends(get_model_selector),
-    file_writer: FileWriter = Depends(get_file_writer),
-    rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
-) -> SelfImprovementUseCase:
-    """Get or create SelfImprovementUseCase."""
-    global _use_case
-    if _use_case is None:
-        _use_case = SelfImprovementUseCase(
-            llm=llm,
-            model_selector=model_selector,
-            file_writer=file_writer,
-            rag=rag,
-            workspace_path_getter=_get_workspace_path,
-        )
-    return _use_case
 
 
 # Request/Response models

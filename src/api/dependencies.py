@@ -9,6 +9,7 @@ from src.application.chat.use_case import ChatUseCase
 from src.application.workflow.use_case import WorkflowUseCase
 from src.application.improvement.use_case import SelfImprovementUseCase
 from src.domain.ports.config import AppConfig
+from src.infrastructure.agents.file_writer import FileWriter
 from src.domain.ports.llm import LLMPort
 from src.domain.services.model_router import ModelRouter
 from src.domain.services.model_selector import ModelSelector
@@ -22,6 +23,11 @@ limiter = Limiter(key_func=get_remote_address)
 def get_store() -> ProjectsStore:
     """Get projects store from container."""
     return get_container().projects_store
+
+
+def get_file_writer() -> FileWriter:
+    """Get file writer from container."""
+    return get_container().file_writer
 
 
 def get_config() -> AppConfig:
