@@ -2,10 +2,12 @@ import { useState, useCallback, useEffect, useRef } from 'react'
 import {
   postChat,
   postChatStream,
+  writeFile,
   getConversations,
   getConversation,
   deleteConversation as apiDeleteConversation,
   type ChatMessage,
+  type ProposedEdit,
 } from '../../api/client'
 
 const CHAT_STORAGE_KEY = 'tai-chat'
@@ -27,14 +29,22 @@ function loadFromStorage(): { messages: ChatMessage[]; conversationId: string | 
 }
 
 function saveToStorage(messages: ChatMessage[], conversationId: string | null) {
-  try {
-    localStorage.setItem(
-      CHAT_STORAGE_KEY,
-      JSON.stringify({
-        messages: messages.map((m) => ({ role: m.role, content: m.content, thinking: m.thinking, toolEvents: m.toolEvents, model: m.model })),
-        conversationId,
-      })
-    )
+    try {
+      localStorage.setItem(
+        CHAT_STORAGE_KEY,
+        JSON.stringify({
+          messages: messages.map((m) => ({
+            role: m.role,
+            content: m.content,
+            thinking: m.thinking,
+            toolEvents: m.toolEvents,
+            model: m.model,
+            reportPath: m.reportPath,
+            pendingEdits: m.pendingEdits,
+          })),
+          conversationId,
+        })
+      )
   } catch {
     // ignore
   }
@@ -211,6 +221,7 @@ export function useChat(options: UseChatOptions = {}) {
         model: model || undefined,
         context_files: contextFiles.length ? contextFiles : undefined,
         active_file_path: getActiveFilePath?.() ?? undefined,
+        apply_edits_required: modeId === 'agent',
       }
 
       try {
@@ -223,13 +234,21 @@ export function useChat(options: UseChatOptions = {}) {
           let content = ''
           let thinking = ''
           const toolEvents: Array<{ type: 'tool_call' | 'tool_result'; data: string }> = []
+          const pendingEdits: ProposedEdit[] = []
           let modelName = ''
-          setMessages((prev) => [...prev, { role: 'assistant', content: '', thinking: '', toolEvents: [] }])
+          setMessages((prev) => [...prev, { role: 'assistant', content: '', thinking: '', toolEvents: [], pendingEdits: [] }])
 
           const updateMessage = () => {
             setMessages((prev) => {
               const next = [...prev]
-              next[next.length - 1] = { role: 'assistant', content, thinking, toolEvents: [...toolEvents], model: modelName || undefined }
+              next[next.length - 1] = {
+                role: 'assistant',
+                content,
+                thinking,
+                toolEvents: [...toolEvents],
+                pendingEdits: [...pendingEdits],
+                model: modelName || undefined,
+              }
               return next
             })
           }
@@ -256,6 +275,20 @@ export function useChat(options: UseChatOptions = {}) {
               } else if (eventType === 'tool_result' && data) {
                 toolEvents.push({ type: 'tool_result', data })
                 onToolResult?.(data)
+              } else if (eventType === 'proposed_edit' && data) {
+                try {
+                  const edit = JSON.parse(data) as ProposedEdit
+                  if (edit?.path != null && edit?.content != null) {
+                    pendingEdits.push({
+                      path: edit.path,
+                      content: edit.content,
+                      old_content: edit.old_content,
+                    })
+                    updateMessage()
+                  }
+                } catch {
+                  // skip malformed
+                }
               } else if (eventType === 'done') {
                 if (data) {
                   try {
@@ -328,6 +361,37 @@ export function useChat(options: UseChatOptions = {}) {
     })
   }, [])
 
+  /** Apply a proposed edit from the agent (Cursor-like). Writes file and removes from pendingEdits. */
+  const applyEdit = useCallback(async (messageIndex: number, path: string, content: string) => {
+    const result = await writeFile(path, content)
+    if (!result.success) return result
+    setMessages((prev) => {
+      const next = [...prev]
+      const msg = next[messageIndex]
+      if (!msg?.pendingEdits?.length) return prev
+      next[messageIndex] = {
+        ...msg,
+        pendingEdits: msg.pendingEdits.filter((e) => e.path !== path),
+      }
+      return next
+    })
+    return result
+  }, [])
+
+  /** Reject a proposed edit (remove from list, Cursor-like). */
+  const rejectEdit = useCallback((messageIndex: number, path: string) => {
+    setMessages((prev) => {
+      const next = [...prev]
+      const msg = next[messageIndex]
+      if (!msg?.pendingEdits?.length) return prev
+      next[messageIndex] = {
+        ...msg,
+        pendingEdits: msg.pendingEdits.filter((e) => e.path !== path),
+      }
+      return next
+    })
+  }, [])
+
   const currentTitle =
     conversationId && messages.length > 0
       ? (loadTitles()[conversationId] || firstUserMessageTitle(messages))
@@ -342,6 +406,8 @@ export function useChat(options: UseChatOptions = {}) {
     clear,
     addMessage,
     updateLastAssistant,
+    applyEdit,
+    rejectEdit,
     conversationId,
     conversations,
     refreshConversations,

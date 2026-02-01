@@ -7,7 +7,7 @@
 ## Возможности
 
 - **Чат (Cursor-like)** — диалог с LLM; модель автоматически видит открытые файлы, текущий файл и (после индексации) структуру проекта и релевантный код. Команды @web, @code, @file, @rag опциональны.
-- **Режим агента** — автономное выполнение: read_file, write_file, search_rag, run_terminal, list_files, **get_index_status**, **index_workspace** (модель может сама запустить индексацию, если пользователь забыл).
+- **Режим агента** — автономное выполнение: read_file, write_file, search_rag, run_terminal, list_files, get_index_status, index_workspace. Предложенные изменения файлов можно **применить или отклонить** в чате (как в Cursor).
 - **Ollama и LM Studio** — оба провайдера; с LM Studio поддерживаются нативные tool calls (Qwen, Llama 3.1+ и др.).
 - **Workflow** — TDD: intent → planner → researcher (RAG) → tests → coder → validator.
 - **RAG** — ChromaDB + embeddings; индексация через UI или API; auto-RAG в чате; project map в контексте.

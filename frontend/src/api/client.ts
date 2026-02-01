@@ -9,6 +9,13 @@ export interface HealthResponse {
   llm_available: boolean
 }
 
+/** One proposed file edit from the agent (Cursor-like: apply or reject). */
+export interface ProposedEdit {
+  path: string
+  content: string
+  old_content?: string
+}
+
 export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
@@ -20,6 +27,8 @@ export interface ChatMessage {
   model?: string
   /** Path to analysis report file (docs/ANALYSIS_REPORT.md) — показать кнопку «Открыть отчёт» */
   reportPath?: string
+  /** Proposed file edits from agent (apply or reject in UI, Cursor-like) */
+  pendingEdits?: ProposedEdit[]
 }
 
 export interface ContextFile {
@@ -35,6 +44,8 @@ export interface ChatRequest {
   model?: string  // Override model (Cursor-like)
   context_files?: ContextFile[]  // Open files — model sees them automatically (Cursor-like)
   active_file_path?: string     // Focused tab — "current file" for the model
+  /** If true (default), agent write_file is proposed only; user applies or rejects in UI (Cursor-like) */
+  apply_edits_required?: boolean
 }
 
 export interface ChatResponse {
@@ -116,6 +127,18 @@ export async function postChatStream(request: ChatRequest): Promise<Response> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(request),
   })
+}
+
+/** Write file in workspace (used when user applies a proposed edit from the agent). */
+export async function writeFile(path: string, content: string): Promise<{ success: boolean; error?: string }> {
+  const res = await fetch(`${API_BASE}/files/write`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, content }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (res.ok && data.success) return { success: true }
+  return { success: false, error: data.error || data.detail || 'Write failed' }
 }
 
 // Conversations (list / load / delete — Cursor-like)

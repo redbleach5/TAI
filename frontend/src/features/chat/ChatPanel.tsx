@@ -46,6 +46,8 @@ export function ChatPanel({ hasEditorContext, onCollapse }: ChatPanelProps) {
     clear,
     addMessage,
     updateLastAssistant,
+    applyEdit,
+    rejectEdit,
     conversationId,
     conversations,
     refreshConversations,
@@ -486,7 +488,13 @@ export function ChatPanel({ hasEditorContext, onCollapse }: ChatPanelProps) {
           </div>
         )}
         {messages.map((msg, i) => (
-          <ChatMessage key={i} message={msg} />
+          <ChatMessage
+            key={i}
+            message={msg}
+            messageIndex={i}
+            onApplyEdit={applyEdit}
+            onRejectEdit={rejectEdit}
+          />
         ))}
         {loading && !streaming && (
           <div className="chat-message chat-message--assistant">

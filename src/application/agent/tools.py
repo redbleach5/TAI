@@ -31,6 +31,7 @@ class ToolResult:
     error: str | None = None
     tool: str = ""
     args: dict[str, Any] = field(default_factory=dict)
+    proposed_edit: dict | None = None  # When propose_edits and write_file: {path, content, old_content?}
 
 
 # Tool definitions for system prompt
@@ -68,11 +69,13 @@ class ToolExecutor:
         self,
         workspace_path: str | None = None,
         rag=None,
+        propose_edits: bool = False,
     ) -> None:
         self._workspace = Path(workspace_path or _get_workspace_path()).resolve()
         self._file_service = FileService(root_path=str(self._workspace))
         self._terminal = TerminalService(cwd=str(self._workspace))
         self._rag = rag
+        self._propose_edits = propose_edits
 
     async def execute(self, tool: str, args: dict[str, Any]) -> ToolResult:
         """Execute tool with given args."""
@@ -116,6 +119,18 @@ class ToolExecutor:
         content = args.get("content", "")
         if not path:
             return ToolResult(success=False, content="", error="path required", tool="write_file", args=args)
+        if self._propose_edits:
+            old_content = ""
+            read_result = self._file_service.read(path)
+            if read_result.success:
+                old_content = read_result.data.get("content", "")
+            return ToolResult(
+                success=True,
+                content=f"Proposed edit for {path} (pending user approval)",
+                tool="write_file",
+                args=args,
+                proposed_edit={"path": path, "content": content, "old_content": old_content},
+            )
         result = self._file_service.write(path, content, create_backup=True)
         if not result.success:
             return ToolResult(success=False, content="", error=result.error, tool="write_file", args=args)

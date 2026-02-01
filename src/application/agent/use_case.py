@@ -1,5 +1,6 @@
 """Agent Use Case - native Ollama tools or ReAct-style fallback."""
 
+import json
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING, Any
 
@@ -91,10 +92,10 @@ class AgentUseCase:
         return msgs
 
     async def execute(self, request: ChatRequest) -> ChatResponse:
-        """Run agent loop until done or max iterations."""
+        """Run agent loop until done or max iterations (sync: writes to disk, no proposed_edits)."""
         model, fallback = await self._model_selector.select_model(request.message)
         model = request.model or model
-        executor = ToolExecutor(workspace_path=None, rag=self._rag)
+        executor = ToolExecutor(workspace_path=None, rag=self._rag, propose_edits=False)
 
         if self._use_native_tools():
             return await self._execute_native(request, model, executor)
@@ -181,10 +182,11 @@ class AgentUseCase:
     async def execute_stream(
         self, request: ChatRequest
     ) -> AsyncIterator[tuple[str, str]]:
-        """Stream agent response with tool_call and tool_result events."""
+        """Stream agent response with tool_call, tool_result, and proposed_edit events (Cursor-like apply/reject)."""
         model, fallback = await self._model_selector.select_model(request.message)
         model = request.model or model
-        executor = ToolExecutor(workspace_path=None, rag=self._rag)
+        propose_edits = getattr(request, "apply_edits_required", True)
+        executor = ToolExecutor(workspace_path=None, rag=self._rag, propose_edits=propose_edits)
 
         if self._use_native_tools():
             async for evt in self._execute_stream_native(request, model, executor):
@@ -230,6 +232,8 @@ class AgentUseCase:
                 args = tc.get("arguments", {}) or {}
                 yield ("tool_call", f"{name}: {args}")
                 result = await executor.execute(name, args)
+                if result.proposed_edit:
+                    yield ("proposed_edit", json.dumps(result.proposed_edit))
                 obs = result.content if result.success else f"Error: {result.error}"
                 yield ("tool_result", obs[:500] + ("..." if len(obs) > 500 else ""))
                 msg = {"role": "tool", "content": obs}
@@ -263,6 +267,8 @@ class AgentUseCase:
             for tc in tool_calls:
                 yield ("tool_call", f"{tc.tool}: {tc.args}")
                 result = await executor.execute(tc.tool, tc.args)
+                if result.proposed_edit:
+                    yield ("proposed_edit", json.dumps(result.proposed_edit))
                 obs_text = result.content if result.success else f"Error: {result.error}"
                 obs_parts.append(obs_text)
                 yield ("tool_result", obs_text[:500] + ("..." if len(obs_text) > 500 else ""))

@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react'
-import { User, Bot, Wrench, CheckCircle, Copy, Check, FileText } from 'lucide-react'
+import { User, Bot, Wrench, CheckCircle, Copy, Check, FileText, CheckCircle2, XCircle } from 'lucide-react'
 import Markdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useOpenFilesContext } from '../editor/OpenFilesContext'
-import type { ChatMessage as ChatMessageType } from '../../api/client'
+import type { ChatMessage as ChatMessageType, ProposedEdit } from '../../api/client'
 
 function CodeBlockWithCopy({ children, className }: { children: React.ReactNode; className?: string }) {
   const [copied, setCopied] = useState(false)
@@ -32,18 +32,124 @@ function CodeBlockWithCopy({ children, className }: { children: React.ReactNode;
   )
 }
 
-interface Props {
-  message: ChatMessageType
+function PendingEditBlock({
+  edit,
+  messageIndex,
+  applying,
+  onApplyingChange,
+  onApply,
+  onReject,
+  onOpenFile,
+}: {
+  edit: ProposedEdit
+  messageIndex: number
+  applying: boolean
+  onApplyingChange: (path: string, v: boolean) => void
+  onApply?: (messageIndex: number, path: string, content: string) => void | Promise<unknown>
+  onReject?: (messageIndex: number, path: string) => void
+  onOpenFile?: (path: string) => void
+}) {
+  const [showDiff, setShowDiff] = useState(false)
+  const handleApply = useCallback(async () => {
+    if (!onApply) return
+    onApplyingChange(edit.path, true)
+    try {
+      await onApply(messageIndex, edit.path, edit.content)
+    } finally {
+      onApplyingChange(edit.path, false)
+    }
+  }, [edit.path, edit.content, messageIndex, onApply, onApplyingChange])
+  const handleReject = useCallback(() => {
+    onReject?.(messageIndex, edit.path)
+  }, [edit.path, messageIndex, onReject])
+  const hasOld = edit.old_content != null && edit.old_content !== ''
+  return (
+    <div className="chat-message__edit-block">
+      <div className="chat-message__edit-path">
+        <FileText size={14} />
+        <span>{edit.path}</span>
+        {onOpenFile && (
+          <button
+            type="button"
+            className="chat-message__edit-open"
+            onClick={() => onOpenFile(edit.path)}
+            title="Открыть в редакторе"
+          >
+            Открыть
+          </button>
+        )}
+      </div>
+      {hasOld && (
+        <button
+          type="button"
+          className="chat-message__edit-toggle-diff"
+          onClick={() => setShowDiff((v) => !v)}
+        >
+          {showDiff ? 'Скрыть diff' : 'Показать diff'}
+        </button>
+      )}
+      {showDiff && hasOld && (
+        <div className="chat-message__edit-diff">
+          <div className="chat-message__edit-old">
+            <span className="chat-message__edit-label">Было:</span>
+            <pre>{edit.old_content}</pre>
+          </div>
+          <div className="chat-message__edit-new">
+            <span className="chat-message__edit-label">Стало:</span>
+            <pre>{edit.content}</pre>
+          </div>
+        </div>
+      )}
+      {!showDiff && (
+        <pre className="chat-message__edit-preview">{edit.content.slice(0, 500)}{edit.content.length > 500 ? '…' : ''}</pre>
+      )}
+      <div className="chat-message__edit-actions">
+        <button
+          type="button"
+          className="chat-message__edit-apply"
+          onClick={handleApply}
+          disabled={applying}
+          title="Применить изменения к файлу (как в Cursor)"
+        >
+          {applying ? <Check size={14} className="icon-spin" /> : <CheckCircle2 size={14} />}
+          <span>{applying ? 'Применяю…' : 'Применить'}</span>
+        </button>
+        <button
+          type="button"
+          className="chat-message__edit-reject"
+          onClick={handleReject}
+          disabled={applying}
+          title="Отклонить изменения"
+        >
+          <XCircle size={14} />
+          <span>Отклонить</span>
+        </button>
+      </div>
+    </div>
+  )
 }
 
-export function ChatMessage({ message }: Props) {
+interface Props {
+  message: ChatMessageType
+  /** Index of message in the list (for apply/reject callbacks). */
+  messageIndex?: number
+  /** Callback when user applies a proposed edit (Cursor-like). */
+  onApplyEdit?: (messageIndex: number, path: string, content: string) => void | Promise<unknown>
+  /** Callback when user rejects a proposed edit (Cursor-like). */
+  onRejectEdit?: (messageIndex: number, path: string) => void
+}
+
+export function ChatMessage({ message, messageIndex = 0, onApplyEdit, onRejectEdit }: Props) {
   const isUser = message.role === 'user'
   const openFilesCtx = useOpenFilesContext()
   const [showThinking, setShowThinking] = useState(false)
   const [showTools, setShowTools] = useState(true)
+  const [showEdits, setShowEdits] = useState(true)
+  const [applying, setApplying] = useState<string | null>(null)
   const hasThinking = !isUser && message.thinking && message.thinking.length > 0
   const hasToolEvents = !isUser && message.toolEvents && message.toolEvents.length > 0
   const hasReportPath = !isUser && message.reportPath
+  const hasPendingEdits = !isUser && message.pendingEdits && message.pendingEdits.length > 0
 
   return (
     <div className={`chat-message chat-message--${message.role}`}>
@@ -117,6 +223,29 @@ export function ChatMessage({ message }: Props) {
               <span>Открыть отчёт</span>
             </button>
           </div>
+        )}
+        {hasPendingEdits && (
+          <details
+            className="chat-message__pending-edits"
+            open={showEdits}
+            onToggle={(e) => setShowEdits((e.target as HTMLDetailsElement).open)}
+          >
+            <summary>Предложенные изменения ({message.pendingEdits!.length} файл(ов))</summary>
+            <div className="chat-message__edits-list">
+              {message.pendingEdits!.map((edit: ProposedEdit) => (
+                <PendingEditBlock
+                  key={edit.path}
+                  edit={edit}
+                  messageIndex={messageIndex}
+                  applying={applying === edit.path}
+                  onApplyingChange={(path, v) => setApplying(v ? path : null)}
+                  onApply={onApplyEdit}
+                  onReject={onRejectEdit}
+                  onOpenFile={openFilesCtx?.openFile}
+                />
+              ))}
+            </div>
+          </details>
         )}
         {!isUser && message.model && (
           <span className="chat-message__watermark">Модель: {message.model}</span>

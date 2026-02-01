@@ -9,7 +9,7 @@
 | Область | Реализовано | Осталось |
 |---------|-------------|----------|
 | **Чат** | context_files, @rag, @web, @code, auto-RAG, active_file_path, project map в контексте | — |
-| **Agent** | read_file, write_file (multi-file), search_rag, run_terminal (cwd, timeout), list_files, get_index_status, index_workspace | max_iterations в конфиг; batch write с подтверждением |
+| **Agent** | read_file, write_file (multi-file), search_rag, run_terminal (cwd, timeout), list_files, get_index_status, index_workspace; **применить/отклонить** предложенные правки (Cursor-like) | max_iterations в конфиг |
 | **Workspace** | Открыть папку, индексация, **создать проект с нуля** (POST /workspace/create, UI «Создать проект») | — |
 | **Анализ** | DeepAnalyzer: многошаговость (A1), RAG 8 запросов, targeted RAG, отчёт в docs/ANALYSIS_REPORT.md | Граф зависимостей (A2), Git-контекст (A3), покрытие тестами (A4) |
 | **Improvement** | plan → code → validate → retry, RAG, related_files, project_map | Контекст ошибок (B5), стриминг plan→code (C3) |
@@ -24,6 +24,7 @@
 - **Контекст чата:** workspace в @code/@file, active_file_path, project map и auto-RAG в обычном чате, подсказка про индексацию.
 - **Агент:** get_index_status, index_workspace — модель может сама предложить/запустить индексацию.
 - **Анализ:** полный отчёт сохраняется в `docs/ANALYSIS_REPORT.md`, в чате — краткое резюме и кнопка «Открыть отчёт».
+- **Применить/отклонить правки (Cursor-like):** в режиме агента вызовы `write_file` не пишут на диск сразу; в чате показываются «Предложенные изменения» с diff и кнопками «Применить» и «Отклонить». Применить — запись через API; отклонить — правка снимается. Параметр запроса `apply_edits_required` (по умолчанию true в режиме agent).
 
 ---
 
@@ -55,7 +56,7 @@
 |------|----------|--------|
 | **C1** Agent — контекст | search_rag по запросу, project_map в system, подсказки по read_file | ✅ |
 | **C2** Multi-file write | Парсинг нескольких write_file за ответ | ✅ |
-| **C2.1** Batch write с подтверждением | «Записать 3 файла?» в UI | ⬜ |
+| **C2.1** Применить/отклонить правки | Предложенные изменения по файлам, кнопки «Применить» и «Отклонить» в чате (Cursor-like) | ✅ |
 | **C3** Streaming улучшений | Improvement: стриминг plan → code в реальном времени | ⬜ |
 
 ### Часть 4: Cursor-like (проект с нуля)
@@ -81,7 +82,7 @@
 
 - [x] **Чат:** авто-RAG, открытые файлы, active_file_path, project map.
 - [x] **Генерация:** RAG + project_map в контексте, multi-file (agent + improvement).
-- [x] **Agent:** богатый контекст, multi-file write, run_terminal в подпапках с таймаутом, индексация по запросу.
+- [x] **Agent:** богатый контекст, multi-file write, применить/отклонить предложенные правки, run_terminal в подпапках с таймаутом, индексация по запросу.
 - [x] **Проект с нуля:** создать папку из UI → агент пишет файлы и запускает команды.
 - [ ] **Анализ:** многошаговый + граф зависимостей + Git + тесты.
 - [ ] **Improvement:** полный stack trace при retry, контекст ошибок (B5).
@@ -94,8 +95,7 @@
 2. **B5** Контекст ошибок в Improvement (1 день).
 3. **A3** Git-контекст в анализ (1 день).
 4. **max_iterations** в конфиг (0.5 дня).
-5. **C2.1** Batch write с подтверждением (1 день, backend + UI).
-6. **A4** Покрытие тестами (1–2 дня).
+5. **A4** Покрытие тестами (1–2 дня).
 7. **B6** Inline-редактирование (2–3 дня).
 8. **C3** Стриминг улучшений (низкий приоритет).
 
