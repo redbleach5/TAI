@@ -11,266 +11,38 @@ Multi-step (A1): LLM → проблемные модули → targeted RAG → 
 
 import asyncio
 import json
+import logging
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from src.application.analysis.deep_analysis_prompts import (
+    DEEP_ANALYSIS_PROMPT_GENERIC,
+    KEY_FILES,
+    MAX_KEY_FILES_TOTAL,
+    MAX_LINES_PER_FILE,
+    PROMPTS_BY_FRAMEWORK,
+    STEP1_MODULES_PROMPT,
+)
+from src.application.analysis.deep_analysis_rag import (
+    A1_MAX_MODULES,
+    gather_initial_rag,
+    targeted_rag,
+)
 from src.domain.ports.llm import LLMMessage
+from src.infrastructure.analyzer.coverage_collector import collect_coverage_for_analysis
 from src.infrastructure.analyzer.dependency_graph import (
     build_dependency_graph,
     format_dependency_graph_markdown,
 )
-from src.infrastructure.analyzer.coverage_collector import collect_coverage_for_analysis
-from src.infrastructure.services.git_service import GitService
 from src.infrastructure.analyzer.report_generator import ReportGenerator
+from src.infrastructure.services.git_service import GitService
 
 if TYPE_CHECKING:
     from src.domain.ports.llm import LLMPort
     from src.domain.services.model_selector import ModelSelector
     from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
     from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
-
-
-# Key files to include for project context (first N lines each)
-KEY_FILES = [
-    "README.md",
-    "readme.md",
-    "pyproject.toml",
-    "package.json",
-    "main.py",
-    "app.py",
-    "run.py",
-    "src/main.py",
-    "src/app.py",
-    "frontend/package.json",
-]
-MAX_LINES_PER_FILE = 80
-MAX_KEY_FILES_TOTAL = 4000  # chars
-
-# RAG queries - expanded for better coverage
-RAG_QUERIES = [
-    "архитектура entry points main",
-    "конфигурация настройки config",
-    "API routes handlers endpoints",
-    "сложные функции сложность complexity",
-    "ошибки обработка exceptions error handling",
-    "зависимости импорты imports dependencies",
-    "тесты tests pytest",
-    "модели данные models schema",
-]
-RAG_CHUNKS_PER_QUERY = 3
-RAG_MAX_CHUNKS = 25
-RAG_MIN_SCORE = 0.35
-
-# Multi-step: targeted RAG per module
-A1_MAX_MODULES = 5
-A1_CHUNKS_PER_MODULE = 5
-A1_TARGETED_QUERY_TEMPLATE = "код логика проблемы рефакторинг {module}"
-# Порог для шага 2: тот же, что и для начального RAG — не снижаем качество чанков.
-# Fallback-запрос по пути модуля компенсирует случаи, когда длинный запрос не матчится.
-A1_MIN_SCORE = 0.35
-
-# Step 1 prompt: identify problematic modules
-STEP1_MODULES_PROMPT = """Ты — эксперт по анализу кода. На основе статического анализа и карты проекта определи 3–5 **наиболее проблемных модулей** (файлов или директорий), требующих углублённого анализа.
-
-## Входные данные
-
-### Ключевые файлы
-{key_files}
-
-### Статический анализ
-{static_report}
-
-### Карта проекта
-{project_map}
-
-### Релевантный код (начальный RAG)
-{rag_context}
-
----
-
-## Задача
-
-Верни **только** валидный JSON, без markdown и пояснений:
-```json
-{{"problematic_modules": ["путь/к/файлу1.py", "src/api/routes", "frontend/src/App.tsx"]}}
-```
-
-Правила:
-- 3–5 путей (относительно корня проекта)
-- Файлы: src/main.py, frontend/src/App.tsx
-- Директории: src/api/routes, frontend/src/features
-- Только пути из карты проекта или статического анализа
-- Приоритет: сложность, ошибки, дублирование, архитектурные проблемы"""
-
-# Framework-specific prompts
-DEEP_ANALYSIS_PROMPT_GENERIC = """Ты — эксперт по анализу кодовых баз уровня Cursor AI. Проанализируй проект и дай **практичные, приоритизированные** рекомендации.
-
-## Входные данные
-
-### Ключевые файлы проекта
-{key_files}
-
-### Статический анализ
-{static_report}
-
-### Git (A3: недавние коммиты и изменённые файлы)
-{git_context}
-
-### Покрытие тестами (A4: pytest-cov/coverage)
-{coverage_context}
-
-### Карта проекта (структура)
-{project_map}
-
-### Релевантный код из RAG
-{rag_context}
-
----
-
-## Задача
-
-Сформируй отчёт на русском языке в формате Markdown. Фокус на **действиях**, а не на очевидной статистике.
-
-### 1. Краткое резюме (2-3 предложения)
-Главный вывод: что в порядке, что требует внимания.
-
-### 2. Топ-5 приоритетных проблем
-Для каждой: файл:строка, суть проблемы, **конкретная рекомендация** (что сделать).
-Формат:
-- `**файл:строка**` — описание. Рекомендация: ...
-
-### 3. Архитектурные наблюдения
-Связи между модулями, потенциальные узкие места, дублирование.
-
-### 4. Рекомендации по улучшению
-3-5 конкретных шагов с приоритетом (высокий/средний/низкий).
-
-### 5. Сильные стороны
-Что уже хорошо сделано.
-
-Пиши кратко, по делу. Избегай общих фраз вроде «улучшить качество кода» — давай конкретику."""
-
-DEEP_ANALYSIS_PROMPT_FASTAPI = """Ты — эксперт по FastAPI и Python backend. Проанализируй проект и дай **практичные** рекомендации.
-
-## Входные данные
-
-### Ключевые файлы
-{key_files}
-
-### Статический анализ
-{static_report}
-
-### Git (A3: недавние коммиты и изменённые файлы)
-{git_context}
-
-### Покрытие тестами (A4)
-{coverage_context}
-
-### Карта проекта
-{project_map}
-
-### Релевантный код
-{rag_context}
-
----
-
-## Задача
-
-Отчёт на русском, Markdown. Учитывай специфику FastAPI:
-- Routes, dependencies, Pydantic models
-- Async/await, middleware
-- Обработка ошибок, валидация
-- Безопасность (CORS, auth)
-
-### 1. Краткое резюме
-### 2. Топ-5 проблем (файл:строка + рекомендация)
-### 3. Архитектура API (роуты, слои)
-### 4. Рекомендации (приоритет)
-### 5. Сильные стороны"""
-
-DEEP_ANALYSIS_PROMPT_REACT = """Ты — эксперт по React/TypeScript frontend. Проанализируй проект и дай **практичные** рекомендации.
-
-## Входные данные
-
-### Ключевые файлы
-{key_files}
-
-### Статический анализ
-{static_report}
-
-### Git (A3: недавние коммиты и изменённые файлы)
-{git_context}
-
-### Покрытие тестами (A4)
-{coverage_context}
-
-### Карта проекта
-{project_map}
-
-### Релевантный код
-{rag_context}
-
----
-
-## Задача
-
-Отчёт на русском, Markdown. Учитывай специфику React:
-- Components, hooks, state management
-- TypeScript типизация
-- Производительность, мемоизация
-- Структура папок, переиспользование
-
-### 1. Краткое резюме
-### 2. Топ-5 проблем (файл:строка + рекомендация)
-### 3. Архитектура компонентов
-### 4. Рекомендации (приоритет)
-### 5. Сильные стороны"""
-
-DEEP_ANALYSIS_PROMPT_DJANGO = """Ты — эксперт по Django. Проанализируй проект и дай **практичные** рекомендации.
-
-## Входные данные
-
-### Ключевые файлы
-{key_files}
-
-### Статический анализ
-{static_report}
-
-### Git (A3: недавние коммиты и изменённые файлы)
-{git_context}
-
-### Покрытие тестами (A4)
-{coverage_context}
-
-### Карта проекта
-{project_map}
-
-### Релевантный код
-{rag_context}
-
----
-
-## Задача
-
-Отчёт на русском, Markdown. Учитывай специфику Django:
-- Models, migrations, ORM
-- Views, serializers, permissions
-- Settings, middleware
-- Тесты, fixtures
-
-### 1. Краткое резюме
-### 2. Топ-5 проблем (файл:строка + рекомендация)
-### 3. Архитектура приложений
-### 4. Рекомендации (приоритет)
-### 5. Сильные стороны"""
-
-PROMPTS_BY_FRAMEWORK = {
-    "fastapi": DEEP_ANALYSIS_PROMPT_FASTAPI,
-    "react": DEEP_ANALYSIS_PROMPT_REACT,
-    "django": DEEP_ANALYSIS_PROMPT_DJANGO,
-    "generic": DEEP_ANALYSIS_PROMPT_GENERIC,
-}
 
 
 def summary_from_report(full_md: str, report_path: str) -> str:
@@ -446,7 +218,6 @@ class DeepAnalyzer:
                     files_limit=25,
                 ) or git_context
         except Exception as e:
-            import logging
             logging.getLogger(__name__).debug("Git context for deep analysis failed: %s", e)
 
         # 3c. Coverage (A4): pytest-cov/coverage in prompt
@@ -458,10 +229,11 @@ class DeepAnalyzer:
         rag_context = "Не доступен. Выполните индексацию workspace."
         if self._rag:
             try:
-                rag_context = await self._gather_initial_rag()
+                rag_context = await gather_initial_rag(self._rag)
             except Exception as e:
-                import logging
-                logging.getLogger(__name__).warning("RAG context for deep analysis failed: %s", e, exc_info=True)
+                logging.getLogger(__name__).warning(
+                    "RAG context for deep analysis failed: %s", e, exc_info=True
+                )
                 rag_context = "Ошибка поиска по индексу."
 
         # 5. Multi-step: targeted RAG per module (A1)
@@ -478,10 +250,10 @@ class DeepAnalyzer:
                 rag_context=rag_context,
             )
             if modules:
-                targeted_rag = await self._step2_targeted_rag(modules)
-                if targeted_rag:
+                targeted_rag_ctx = await targeted_rag(self._rag, modules)
+                if targeted_rag_ctx:
                     used_multi_step = True
-                    rag_context = f"{rag_context}\n\n---\n\n### Углублённый контекст по проблемным модулям\n{targeted_rag}"
+                    rag_context = f"{rag_context}\n\n---\n\n### Углублённый контекст по проблемным модулям\n{targeted_rag_ctx}"
                 else:
                     fallback_reason = "углублённый контекст по модулям не получен"
             else:
@@ -524,23 +296,6 @@ class DeepAnalyzer:
         except Exception as e:
             return f"{static_report}\n\n---\n\n**Примечание:** LLM-анализ недоступен ({e}). Показан только статический отчёт."
 
-    async def _gather_initial_rag(self) -> str:
-        """Gather initial RAG context from expanded queries."""
-        chunks_by_query: list[str] = []
-        seen_sources: set[str] = set()
-        for q in RAG_QUERIES:
-            if len(chunks_by_query) >= RAG_MAX_CHUNKS:
-                break
-            results = await self._rag.search(q, limit=RAG_CHUNKS_PER_QUERY, min_score=RAG_MIN_SCORE)
-            for c in results:
-                src = c.metadata.get("source", "")
-                if src not in seen_sources:
-                    seen_sources.add(src)
-                    chunks_by_query.append(f"### {src}\n```\n{c.content[:700]}\n```")
-                    if len(chunks_by_query) >= RAG_MAX_CHUNKS:
-                        break
-        return "\n\n".join(chunks_by_query) if chunks_by_query else "Не найдено релевантных чанков."
-
     async def _step1_identify_modules(
         self,
         key_files: str,
@@ -565,31 +320,3 @@ class DeepAnalyzer:
             return _parse_step1_modules(response.content or "")
         except Exception:
             return None
-
-    async def _step2_targeted_rag(self, modules: list[str]) -> str:
-        """Step 2: RAG search per module for deeper context.
-        Uses lower min_score (A1_MIN_SCORE) than initial RAG — запрос по пути модуля
-        часто даёт меньший semantic score; при отсутствии результатов пробуем запрос по пути."""
-        parts: list[str] = []
-        seen: set[str] = set()
-        for module in modules[:A1_MAX_MODULES]:
-            for query in (
-                A1_TARGETED_QUERY_TEMPLATE.format(module=module),
-                module,  # fallback: поиск по пути модуля
-            ):
-                try:
-                    results = await self._rag.search(
-                        query, limit=A1_CHUNKS_PER_MODULE, min_score=A1_MIN_SCORE
-                    )
-                    if not results:
-                        continue
-                    for c in results:
-                        src = c.metadata.get("source", "")
-                        key = f"{src}:{c.content[:100]}"
-                        if key not in seen:
-                            seen.add(key)
-                            parts.append(f"#### {module}\n```\n{c.content[:600]}\n```")
-                    break  # по этому модулю уже нашли чанки
-                except Exception:
-                    continue
-        return "\n\n".join(parts) if parts else ""

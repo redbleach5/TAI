@@ -185,11 +185,11 @@
 
 ### 3.1 improvement_graph.py (~600 строк)
 
-- [ ] **3.1.1** Вынести константы промптов (plan, code) в начало файла или в отдельный `improvement_prompts.py` в том же пакете.
-- [ ] **3.1.2** Вынести хелперы: _build_full_content_for_selection уже есть; при необходимости вынести построение текста промпта (plan/code) в функции build_plan_prompt(state), build_code_prompt(state).
-- [ ] **3.1.3** Оставить в файле: узлы графа, build_improvement_graph, compile_improvement_graph.
+- [x] **3.1.1** Вынести константы промптов (PLAN_SYSTEM, CODE_SYSTEM) и построение промптов в `improvement_prompts.py` (build_plan_prompt, build_code_prompt).
+- [x] **3.1.2** Промпты plan/code строятся в build_plan_prompt(state), build_code_prompt(state); _build_full_content_for_selection остаётся в графе.
+- [x] **3.1.3** В файле остались: узлы графа, build_improvement_graph, compile_improvement_graph.
 
-**Критерий:** Промпты и чистая логика текста вынесены; граф остаётся читаемым.
+**Критерий:** Промпты и чистая логика текста вынесены; граф остаётся читаемым. ✅
 
 ---
 

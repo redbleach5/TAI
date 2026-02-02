@@ -30,7 +30,7 @@
 
 | Файл | Действие | Статус |
 |------|----------|--------|
-| `improvement_graph.py` | Промпты и хелперы (build_plan_prompt, build_code_prompt) в константы/отдельные функции | ⬜ |
+| `improvement_graph.py` | Промпты и хелперы (build_plan_prompt, build_code_prompt) в improvement_prompts.py | ✅ |
 | `deep_analyzer.py` | Промпты в константы; RAG-логика и шаги analyze() в отдельные методы/модули | ⬜ |
 | `web_search.py` | Форматирование и провайдеры (URL/заголовки) в функции/стратегии | ⬜ |
 
