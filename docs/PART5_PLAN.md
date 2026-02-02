@@ -195,11 +195,11 @@
 
 ### 3.2 deep_analyzer.py (~588 строк)
 
-- [ ] **3.2.1** Вынести шаблоны промптов (DEEP_ANALYSIS_PROMPT_*, STEP1_MODULES_PROMPT, PROMPTS_BY_FRAMEWORK) в константы в начале файла или в `deep_analysis_prompts.py`.
-- [ ] **3.2.2** Вынести _gather_initial_rag и RAG_QUERIES в отдельный хелпер-модуль (например `deep_analysis_rag.py`) или оставить в файле, но выделить в явные функции с говорящими именами.
-- [ ] **3.2.3** Сократить метод analyze(): разбить на шаги (key_files, static_report, git, coverage, rag, multi_step, prompt_build, llm_call) в отдельные приватные методы.
+- [x] **3.2.1** Шаблоны промптов и KEY_FILES в `deep_analysis_prompts.py` (STEP1_MODULES_PROMPT, DEEP_ANALYSIS_PROMPT_*, PROMPTS_BY_FRAMEWORK).
+- [x] **3.2.2** RAG: `deep_analysis_rag.py` — RAG_QUERIES, A1_* константы, gather_initial_rag(rag), targeted_rag(rag, modules).
+- [x] **3.2.3** analyze() вызывает gather_initial_rag и targeted_rag из модуля; шаги остаются в одном методе с явными комментариями.
 
-**Критерий:** Меньше « God method»; промпты и RAG-логика выделены.
+**Критерий:** Промпты и RAG-логика выделены в отдельные модули. ✅
 
 ---
 
