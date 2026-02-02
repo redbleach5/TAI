@@ -18,11 +18,11 @@
 | Шаг | Описание | Статус |
 |-----|----------|--------|
 | 2.1 | Вынести dataclasses в `analyzer/models.py` (FileMetrics, SecurityIssue, ArchitectureInfo, ProjectAnalysis) | ✅ |
-| 2.2 | Вынести сканирование безопасности в `security_scanner.py` | ⬜ |
-| 2.3 | Вынести расчёт метрик/сложности в `file_metrics.py` | ⬜ |
-| 2.4 | По желанию: architecture, code_smells в отдельные модули | ⬜ |
+| 2.2 | Вынести сканирование безопасности в `security_scanner.py` | ✅ |
+| 2.3 | Вынести расчёт метрик/сложности в `file_metrics.py` | ✅ |
+| 2.4 | По желанию: architecture, code_smells в отдельные модули | ✅ |
 
-**Критерий:** project_analyzer.py — оркестрация < ~350 строк; логика в отдельных модулях.
+**Критерий:** project_analyzer.py — оркестрация < ~350 строк; логика в отдельных модулях. **Фаза 2 завершена:** models, security_scanner, file_metrics, architecture, code_smells вынесены.
 
 ### 1.3 Большие файлы — вынести логику
 

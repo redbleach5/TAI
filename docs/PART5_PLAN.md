@@ -133,10 +133,10 @@
 
 ### 2.1 Вынести dataclasses в общий модуль
 
-- [ ] **2.1.1** Создать `src/infrastructure/analyzer/models.py` (или `types.py`): перенести `FileMetrics`, `SecurityIssue`, `ArchitectureInfo`, `ProjectAnalysis` из project_analyzer.py.
-- [ ] **2.1.2** В project_analyzer.py: импортировать эти классы из models.py; оставить только класс ProjectAnalyzer и константы/логику анализа.
-- [ ] **2.1.3** Обновить импорты в report_generator.py, analyze.py и других модулях, использующих эти dataclasses (импорт из analyzer.models).
-- [ ] **2.1.4** Тесты: test_project_analyzer, test_analyzer.
+- [x] **2.1.1** Создать `src/infrastructure/analyzer/models.py`: перенести `FileMetrics`, `SecurityIssue`, `ArchitectureInfo`, `ProjectAnalysis`.
+- [x] **2.1.2** В project_analyzer.py: импортировать эти классы из models.py.
+- [x] **2.1.3** Обновить импорты в report_generator.py, analyze.py, __init__.py (импорт из analyzer.models).
+- [x] **2.1.4** Тесты: test_project_analyzer, test_analyzer.
 
 **Критерий:** Даты анализа живут в analyzer/models.py, project_analyzer только использует их.
 
@@ -144,9 +144,9 @@
 
 ### 2.2 Вынести сканирование безопасности
 
-- [ ] **2.2.1** Создать `src/infrastructure/analyzer/security_scanner.py`: вынести константы SECURITY_PATTERNS и логику _check_security (принимает путь, контент или путь+base_path, возвращает list[SecurityIssue]). При необходимости принимать скомпилированные regex извне или компилировать внутри.
-- [ ] **2.2.2** В ProjectAnalyzer: вызывать security_scanner вместо собственного _check_security; убрать дублирование паттернов.
-- [ ] **2.2.3** Тесты: при необходимости unit-тесты для security_scanner; проверить test_project_analyzer (security).
+- [x] **2.2.1** Создать `src/infrastructure/analyzer/security_scanner.py`: SECURITY_PATTERNS и check_file_security(file_path, base_path) -> list[SecurityIssue].
+- [x] **2.2.2** В ProjectAnalyzer: вызывать check_file_security вместо _check_security.
+- [x] **2.2.3** Тесты: test_security_scanner.py; test_project_analyzer (security).
 
 **Критерий:** Логика безопасности в отдельном модуле, ProjectAnalyzer её вызывает.
 
@@ -154,10 +154,10 @@
 
 ### 2.3 Вынести расчёт метрик файла и сложности
 
-- [ ] **2.3.1** Создать `src/infrastructure/analyzer/file_metrics.py`: функции или класс для расчёта FileMetrics по пути и контенту (_analyze_file по сути), _estimate_complexity, _extract_imports (если не в dependency_graph). Интерфейс: например `def compute_file_metrics(file_path: Path, base_path: Path, max_size: int) -> FileMetrics | None`.
-- [ ] **2.3.2** В ProjectAnalyzer: заменить _analyze_file и связанные вызовы на вызовы file_metrics.
-- [ ] **2.3.3** Обновить импорты (FileMetrics из models).
-- [ ] **2.3.4** Тесты: test_project_analyzer (метрики, сложность).
+- [x] **2.3.1** Создать `src/infrastructure/analyzer/file_metrics.py`: compute_file_metrics, extract_imports, estimate_complexity.
+- [x] **2.3.2** В ProjectAnalyzer: заменить _analyze_file на compute_file_metrics; _analyze_architecture использует extract_imports из file_metrics.
+- [x] **2.3.3** FileMetrics из models (уже в models.py).
+- [x] **2.3.4** Тесты: test_file_metrics.py; test_project_analyzer (метрики, сложность).
 
 **Критерий:** Расчёт метрик и сложности в file_metrics.py; project_analyzer оркестрирует.
 
@@ -165,17 +165,17 @@
 
 ### 2.4 Архитектура и code smells (по желанию)
 
-- [ ] **2.4.1** При желании вынести _analyze_architecture в `architecture.py` и _find_code_smells в `code_smells.py` — если project_analyzer всё ещё слишком большой после 2.1–2.3.
-- [ ] **2.4.2** Оставить в ProjectAnalyzer только: _collect_files, _detect_language, вызовы security_scanner, file_metrics, architecture, code_smells, расчёт scores и рекомендаций.
+- [x] **2.4.1** Вынести _analyze_architecture в `architecture.py` и _find_code_smells в `code_smells.py`.
+- [x] **2.4.2** В ProjectAnalyzer остались: _collect_files, _detect_language, вызовы security_scanner, file_metrics, architecture, code_smells, расчёт scores и рекомендаций.
 
-**Критерий:** project_analyzer.py < ~350 строк, читаемая оркестрация.
+**Критерий:** project_analyzer.py < ~350 строк, читаемая оркестрация. ✅
 
 ---
 
 ### Фаза 2 — итог
 
-- [ ] Запустить тесты анализа и проекта.
-- [ ] В ROADMAP отметить «project_analyzer: разбить на модули».
+- [x] Запустить тесты анализа и проекта.
+- [x] В ROADMAP отметить «project_analyzer: разбить на модули».
 
 ---
 

@@ -107,7 +107,7 @@
 |-------|--------|
 | tool_parser: статический import json | ✅ |
 | Глобальные переменные → DI | ✅ (store, improvement, file_writer, project_analyzer в Container) |
-| project_analyzer: разбить на модули | ⬜ |
+| project_analyzer: разбить на модули | ✅ |
 | Большие файлы: вынести логику | ⬜ |
 
 **Пошаговый план:** [docs/PART5_PLAN.md](PART5_PLAN.md) — чеклист по фазам 1 (DI), 2 (project_analyzer), 3 (большие файлы).

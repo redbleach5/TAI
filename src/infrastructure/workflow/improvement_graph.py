@@ -12,6 +12,12 @@ from langgraph.graph import END, START, StateGraph
 
 from src.domain.ports.llm import LLMMessage, LLMPort
 from src.infrastructure.agents.file_writer import FileWriter
+from src.infrastructure.workflow.improvement_prompts import (
+    CODE_SYSTEM,
+    PLAN_SYSTEM,
+    build_code_prompt,
+    build_plan_prompt,
+)
 
 if TYPE_CHECKING:
     from src.domain.ports.rag import RAGPort
@@ -196,45 +202,9 @@ async def _plan_node(
     on_chunk: Callable[[str, str], None] | None = None,
 ) -> ImprovementState:
     """Generate improvement plan."""
-    issue = state.get("issue", {})
-    original_code = state.get("original_code", "")
-    rag_context = state.get("rag_context", "")
-    project_map = state.get("project_map", "")
-    related_files_context = state.get("related_files_context", "")
-    
-    rag_section = ""
-    if project_map:
-        rag_section += f"\nProject structure:\n{project_map[:1500]}\n\n"
-    if rag_context:
-        rag_section += f"""
-Relevant code from project (follow similar patterns):
-{rag_context}
-
-"""
-    if related_files_context:
-        rag_section += f"""
-Related files (imports, tests - consider when planning):
-{related_files_context}
-
-"""
-    
-    prompt = f"""You need to improve this code to fix the following issue:
-
-Issue: {issue.get('message', 'General improvement')}
-Severity: {issue.get('severity', 'medium')}
-Type: {issue.get('issue_type', 'refactor')}
-Suggestion: {issue.get('suggestion', 'Improve code quality')}
-{rag_section}
-Original code:
-```python
-{original_code}
-```
-
-Create a brief step-by-step plan to fix this issue. Be specific about what changes to make.
-"""
-
+    prompt = build_plan_prompt(state)
     messages = [
-        LLMMessage(role="system", content="You are a senior Python developer. Create concise improvement plans."),
+        LLMMessage(role="system", content=PLAN_SYSTEM),
         LLMMessage(role="user", content=prompt),
     ]
     
@@ -262,68 +232,9 @@ async def _code_node(
     on_chunk: Callable[[str, str], None] | None = None,
 ) -> ImprovementState:
     """Generate improved code."""
-    issue = state.get("issue", {})
-    original_code = state.get("original_code", "")
-    plan = state.get("plan", "")
-    rag_context = state.get("rag_context", "")
-    project_map = state.get("project_map", "")
-    related_files_context = state.get("related_files_context", "")
-    validation_output = state.get("validation_output", "")
-    retry_count = state.get("retry_count", 0)
-    error_rag_context = state.get("error_rag_context", "")
-
-    # B5: retry with full stack trace + RAG «похожий код»
-    retry_context = ""
-    if retry_count > 0 and validation_output:
-        retry_context = f"""
-
-PREVIOUS ATTEMPT FAILED. Full error / stack trace:
-```
-{validation_output}
-```
-Fix the issues and try again.
-"""
-        if error_rag_context:
-            retry_context += f"""
-
-Similar code from codebase (may help fix this error):
-{error_rag_context}
-"""
-
-    rag_section = ""
-    if project_map:
-        rag_section += f"\nProject structure:\n{project_map[:1200]}\n\n"
-    if rag_context:
-        rag_section += f"""
-Project context (follow similar patterns):
-{rag_context[:2000]}
-
-"""
-    if related_files_context:
-        rag_section += f"""
-Related files (preserve imports, consider callers/tests):
-{related_files_context[:2000]}
-
-"""
-    
-    prompt = f"""Improve this Python code following the plan below.
-
-Issue to fix: {issue.get('message', 'General improvement')}
-
-Plan:
-{plan}
-{rag_section}
-Original code:
-```python
-{original_code}
-```
-{retry_context}
-Output ONLY the improved Python code. No markdown, no explanations.
-Preserve the overall structure and imports. Make minimal necessary changes.
-"""
-
+    prompt = build_code_prompt(state)
     messages = [
-        LLMMessage(role="system", content="You are a Python expert. Output only valid Python code."),
+        LLMMessage(role="system", content=CODE_SYSTEM),
         LLMMessage(role="user", content=prompt),
     ]
     

@@ -9,10 +9,8 @@ Production-ready with:
 - Logging for debugging
 """
 
-import ast
 import logging
 import os
-import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +22,10 @@ from src.infrastructure.analyzer.models import (
     ProjectAnalysis,
     SecurityIssue,
 )
+from src.infrastructure.analyzer.architecture import analyze_architecture
+from src.infrastructure.analyzer.code_smells import find_code_smells
+from src.infrastructure.analyzer.file_metrics import compute_file_metrics
+from src.infrastructure.analyzer.security_scanner import check_file_security
 
 logger = logging.getLogger(__name__)
 
@@ -62,61 +64,17 @@ class ProjectAnalyzer:
         ".pytest_cache", ".mypy_cache", ".ruff_cache", "dist",
         "build", ".next", "coverage", ".tox", "eggs",
     }
-    
-    # Паттерны безопасности (используем word boundaries для точности)
-    SECURITY_PATTERNS = [
-        # Critical - только реальные вызовы функций, не строки/комментарии
-        (r"(?<!['\"\w])eval\s*\([^)]+\)", "critical", "Вызов eval()", "Использовать ast.literal_eval() или безопасные альтернативы"),
-        (r"(?<![\w.])exec\s*\([^)]+\)", "critical", "Вызов exec()", "Переструктурировать код, избегать динамического выполнения"),
-        (r"subprocess\.(call|run|Popen).*shell\s*=\s*True", "critical", "Риск shell injection", "Использовать shell=False и передавать аргументы списком"),
-        (r"os\.system\s*\([^)]+\)", "critical", "Выполнение OS-команд", "Использовать subprocess с shell=False"),
-        
-        # High
-        (r"pickle\.loads?\s*\(", "high", "Десериализация pickle", "Использовать JSON или безопасный формат"),
-        (r"yaml\.load\s*\([^)]*Loader\s*=\s*None", "high", "Небезопасная загрузка YAML", "Использовать yaml.safe_load()"),
-        (r"(?<!['\"\w])__import__\s*\(", "high", "Динамический импорт", "Использовать статические импорты"),
-        (r"password\s*=\s*['\"][a-zA-Z0-9]{8,}['\"]", "high", "Пароль в коде", "Использовать переменные окружения или secrets manager"),
-        (r"api[_-]?key\s*=\s*['\"][a-zA-Z0-9]{16,}['\"]", "high", "API-ключ в коде", "Использовать переменные окружения"),
-        
-        # Medium - отключаем слишком шумные паттерны
-        (r"verify\s*=\s*False", "medium", "Отключена проверка SSL", "Включить проверку SSL"),
-        
-        # Low
-        (r"\b(TODO|FIXME|HACK|XXX)\b:", "low", "Маркер TODO/FIXME", "Исправить отложенные задачи"),
-    ]
-    
-    # Code smells
-    CODE_SMELL_PATTERNS = [
-        (r"def\s+\w+\([^)]{100,}\)", "Длинный список параметров (>5)"),
-        (r"if\s+.*:\s*\n\s+if\s+.*:\s*\n\s+if", "Глубокая вложенность (3+ уровня)"),
-        (r"except\s*:", "Пустой except"),
-        (r"from\s+\w+\s+import\s+\*", "Импорт через *"),
-        (r"global\s+\w+", "Использование global"),
-        (r"#.*type:\s*ignore", "Комментарий type: ignore"),
-    ]
-    
+
     def __init__(self, max_file_size: int = 1024 * 1024):
         """Инициализация анализатора.
-        
+
         Args:
             max_file_size: Максимальный размер файла для анализа (байты)
         """
         if max_file_size <= 0:
             raise ValueError("max_file_size must be positive")
         self.max_file_size = max_file_size
-        
-        # Pre-compile security patterns for performance
-        self._compiled_security_patterns = [
-            (re.compile(pattern, re.IGNORECASE), severity, issue, rec)
-            for pattern, severity, issue, rec in self.SECURITY_PATTERNS
-        ]
-        
-        # Pre-compile code smell patterns
-        self._compiled_smell_patterns = [
-            (re.compile(pattern, re.MULTILINE), desc)
-            for pattern, desc in self.CODE_SMELL_PATTERNS
-        ]
-    
+
     def analyze(self, project_path: str) -> ProjectAnalysis:
         """Полный анализ проекта.
         
@@ -163,8 +121,8 @@ class ProjectAnalyzer:
         def analyze_single_file(file_path: Path) -> tuple[FileMetrics | None, list[SecurityIssue], str | None]:
             """Analyze a single file and return results."""
             try:
-                metrics = self._analyze_file(file_path, path)
-                security_issues = self._check_security(file_path, path)
+                metrics = compute_file_metrics(file_path, path)
+                security_issues = check_file_security(file_path, path)
                 lang = self._detect_language(file_path)
                 return metrics, security_issues, lang
             except Exception as e:
@@ -197,10 +155,10 @@ class ProjectAnalyzer:
                     logger.debug(f"Failed to get result for {file_path}: {e}")
         
         # Анализ архитектуры
-        analysis.architecture = self._analyze_architecture(path, files)
-        
+        analysis.architecture = analyze_architecture(path, files)
+
         # Подсчёт code smells
-        analysis.code_smells = self._find_code_smells(files, path)
+        analysis.code_smells = find_code_smells(files, path)
         
         # Расчёт scores
         analysis.security_score = self._calculate_security_score(analysis.security_issues)
@@ -245,189 +203,6 @@ class ProjectAnalyzer:
             if suffix in extensions:
                 return lang
         return None
-    
-    def _analyze_file(self, file_path: Path, base_path: Path) -> FileMetrics:
-        """Анализирует один файл."""
-        rel_path = str(file_path.relative_to(base_path))
-        metrics = FileMetrics(path=rel_path)
-        
-        try:
-            content = file_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return metrics
-        
-        lines = content.split("\n")
-        metrics.lines_total = len(lines)
-        
-        in_multiline_comment = False
-        
-        for line in lines:
-            stripped = line.strip()
-            
-            if not stripped:
-                metrics.lines_blank += 1
-            elif stripped.startswith("#") or stripped.startswith("//"):
-                metrics.lines_comment += 1
-            elif '"""' in stripped or "'''" in stripped:
-                metrics.lines_comment += 1
-                if stripped.count('"""') == 1 or stripped.count("'''") == 1:
-                    in_multiline_comment = not in_multiline_comment
-            elif in_multiline_comment:
-                metrics.lines_comment += 1
-            else:
-                metrics.lines_code += 1
-        
-        # Python-specific анализ
-        if file_path.suffix == ".py":
-            try:
-                tree = ast.parse(content)
-                metrics.functions = sum(1 for node in ast.walk(tree) if isinstance(node, ast.FunctionDef))
-                metrics.classes = sum(1 for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
-                metrics.imports = self._extract_imports(tree)
-                metrics.complexity = self._estimate_complexity(tree)
-            except SyntaxError:
-                metrics.issues.append("Syntax error in file")
-        
-        return metrics
-    
-    def _extract_imports(self, tree: ast.AST) -> list[str]:
-        """Извлекает импорты из AST."""
-        imports = []
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                for alias in node.names:
-                    imports.append(alias.name)
-            elif isinstance(node, ast.ImportFrom):
-                if node.module:
-                    imports.append(node.module)
-        return imports
-    
-    def _estimate_complexity(self, tree: ast.AST) -> int:
-        """Оценивает цикломатическую сложность."""
-        complexity = 1  # Base complexity
-        
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.If, ast.While, ast.For, ast.ExceptHandler)):
-                complexity += 1
-            elif isinstance(node, ast.BoolOp):
-                complexity += len(node.values) - 1
-            elif isinstance(node, (ast.And, ast.Or)):
-                complexity += 1
-        
-        return complexity
-    
-    def _check_security(self, file_path: Path, base_path: Path) -> list[SecurityIssue]:
-        """Проверяет файл на проблемы безопасности."""
-        issues = []
-        rel_path = str(file_path.relative_to(base_path))
-        
-        # Пропускаем документацию и тесты для security анализа
-        if file_path.suffix in [".md", ".mdx", ".rst", ".txt"]:
-            return issues
-        # More robust test file exclusion
-        path_lower = rel_path.lower()
-        if any(part in path_lower for part in ["test", "tests", "spec", "__tests__"]) and file_path.suffix == ".py":
-            return issues  # Tests often have intentional "bad" patterns
-        
-        try:
-            content = file_path.read_text(encoding="utf-8", errors="replace")
-        except OSError as e:
-            logger.debug(f"Failed to read {rel_path}: {e}")
-            return issues
-        
-        lines = content.split("\n")
-        
-        for i, line in enumerate(lines, 1):
-            # Пропускаем комментарии
-            stripped = line.strip()
-            if stripped.startswith("#") or stripped.startswith("//"):
-                continue
-            if stripped.startswith('"""') or stripped.startswith("'''"):
-                continue
-            
-            # Use pre-compiled patterns for performance
-            for compiled_pattern, severity, issue, recommendation in self._compiled_security_patterns:
-                if compiled_pattern.search(line):
-                    issues.append(SecurityIssue(
-                        severity=severity,
-                        file=rel_path,
-                        line=i,
-                        issue=issue,
-                        recommendation=recommendation,
-                    ))
-        
-        return issues
-    
-    def _find_code_smells(self, files: list[Path], base_path: Path) -> list[str]:
-        """Находит code smells using pre-compiled patterns."""
-        smells = []
-        
-        for file_path in files:
-            if file_path.suffix != ".py":
-                continue
-            
-            try:
-                content = file_path.read_text(encoding="utf-8", errors="replace")
-            except OSError:
-                continue
-            
-            rel_path = str(file_path.relative_to(base_path))
-            
-            # Use pre-compiled patterns
-            for compiled_pattern, description in self._compiled_smell_patterns:
-                matches = compiled_pattern.findall(content)
-                if matches:
-                    smells.append(f"{rel_path}: {description} ({len(matches)} occurrences)")
-        
-        return smells[:20]  # Limit to 20
-    
-    def _analyze_architecture(self, path: Path, files: list[Path]) -> ArchitectureInfo:
-        """Анализирует архитектуру проекта."""
-        arch = ArchitectureInfo()
-        
-        # Определяем слои по директориям
-        for file_path in files:
-            rel = file_path.relative_to(path)
-            parts = rel.parts
-            
-            if len(parts) > 1:
-                layer = parts[0]
-                if layer not in arch.layers:
-                    arch.layers[layer] = []
-                arch.layers[layer].append(str(rel))
-        
-        # Находим точки входа
-        entry_patterns = ["main.py", "app.py", "run.py", "index.py", "__main__.py", "cli.py"]
-        for file_path in files:
-            if file_path.name in entry_patterns:
-                arch.entry_points.append(str(file_path.relative_to(path)))
-        
-        # Находим конфигурационные файлы
-        config_patterns = ["*.toml", "*.yaml", "*.yml", "*.json", "*.ini", "*.env*"]
-        for file_path in files:
-            for pattern in config_patterns:
-                if file_path.match(pattern):
-                    arch.config_files.append(str(file_path.relative_to(path)))
-                    break
-        
-        # Анализ зависимостей между модулями
-        for file_path in files:
-            if file_path.suffix != ".py":
-                continue
-            
-            try:
-                content = file_path.read_text(encoding="utf-8", errors="replace")
-                tree = ast.parse(content)
-                imports = self._extract_imports(tree)
-                
-                rel_path = str(file_path.relative_to(path))
-                local_imports = [i for i in imports if not i.startswith(("os", "sys", "re", "json", "typing", "dataclass"))]
-                if local_imports:
-                    arch.dependencies[rel_path] = local_imports[:10]
-            except (SyntaxError, OSError):
-                continue
-        
-        return arch
     
     def _calculate_security_score(self, issues: list[SecurityIssue]) -> int:
         """Рассчитывает security score."""
