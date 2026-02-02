@@ -1,18 +1,20 @@
 """Summarizer agent - LLM-based context summarization."""
 
 import hashlib
+import threading
 from pathlib import Path
 
 from src.domain.ports.llm import LLMMessage, LLMPort
 
 
-# Cache for summaries (in-memory, persisted to file)
+# Cache for summaries (in-memory, persisted to file); lock for thread safety
 _summary_cache: dict[str, str] = {}
+_cache_lock = threading.Lock()
 _cache_file = Path("output/summary_cache.json")
 
 
 def _load_cache() -> None:
-    """Load summary cache from file."""
+    """Load summary cache from file. Caller must hold _cache_lock when modifying cache."""
     global _summary_cache
     if _cache_file.exists():
         try:
@@ -20,10 +22,12 @@ def _load_cache() -> None:
             _summary_cache = json.loads(_cache_file.read_text())
         except Exception:
             _summary_cache = {}
+    else:
+        _summary_cache = {}
 
 
 def _save_cache() -> None:
-    """Save summary cache to file."""
+    """Save summary cache to file. Caller must hold _cache_lock."""
     try:
         import json
         _cache_file.parent.mkdir(parents=True, exist_ok=True)
@@ -93,10 +97,11 @@ async def summarize_content(
     # Check cache
     content_hash = _content_hash(content)
     if use_cache:
-        _load_cache()
-        if content_hash in _summary_cache:
-            return _summary_cache[content_hash]
-    
+        with _cache_lock:
+            _load_cache()
+            if content_hash in _summary_cache:
+                return _summary_cache[content_hash]
+
     # Generate summary
     messages = [
         LLMMessage(role="system", content=SUMMARIZE_SYSTEM),
@@ -114,8 +119,9 @@ async def summarize_content(
         
         # Cache result
         if use_cache and summary:
-            _summary_cache[content_hash] = summary
-            _save_cache()
+            with _cache_lock:
+                _summary_cache[content_hash] = summary
+                _save_cache()
         
         return summary
     except Exception as e:

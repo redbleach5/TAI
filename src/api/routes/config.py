@@ -69,11 +69,18 @@ async def get_config_route(config: AppConfig = Depends(get_config)):
     if config.openai_compatible.max_tokens is not None:
         openai_compatible["max_tokens"] = config.openai_compatible.max_tokens
     ws = config.web_search
+
+    def _mask_key(value: str | None) -> str:
+        if not value or not value.strip():
+            return ""
+        s = value.strip()
+        return f"***{s[-4:]}" if len(s) >= 4 else "***"
+
     web_search = {
         "searxng_url": ws.searxng_url or "",
-        "brave_api_key": ws.brave_api_key or "",
-        "tavily_api_key": ws.tavily_api_key or "",
-        "google_api_key": ws.google_api_key or "",
+        "brave_api_key": _mask_key(ws.brave_api_key),
+        "tavily_api_key": _mask_key(ws.tavily_api_key),
+        "google_api_key": _mask_key(ws.google_api_key),
         "google_cx": ws.google_cx or "",
     }
     return {
@@ -87,7 +94,12 @@ async def get_config_route(config: AppConfig = Depends(get_config)):
         "embeddings": {"model": config.embeddings.model},
         "persistence": {"max_context_messages": config.persistence.max_context_messages},
         "web_search": web_search,
-        "logging": {"level": config.log_level},
+        "logging": {
+            "level": config.log_level,
+            "file": config.log_file or "",
+            "log_rotation_max_mb": config.log_rotation_max_mb,
+            "log_rotation_backups": config.log_rotation_backups,
+        },
     }
 
 
@@ -155,9 +167,16 @@ async def patch_config_route(updates: ConfigPatch):
 
     reset_container()
 
-    if "logging" in updates_dict and "level" in updates_dict.get("logging", {}):
+    if "logging" in updates_dict:
+        from src.api.container import get_container
         from src.shared.logging import setup_logging
 
-        setup_logging(updates_dict["logging"]["level"])
+        c = get_container().config
+        setup_logging(
+            level=c.log_level,
+            file_path=c.log_file or "",
+            rotation_max_mb=c.log_rotation_max_mb,
+            rotation_backups=c.log_rotation_backups,
+        )
 
     return {"ok": True, "message": "Config saved."}

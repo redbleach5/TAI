@@ -56,6 +56,16 @@ class FileWriter:
         shutil.copy2(file_path, backup_path)
         return backup_path
 
+    def _is_safe_path(self, file_path: Path) -> bool:
+        """Check path is within cwd or allowed temp directories (security)."""
+        try:
+            file_path.resolve().relative_to(Path.cwd())
+            return True
+        except ValueError:
+            path_str = str(file_path.resolve())
+            safe_prefixes = ("/tmp", "/var/folders", "/private/var/folders")
+            return any(path_str.startswith(p) for p in safe_prefixes)
+
     def write_file(
         self,
         path: str | Path,
@@ -75,21 +85,7 @@ class FileWriter:
             }
         """
         file_path = Path(path).resolve()
-        
-        # Security: prevent writing outside project
-        # Allow paths within cwd or temp directories
-        is_safe = False
-        try:
-            file_path.relative_to(Path.cwd())
-            is_safe = True
-        except ValueError:
-            # Check for safe temp locations (Linux, macOS)
-            path_str = str(file_path)
-            safe_prefixes = ("/tmp", "/var/folders", "/private/var/folders")
-            if any(path_str.startswith(p) for p in safe_prefixes):
-                is_safe = True
-        
-        if not is_safe:
+        if not self._is_safe_path(file_path):
             return {
                 "success": False,
                 "path": str(file_path),
@@ -140,7 +136,13 @@ class FileWriter:
             }
         """
         file_path = Path(path).resolve()
-        
+        if not self._is_safe_path(file_path):
+            return {
+                "success": False,
+                "path": str(file_path),
+                "content": None,
+                "error": "Security: path is outside allowed directory",
+            }
         try:
             content = file_path.read_text(encoding="utf-8")
             return {

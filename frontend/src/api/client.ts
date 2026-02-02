@@ -66,7 +66,7 @@ export interface ConfigResponse {
   embeddings: { model: string }
   persistence?: { max_context_messages: number }
   web_search?: { searxng_url: string; brave_api_key: string; tavily_api_key: string; google_api_key: string; google_cx: string }
-  logging: { level: string }
+  logging: { level: string; file?: string; log_rotation_max_mb?: number; log_rotation_backups?: number }
 }
 
 export interface ConfigPatch {
@@ -80,7 +80,7 @@ export interface ConfigPatch {
   embeddings?: { model?: string }
   persistence?: { max_context_messages?: number }
   web_search?: { searxng_url?: string; brave_api_key?: string; tavily_api_key?: string; google_api_key?: string; google_cx?: string }
-  logging?: { level?: string }
+  logging?: { level?: string; file?: string; log_rotation_max_mb?: number; log_rotation_backups?: number }
 }
 
 export async function getConfig(): Promise<ConfigResponse> {

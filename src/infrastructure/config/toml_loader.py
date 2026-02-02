@@ -50,6 +50,8 @@ def _apply_env_overrides(config: dict) -> dict:
             pass
     if level := os.getenv("LOG_LEVEL"):
         config.setdefault("logging", {})["level"] = level.upper()
+    if path := os.getenv("LOG_FILE"):
+        config.setdefault("logging", {})["file"] = path.strip()
     if origins := os.getenv("CORS_ORIGINS"):
         config.setdefault("security", {})["cors_origins"] = [o.strip() for o in origins.split(",")]
     if rate := os.getenv("RATE_LIMIT_PER_MINUTE"):
@@ -113,7 +115,11 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
     rag = RAGConfig(**(config.get("rag") or {}))
     agent = AgentConfig(**(config.get("agent") or {}))
     web_search = WebSearchConfig(**(config.get("web_search") or {}))
-    log_level = config.get("logging", {}).get("level", "INFO")
+    logging_raw = config.get("logging") or {}
+    log_level = logging_raw.get("level", "INFO")
+    log_file = (logging_raw.get("file") or "").strip()
+    log_rotation_max_mb = int(logging_raw.get("log_rotation_max_mb", 5))
+    log_rotation_backups = int(logging_raw.get("log_rotation_backups", 3))
 
     return AppConfig(
         server=server,
@@ -128,4 +134,7 @@ def load_config(config_dir: Path | None = None) -> AppConfig:
         agent=agent,
         web_search=web_search,
         log_level=log_level,
+        log_file=log_file,
+        log_rotation_max_mb=log_rotation_max_mb,
+        log_rotation_backups=log_rotation_backups,
     )

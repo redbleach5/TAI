@@ -1,7 +1,10 @@
 """Self-Improvement Workflow - analyze → rag → plan → code → validate → write with retry."""
 
+import asyncio
+import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypedDict
 
 from langgraph.checkpoint.memory import MemorySaver
@@ -346,14 +349,23 @@ Preserve the overall structure and imports. Make minimal necessary changes.
     }
 
 
+def _run_py_compile_sync(code_file_path: str) -> tuple[int, str, str]:
+    """Run py_compile in subprocess (sync, for asyncio.to_thread). Returns (returncode, stdout, stderr)."""
+    result = subprocess.run(
+        ["python", "-m", "py_compile", code_file_path],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    return result.returncode, result.stdout or "", result.stderr or ""
+
+
 async def _validate_node(state: ImprovementState) -> ImprovementState:
     """Validate improved code (syntax check + basic tests). B5: full stack trace in validation_output.
     B6: when inline selection is set, validate the full file (selection replaced) so fragment is not parsed alone."""
     import ast
-    import subprocess
     import tempfile
     import traceback
-    from pathlib import Path
 
     improved_code = state.get("improved_code", "")
     full_file_content = state.get("full_file_content")
@@ -382,33 +394,29 @@ async def _validate_node(state: ImprovementState) -> ImprovementState:
             "current_step": "check_retry",
         }
 
-    # Try to run basic import check — B5: full stderr (stack trace)
+    # Run py_compile in thread to avoid blocking event loop
     with tempfile.TemporaryDirectory() as tmpdir:
         code_file = Path(tmpdir) / "improved.py"
         code_file.write_text(code_to_validate, encoding="utf-8")
-
         try:
-            result = subprocess.run(
-                ["python", "-m", "py_compile", str(code_file)],
-                capture_output=True,
-                text=True,
-                timeout=10,
+            returncode, stdout, stderr = await asyncio.to_thread(
+                _run_py_compile_sync, str(code_file)
             )
-            if result.returncode != 0:
-                full_output = (result.stderr or "").strip()
-                if result.stdout:
-                    full_output = f"{result.stdout.strip()}\n{full_output}"
-                return {
-                    **state,
-                    "validation_passed": False,
-                    "validation_output": full_output or "Compilation failed (no output)",
-                    "current_step": "check_retry",
-                }
         except Exception as e:
             return {
                 **state,
                 "validation_passed": False,
                 "validation_output": traceback.format_exc(),
+                "current_step": "check_retry",
+            }
+        if returncode != 0:
+            full_output = (stderr or "").strip()
+            if stdout:
+                full_output = f"{stdout.strip()}\n{full_output}"
+            return {
+                **state,
+                "validation_passed": False,
+                "validation_output": full_output or "Compilation failed (no output)",
                 "current_step": "check_retry",
             }
 

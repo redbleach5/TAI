@@ -121,6 +121,12 @@ async def main() -> None:
                 f"\n  Наценка нашего API на POST /chat (LLM): ~{overhead:.0f} ms "
                 "(intent + model_selector/list_models + память + JSON)."
             )
+    print(
+        "\n--- Узкое место ---\n"
+        "  Слабое место по задержкам — удалённый сервер Ollama (сеть + инференс).\n"
+        "  POST /api/chat 400–600+ ms — это почти целиком ответ сервера; наш код добавляет десятки мс.\n"
+        "  Подробнее: docs/PERFORMANCE.md"
+    )
 
 
 if __name__ == "__main__":

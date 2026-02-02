@@ -2,15 +2,26 @@
 
 import logging
 import sys
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 import structlog
 
 
-def setup_logging(level: str = "INFO") -> None:
+def setup_logging(
+    level: str = "INFO",
+    file_path: str = "",
+    rotation_max_mb: int = 5,
+    rotation_backups: int = 3,
+) -> None:
     """Configure structlog integrated with standard library logging.
 
     Both structlog.get_logger() and logging.getLogger() outputs are formatted
     consistently. Level from config is applied to all loggers.
+
+    If file_path is set, logs are also written to that file with rotation
+    (when file exceeds rotation_max_mb, it is rotated; up to rotation_backups
+    backup files are kept). Directory is created if missing.
     """
     log_level = getattr(logging, level.upper(), logging.INFO)
     use_json = level.upper() != "DEBUG"
@@ -45,11 +56,30 @@ def setup_logging(level: str = "INFO") -> None:
         ],
     )
 
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(formatter)
-    handler.setLevel(log_level)
-
     root = logging.getLogger()
     root.setLevel(log_level)
     root.handlers.clear()
-    root.addHandler(handler)
+
+    # Always log to stdout (terminal)
+    stream_handler = logging.StreamHandler(sys.stdout)
+    stream_handler.setFormatter(formatter)
+    stream_handler.setLevel(log_level)
+    root.addHandler(stream_handler)
+
+    # Optionally log to file with rotation
+    if file_path and file_path.strip():
+        path = Path(file_path.strip()).resolve()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            file_handler = RotatingFileHandler(
+                path,
+                maxBytes=rotation_max_mb * 1024 * 1024,
+                backupCount=rotation_backups,
+                encoding="utf-8",
+            )
+            file_handler.setFormatter(formatter)
+            file_handler.setLevel(log_level)
+            root.addHandler(file_handler)
+        except OSError as e:
+            # Fallback: log to stderr that file logging failed, keep stdout only
+            sys.stderr.write(f"Log file disabled: could not open {path}: {e}\n")

@@ -84,7 +84,12 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
           google_cx: config.web_search.google_cx ?? '',
         },
       }),
-      logging: { level: config.logging.level },
+      logging: {
+        level: config.logging.level,
+        file: config.logging.file ?? '',
+        log_rotation_max_mb: config.logging.log_rotation_max_mb ?? 5,
+        log_rotation_backups: config.logging.log_rotation_backups ?? 3,
+      },
     }
     try {
       const res = await patchConfig(updates)
@@ -564,7 +569,7 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             onChange={(e) =>
               setConfig({
                 ...config,
-                logging: { level: e.target.value },
+                logging: { ...config.logging, level: e.target.value },
               })
             }
           >
@@ -573,6 +578,20 @@ export function SettingsPanel({ onClose }: SettingsPanelProps) {
             <option value="WARNING">WARNING</option>
             <option value="ERROR">ERROR</option>
           </select>
+        </label>
+        <label>
+          Файл логов (пусто = только терминал)
+          <input
+            type="text"
+            placeholder="output/tai.log"
+            value={config.logging.file ?? ''}
+            onChange={(e) =>
+              setConfig({
+                ...config,
+                logging: { ...config.logging, file: e.target.value },
+              })
+            }
+          />
         </label>
       </div>
 

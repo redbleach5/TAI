@@ -48,7 +48,9 @@ fallback = "local"
 provider = "auto"
 model = "nomic-embed-text"
 
-# rate_limit_requests_per_minute: raise for heavy use (chat + workflow + improve in parallel).
+# rate_limit_requests_per_minute: глобальный ориентир (сейчас лимиты заданы по эндпоинтам в коде).
+# При одном пользователе (local/desktop) лимиты можно не трогать — самые строгие уже ослаблены (improve 25/min, analyze 15/min).
+# Для мультитенантного деплоя при необходимости понизьте лимиты в src/api/routes/*.py.
 [security]
 rate_limit_requests_per_minute = 100
 cors_origins = ["http://localhost:5173"]
@@ -81,6 +83,10 @@ max_iterations = 15
 # google_api_key = ""
 # google_cx = ""
 
+# level: DEBUG | INFO | WARNING | ERROR. file: path for log file (empty = only terminal). Rotation when file exceeds log_rotation_max_mb.
 [logging]
 level = "INFO"
 format = "json"
+file = "output/tai.log"
+log_rotation_max_mb = 5
+log_rotation_backups = 3

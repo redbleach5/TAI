@@ -34,9 +34,9 @@ class FileAnalysis:
     
 
 @dataclass
-class ProjectAnalysis:
-    """Analysis result for entire project."""
-    
+class CodeProjectAnalysis:
+    """Analysis result for entire project (code-level metrics, used by improvement flow)."""
+
     total_files: int
     total_lines: int
     total_functions: int
@@ -192,7 +192,7 @@ class CodeAnalyzer:
             issues=issues,
         )
 
-    def analyze_project(self, path: str | Path = ".") -> ProjectAnalysis:
+    def analyze_project(self, path: str | Path = ".") -> CodeProjectAnalysis:
         """Analyze entire Python project."""
         project_path = Path(path).resolve()
         
@@ -222,7 +222,7 @@ class CodeAnalyzer:
 
         avg_complexity = total_complexity / total_functions if total_functions > 0 else 0
 
-        return ProjectAnalysis(
+        return CodeProjectAnalysis(
             total_files=len(files),
             total_lines=total_lines,
             total_functions=total_functions,
@@ -332,7 +332,7 @@ Return ONLY valid JSON array, no other text."""
         except Exception:
             return []
 
-    async def suggest_improvements(self, analysis: ProjectAnalysis) -> list[dict]:
+    async def suggest_improvements(self, analysis: CodeProjectAnalysis) -> list[dict]:
         """Generate improvement suggestions based on analysis."""
         if not self._llm:
             # Return static suggestions based on issues

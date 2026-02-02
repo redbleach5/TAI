@@ -1,9 +1,12 @@
 """File Service - handles file system operations."""
 
+import logging
 import shutil
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 # Excluded directories
@@ -47,11 +50,17 @@ class FileService:
         self._backup_dir = Path(backup_dir)
     
     def _is_safe_path(self, path: Path) -> bool:
-        """Check if path is within root directory."""
+        """Check if path is within root directory (no path traversal)."""
         try:
             resolved = path.resolve()
-            return str(resolved).startswith(str(self._root))
-        except Exception:
+            self._root.resolve()
+            # relative_to raises ValueError if path is not under root (correct for all platforms)
+            resolved.relative_to(self._root)
+            return True
+        except ValueError:
+            return False
+        except Exception as e:
+            logger.debug("Path safety check failed for %s: %s", path, e)
             return False
     
     def _should_exclude(self, name: str) -> bool:
@@ -123,6 +132,7 @@ class FileService:
                 data={"content": content, "size": len(content)},
             )
         except Exception as e:
+            logger.warning("File read failed for %s: %s", target, e, exc_info=True)
             return FileResult(success=False, error=str(e))
     
     def write(
@@ -260,5 +270,6 @@ class FileService:
                 shutil.copy2(path, backup_path)
             
             return backup_path
-        except Exception:
+        except Exception as e:
+            logger.debug("Backup failed for %s: %s", path, e)
             return None

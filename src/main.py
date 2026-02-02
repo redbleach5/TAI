@@ -28,11 +28,22 @@ from src.infrastructure.config.model_validator import validate_models_config
 from src.shared.logging import setup_logging
 
 
+def _apply_logging_config(container):
+    """Apply logging from container config (stdout + optional file)."""
+    c = container.config
+    setup_logging(
+        level=c.log_level,
+        file_path=c.log_file or "",
+        rotation_max_mb=c.log_rotation_max_mb,
+        rotation_backups=c.log_rotation_backups,
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup: load config, setup logging, validate models."""
     container = get_container()
-    setup_logging(container.config.log_level)
+    _apply_logging_config(container)
     await validate_models_config(container.llm, container.config)
     yield
     # Shutdown if needed

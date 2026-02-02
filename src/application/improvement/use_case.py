@@ -22,7 +22,7 @@ from src.application.improvement.dto import (
 from src.domain.ports.llm import LLMPort
 from src.domain.ports.rag import RAGPort
 from src.domain.services.model_selector import ModelSelector
-from src.infrastructure.agents.analyzer import CodeAnalyzer, CodeIssue, ProjectAnalysis
+from src.infrastructure.agents.analyzer import CodeAnalyzer, CodeIssue, CodeProjectAnalysis
 from src.infrastructure.agents.file_writer import FileWriter
 from src.infrastructure.workflow.improvement_graph import (
     ImprovementState,
@@ -110,7 +110,7 @@ class SelfImprovementUseCase:
             finally:
                 os.chdir(original_cwd)
 
-    def _generate_basic_suggestions(self, analysis: ProjectAnalysis) -> list[dict]:
+    def _generate_basic_suggestions(self, analysis: CodeProjectAnalysis) -> list[dict]:
         """Generate basic suggestions without LLM."""
         suggestions = []
         

@@ -46,7 +46,7 @@ class AddTaskRequestModel(BaseModel):
 # Endpoints
 
 @router.post("/analyze")
-@limiter.limit("10/minute")
+@limiter.limit("25/minute")
 async def analyze_project(
     request: Request,
     body: AnalyzeRequestModel,
@@ -91,7 +91,7 @@ async def analyze_project(
 
 
 @router.post("/run")
-@limiter.limit("5/minute")
+@limiter.limit("25/minute")  # 5/min слишком жёстко для одного пользователя
 async def run_improvement(
     request: Request,
     body: ImprovementRequestModel,
@@ -134,7 +134,7 @@ async def run_improvement(
 
 
 @router.post("/run/stream")
-@limiter.limit("5/minute")
+@limiter.limit("25/minute")
 async def run_improvement_stream(
     request: Request,
     body: ImprovementRequestModel,
@@ -245,7 +245,7 @@ async def get_task(
 
 
 @router.post("/queue/start")
-@limiter.limit("5/minute")
+@limiter.limit("25/minute")
 async def start_worker(
     request: Request,
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
@@ -256,7 +256,7 @@ async def start_worker(
 
 
 @router.post("/queue/stop")
-@limiter.limit("5/minute")
+@limiter.limit("25/minute")
 async def stop_worker(
     request: Request,
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
@@ -267,7 +267,7 @@ async def stop_worker(
 
 
 @router.post("/queue/clear")
-@limiter.limit("10/minute")
+@limiter.limit("25/minute")
 async def clear_completed(
     request: Request,
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),

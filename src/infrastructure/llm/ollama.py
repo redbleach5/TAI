@@ -1,11 +1,14 @@
 """Ollama adapter - implements LLMPort with Circuit Breaker."""
 
+import logging
 from typing import Any, AsyncIterator
 
 import httpx
 from ollama import AsyncClient
 
 from src.domain.ports.config import OllamaConfig
+
+logger = logging.getLogger(__name__)
 from src.domain.ports.llm import LLMMessage, LLMResponse
 from src.infrastructure.resilience import (
     get_circuit_breaker,
@@ -111,8 +114,8 @@ class OllamaAdapter:
                 if resp.status_code == 200:
                     self._available = True
                     return True
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug("Ollama availability check failed: %s", e)
         self._available = False
         return False
 
@@ -124,7 +127,8 @@ class OllamaAdapter:
                 return []
             # ollama package: Model has 'model' attr (newer) or 'name' (legacy)
             return [getattr(m, "model", getattr(m, "name", "")) for m in resp.models if getattr(m, "model", getattr(m, "name", ""))]
-        except Exception:
+        except Exception as e:
+            logger.warning("Ollama list_models failed: %s", e, exc_info=True)
             return []
 
     async def chat_with_tools(
@@ -160,7 +164,8 @@ class OllamaAdapter:
                         args = {}
                 calls.append({"name": name, "arguments": args or {}})
             return (content, calls)
-        except Exception:
+        except Exception as e:
+            logger.warning("Ollama chat_with_tools failed: %s", e, exc_info=True)
             return ("", [])
 
     async def chat_with_tools_stream(
@@ -226,6 +231,7 @@ class OllamaAdapter:
             if tool_calls:
                 yield ("tool_calls", tool_calls)
             yield ("done", None)
-        except Exception:
+        except Exception as e:
+            logger.warning("Ollama chat_with_tools_stream failed: %s", e, exc_info=True)
             yield ("content", "*Ошибка при вызове модели.*")
             yield ("done", None)

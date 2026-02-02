@@ -445,8 +445,9 @@ class DeepAnalyzer:
                     commits_limit=15,
                     files_limit=25,
                 ) or git_context
-        except Exception:
-            pass
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).debug("Git context for deep analysis failed: %s", e)
 
         # 3c. Coverage (A4): pytest-cov/coverage in prompt
         coverage_context = await asyncio.to_thread(
@@ -458,7 +459,9 @@ class DeepAnalyzer:
         if self._rag:
             try:
                 rag_context = await self._gather_initial_rag()
-            except Exception:
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning("RAG context for deep analysis failed: %s", e, exc_info=True)
                 rag_context = "Ошибка поиска по индексу."
 
         # 5. Multi-step: targeted RAG per module (A1)

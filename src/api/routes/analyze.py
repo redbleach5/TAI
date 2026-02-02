@@ -7,7 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
-from src.api.dependencies import get_analyzer, get_llm_adapter, get_model_selector, get_rag_adapter, limiter
+from src.api.dependencies import get_analyzer, get_llm_adapter, get_model_selector, get_rag_adapter, get_store, limiter
+from src.api.store import ProjectsStore
 from src.application.analysis.deep_analyzer import DeepAnalyzer, summary_from_report
 from src.domain.ports.llm import LLMPort
 from src.domain.services.model_selector import ModelSelector
@@ -140,14 +141,37 @@ def _analysis_to_detailed_response(
     )
 
 
+def _resolve_path_allowed(path_str: str, store: ProjectsStore) -> Path:
+    """Resolve path and ensure it is under workspace or cwd (security)."""
+    root_str = None
+    current = store.get_current()
+    if current:
+        root_str = current.path
+    if not root_str:
+        root_str = str(Path.cwd().resolve())
+    root = Path(root_str).resolve()
+    path = Path(path_str).expanduser().resolve()
+    try:
+        path.relative_to(root)
+    except ValueError:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Path must be inside workspace: {root_str}",
+        )
+    return path
+
+
 @router.post("/project")
 @limiter.limit("10/minute")
 async def analyze_project(
     request: Request,
     body: AnalyzeRequest,
+    store: ProjectsStore = Depends(get_store),
     analyzer: ProjectAnalyzer = Depends(get_analyzer),
 ) -> AnalyzeResponse:
     """Анализирует проект и возвращает результаты.
+    
+    Path must be inside current workspace (or cwd if no workspace set).
     
     Args:
         body: Путь к проекту и опции
@@ -155,7 +179,7 @@ async def analyze_project(
     Returns:
         Результаты анализа с scores и recommendations
     """
-    path = Path(body.path).expanduser().resolve()
+    path = _resolve_path_allowed(body.path, store)
     
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Path not found: {body.path}")
@@ -179,17 +203,19 @@ async def analyze_project(
 
 
 @router.post("/project/detailed")
-@limiter.limit("5/minute")
+@limiter.limit("20/minute")
 async def analyze_project_detailed(
     request: Request,
     body: AnalyzeRequest,
+    store: ProjectsStore = Depends(get_store),
     analyzer: ProjectAnalyzer = Depends(get_analyzer),
 ) -> DetailedAnalyzeResponse:
     """Детальный анализ проекта со всеми данными.
     
     Включает полный список security issues, code smells и архитектуру.
+    Path must be inside current workspace.
     """
-    path = Path(body.path).expanduser().resolve()
+    path = _resolve_path_allowed(body.path, store)
     
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Path not found: {body.path}")
@@ -215,14 +241,16 @@ async def analyze_project_detailed(
 async def get_project_report(
     request: Request,
     body: AnalyzeRequest,
+    store: ProjectsStore = Depends(get_store),
     analyzer: ProjectAnalyzer = Depends(get_analyzer),
 ) -> str:
     """Генерирует и возвращает Markdown отчёт напрямую.
     
+    Path must be inside current workspace.
     Returns:
         Markdown отчёт как текст
     """
-    path = Path(body.path).expanduser().resolve()
+    path = _resolve_path_allowed(body.path, store)
     
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Path not found: {body.path}")
@@ -247,10 +275,11 @@ class DeepAnalyzeResponse(BaseModel):
 
 
 @router.post("/project/deep")
-@limiter.limit("3/minute")
+@limiter.limit("15/minute")  # 3/min слишком жёстко для одного пользователя
 async def get_project_deep_report(
     request: Request,
     body: DeepAnalyzeRequest,
+    store: ProjectsStore = Depends(get_store),
     llm: LLMPort = Depends(get_llm_adapter),
     model_selector: ModelSelector = Depends(get_model_selector),
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
@@ -260,9 +289,10 @@ async def get_project_deep_report(
     
     Полный отчёт сохраняется в проекте (docs/ANALYSIS_REPORT.md).
     В ответе — краткая сводка для чата (как в Cursor).
+    Path must be inside current workspace.
     Требует: LLM (Ollama/LM Studio), опционально RAG (индексация workspace).
     """
-    path = Path(body.path).expanduser().resolve()
+    path = _resolve_path_allowed(body.path, store)
     
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Path not found: {body.path}")
@@ -293,14 +323,16 @@ async def get_project_deep_report(
 async def check_security(
     request: Request,
     body: AnalyzeRequest,
+    store: ProjectsStore = Depends(get_store),
     analyzer: ProjectAnalyzer = Depends(get_analyzer),
 ):
     """Быстрая проверка безопасности проекта.
     
+    Path must be inside current workspace.
     Returns:
         Только security-related данные
     """
-    path = Path(body.path).expanduser().resolve()
+    path = _resolve_path_allowed(body.path, store)
     
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Path not found: {body.path}")
@@ -341,7 +373,7 @@ async def check_security(
 
 
 @router.get("/compare")
-@limiter.limit("5/minute")
+@limiter.limit("20/minute")
 async def compare_projects(
     request: Request,
     path1: str,

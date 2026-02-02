@@ -22,8 +22,10 @@ async def test_chat_greeting_returns_template():
 
 
 @pytest.mark.asyncio
-async def test_chat_code_returns_response():
-    """Code intent returns response (template or LLM)."""
+async def test_chat_code_returns_response(llm_available):
+    """Code intent returns response (requires LLM when not greeting). Skips if Ollama/LM Studio unavailable."""
+    if not llm_available:
+        pytest.skip("LLM not available (Ollama/LM Studio); run with backend to test")
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
@@ -34,7 +36,6 @@ async def test_chat_code_returns_response():
     data = resp.json()
     assert "content" in data
     assert "model" in data
-    # Can be template or real model
     assert len(data["content"]) > 0
 
 

@@ -163,6 +163,10 @@ class AppConfig(BaseModel):
     agent: AgentConfig = AgentConfig()
     web_search: WebSearchConfig = WebSearchConfig()
     log_level: str = "INFO"
+    # Log file: path relative to cwd or absolute. Empty = only stdout. Rotation when file exceeds max_mb.
+    log_file: str = ""
+    log_rotation_max_mb: int = 5
+    log_rotation_backups: int = 3
 
 
 class ConfigPort(Protocol):
