@@ -19,6 +19,21 @@ from dataclasses import dataclass
 from urllib.parse import urlparse, urlunparse
 
 from src.infrastructure.services.http_pool import get_http_client
+from src.infrastructure.services.web_search_formatters import format_search_results
+from src.infrastructure.services.web_search_providers import (
+    build_brave_headers,
+    build_brave_params,
+    build_brave_url,
+    build_ddg_data,
+    build_ddg_url,
+    build_google_params,
+    build_google_url,
+    build_searxng_params,
+    build_searxng_url,
+    build_tavily_headers,
+    build_tavily_payload,
+    build_tavily_url,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -325,8 +340,8 @@ async def search_duckduckgo(
     if not query.strip():
         return []
     
-    url = "https://lite.duckduckgo.com/lite/"
-    data = {"q": query, "kl": "wt-wt"}
+    url = build_ddg_url()
+    data = build_ddg_data(query)
     
     last_error: Exception | None = None
     for attempt in range(retries + 1):
@@ -400,12 +415,10 @@ async def search_searxng(
     if not query.strip():
         return []
     
-    url = f"{instance}/search"
-    params = {
-        "q": query,
-        "format": "json",
-        "categories": "general",
-    }
+    url = build_searxng_url(instance)
+    if not url:
+        return []
+    params = build_searxng_params(query)
     
     last_error: Exception | None = None
     for attempt in range(retries + 1):
@@ -448,16 +461,9 @@ async def search_tavily(
     if not query.strip() or not api_key:
         return []
     
-    url = "https://api.tavily.com/search"
-    payload = {
-        "query": query,
-        "max_results": min(max_results, 20),
-        "search_depth": "basic",
-    }
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
-    }
+    url = build_tavily_url()
+    payload = build_tavily_payload(query, max_results)
+    headers = build_tavily_headers(api_key)
     
     last_error: Exception | None = None
     for attempt in range(retries + 1):
@@ -507,13 +513,8 @@ async def search_google(
     if not query.strip() or not api_key or not cx:
         return []
     
-    url = "https://customsearch.googleapis.com/customsearch/v1"
-    params = {
-        "key": api_key,
-        "cx": cx,
-        "q": query,
-        "num": min(max_results, 10),
-    }
+    url = build_google_url()
+    params = build_google_params(query, max_results, api_key, cx)
     
     last_error: Exception | None = None
     for attempt in range(retries + 1):
@@ -556,12 +557,9 @@ async def search_brave(
     if not query.strip() or not api_key:
         return []
     
-    url = "https://api.search.brave.com/res/v1/web/search"
-    params = {"q": query, "count": max_results}
-    headers = {
-        "Accept": "application/json",
-        "X-Subscription-Token": api_key,
-    }
+    url = build_brave_url()
+    params = build_brave_params(query, max_results)
+    headers = build_brave_headers(api_key)
     
     last_error: Exception | None = None
     for attempt in range(retries + 1):
@@ -602,18 +600,15 @@ def _clean_html(text: str) -> str:
     return text
 
 
-def format_search_results(results: list[SearchResult]) -> str:
-    """Format search results for LLM context."""
-    if not results:
-        return "[No search results found]"
-    
-    lines = ["## Web Search Results\n"]
-    for i, r in enumerate(results, 1):
-        lines.append(f"### {i}. {r.title}")
-        if r.url:
-            lines.append(f"URL: {r.url}")
-        if r.snippet:
-            lines.append(f"{r.snippet}")
-        lines.append("")
-    
-    return "\n".join(lines)
+# Re-export for backward compatibility (format_search_results from web_search_formatters)
+__all__ = [
+    "SearchResult",
+    "SearchCache",
+    "multi_search",
+    "search_duckduckgo",
+    "search_searxng",
+    "search_brave",
+    "search_tavily",
+    "search_google",
+    "format_search_results",
+]
