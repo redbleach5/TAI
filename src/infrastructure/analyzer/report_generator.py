@@ -11,7 +11,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from src.infrastructure.analyzer.project_analyzer import ProjectAnalysis
+from src.infrastructure.analyzer.models import ProjectAnalysis
 
 
 def escape_markdown(text: str | None) -> str:

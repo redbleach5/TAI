@@ -251,9 +251,9 @@
 ## Известные проблемы
 
 - **Path traversal в FileReaderHandler** — исправлено (пути относительно workspace, проверка relative_to).
-- **Тест `test_chat_code_returns_response`** падает без Ollama — рекомендуется мок LLM или skip при недоступности.
+- **Тест `test_chat_code_returns_response`** — исправлено: skip при недоступности LLM (fixture `llm_available` в conftest).
 - **Хост Ollama и LM Studio** — настраиваются в разделе «Настройки» (Ollama host, LM Studio base_url) и в development.toml / .env (OLLAMA_HOST, OPENAI_BASE_URL).
-- **FileService._is_safe_path** — предпочтительно проверять через `relative_to(root)` вместо `startswith`.
+- **FileService._is_safe_path** — исправлено: проверка через `relative_to(root)` вместо `startswith`.
 - **Frontend: история в sync-чате** — исправлено (messagesRef для актуальной истории).
 - **Container.reset()** — после reset кэш очищается, но `_config_override` остаётся (учитывать в тестах).
 

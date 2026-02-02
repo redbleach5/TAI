@@ -12,7 +12,8 @@ from src.api.store import ProjectsStore
 from src.application.analysis.deep_analyzer import DeepAnalyzer, summary_from_report
 from src.domain.ports.llm import LLMPort
 from src.domain.services.model_selector import ModelSelector
-from src.infrastructure.analyzer.project_analyzer import ProjectAnalysis, ProjectAnalyzer
+from src.infrastructure.analyzer.models import ProjectAnalysis
+from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
 from src.infrastructure.analyzer.report_generator import ReportGenerator
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 

@@ -17,7 +17,7 @@
 
 | Шаг | Описание | Статус |
 |-----|----------|--------|
-| 2.1 | Вынести dataclasses в `analyzer/models.py` (FileMetrics, SecurityIssue, ArchitectureInfo, ProjectAnalysis) | ⬜ |
+| 2.1 | Вынести dataclasses в `analyzer/models.py` (FileMetrics, SecurityIssue, ArchitectureInfo, ProjectAnalysis) | ✅ |
 | 2.2 | Вынести сканирование безопасности в `security_scanner.py` | ⬜ |
 | 2.3 | Вынести расчёт метрик/сложности в `file_metrics.py` | ⬜ |
 | 2.4 | По желанию: architecture, code_smells в отдельные модули | ⬜ |
@@ -41,7 +41,7 @@
 | Пункт | Где | Статус |
 |-------|-----|--------|
 | **FileService._is_safe_path** | Проверка через `relative_to(root)` вместо `startswith` (path traversal) | ✅ |
-| **Тесты без Ollama** | test_chat_code_returns_response и др.: мок LLM или skip при недоступности | ⬜ |
+| **Тесты без Ollama** | test_chat_code_returns_response: skip при недоступности LLM (fixture llm_available в conftest) | ✅ |
 | **Логи в файл** | Уже есть: config `log_file`, ротация, вывод в output/tai.log | ✅ |
 
 ---

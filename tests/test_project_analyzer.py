@@ -7,13 +7,13 @@ import pytest
 
 from src.api.container import reset_container
 from src.api.dependencies import get_analyzer
-from src.infrastructure.analyzer.project_analyzer import (
-    ProjectAnalyzer,
-    ProjectAnalysis,
+from src.infrastructure.analyzer import (
     FileMetrics,
+    ProjectAnalysis,
+    ProjectAnalyzer,
+    ReportGenerator,
     SecurityIssue,
 )
-from src.infrastructure.analyzer.report_generator import ReportGenerator
 
 
 class TestProjectAnalyzer:
