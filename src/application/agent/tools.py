@@ -1,6 +1,5 @@
 """Agent tools - definitions and executor for ReAct-style agent."""
 
-import json
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path

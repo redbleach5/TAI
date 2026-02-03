@@ -1,6 +1,5 @@
 """Tests for model validator."""
 
-import logging
 
 import pytest
 from unittest.mock import AsyncMock

@@ -49,14 +49,23 @@ OLLAMA_TOOLS = [
         "type": "function",
         "function": {
             "name": "run_terminal",
-            "description": "Run shell command in project root or subfolder. Use for ls, pytest, npm install, pip install. For long commands (npm install, pip install) set timeout_seconds to 120-300.",
+            "description": (
+                "Run shell command in project root or subfolder. Use for ls, pytest, npm install, pip install. "
+                "For long commands (npm install, pip install) set timeout_seconds to 120-300."
+            ),
             "parameters": {
                 "type": "object",
                 "required": ["command"],
                 "properties": {
                     "command": {"type": "string", "description": "Shell command to run"},
-                    "cwd": {"type": "string", "description": "Subfolder relative to project root, e.g. 'bot' or 'frontend'"},
-                    "timeout_seconds": {"type": "integer", "description": "Timeout in seconds (max 300). Use 120+ for npm install, pip install."},
+                    "cwd": {
+                        "type": "string",
+                        "description": "Subfolder relative to project root, e.g. 'bot' or 'frontend'",
+                    },
+                    "timeout_seconds": {
+                        "type": "integer",
+                        "description": "Timeout in seconds (max 300). Use 120+ for npm/pip install.",
+                    },
                 },
             },
         },
@@ -78,7 +87,10 @@ OLLAMA_TOOLS = [
         "type": "function",
         "function": {
             "name": "get_index_status",
-            "description": "Check if the project is indexed for code search. Use when user asks about codebase but search_rag returns nothing — then suggest or call index_workspace.",
+            "description": (
+                "Check if the project is indexed for code search. Use when user asks about codebase "
+                "but search_rag returns nothing — then suggest or call index_workspace."
+            ),
             "parameters": {"type": "object", "properties": {}},
         },
     },
@@ -90,7 +102,10 @@ OLLAMA_TOOLS = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "incremental": {"type": "boolean", "description": "If true (default), only new/changed files; if false, full reindex."},
+                    "incremental": {
+                        "type": "boolean",
+                        "description": "If true (default), only new/changed files; if false, full reindex.",
+                    },
                 },
             },
         },
@@ -99,11 +114,17 @@ OLLAMA_TOOLS = [
         "type": "function",
         "function": {
             "name": "run_project_analysis",
-            "description": "Run deep project analysis (architecture, quality, recommendations). Saves report to docs/ANALYSIS_REPORT.md. Use when user asks to analyze the project or 'проанализируй проект'.",
+            "description": (
+                "Run deep project analysis (architecture, quality, recommendations). "
+                "Saves report to docs/ANALYSIS_REPORT.md. Use when user asks to analyze the project."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "question": {"type": "string", "description": "Optional: specific question to answer in the report."},
+                    "question": {
+                        "type": "string",
+                        "description": "Optional: specific question to answer in the report.",
+                    },
                 },
             },
         },
@@ -112,12 +133,18 @@ OLLAMA_TOOLS = [
         "type": "function",
         "function": {
             "name": "web_search",
-            "description": "Search the internet for current information. Use for: news, best practices, documentation, recent APIs, refactoring advice, or any up-to-date information. Prefer this over claiming you have no internet.",
+            "description": (
+                "Search the internet for current information. Use for: news, best practices, "
+                "documentation, recent APIs, refactoring advice. Prefer over claiming no internet."
+            ),
             "parameters": {
                 "type": "object",
                 "required": ["query"],
                 "properties": {
-                    "query": {"type": "string", "description": "Search phrase, e.g. 'Python asyncio best practices 2024', 'today news summary'"},
+                    "query": {
+                        "type": "string",
+                        "description": "Search phrase, e.g. 'Python asyncio best practices 2024'",
+                    },
                 },
             },
         },

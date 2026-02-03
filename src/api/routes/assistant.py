@@ -171,7 +171,11 @@ class SearchRequest(BaseModel):
 
 @router.post("/search/web")
 @limiter.limit("30/minute")
-async def web_search(request: Request, body: SearchRequest, config: AppConfig = Depends(get_config)):
+async def web_search(
+    request: Request,
+    body: SearchRequest,
+    config: AppConfig = Depends(get_config),
+):
     """Search using multiple engines (DuckDuckGo, SearXNG, Brave, Tavily) in parallel."""
     ws = config.web_search
     results = await multi_search(

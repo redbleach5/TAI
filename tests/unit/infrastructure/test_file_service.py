@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import pytest
 
 from src.infrastructure.services.file_service import FileService
 

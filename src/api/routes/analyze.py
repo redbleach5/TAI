@@ -7,7 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
-from src.api.dependencies import get_analyzer, get_llm_adapter, get_model_selector, get_rag_adapter, get_store, limiter
+from src.api.dependencies import (
+    get_analyzer,
+    get_llm_adapter,
+    get_model_selector,
+    get_rag_adapter,
+    get_store,
+    limiter,
+)
 from src.api.store import ProjectsStore
 from src.application.analysis.deep_analyzer import DeepAnalyzer, summary_from_report
 from src.domain.ports.llm import LLMPort
@@ -268,8 +275,8 @@ class DeepAnalyzeRequest(BaseModel):
 
 
 class DeepAnalyzeResponse(BaseModel):
-    """Ответ глубокого анализа: полный отчёт в файле проекта, в чат — краткая сводка (как Cursor)."""
-    report_path: str  # относительный путь в проекте, например docs/ANALYSIS_REPORT.md
+    """Ответ глубокого анализа: отчёт в файле проекта, в чат — краткая сводка (как Cursor)."""
+    report_path: str  # относительный путь, например docs/ANALYSIS_REPORT.md
     summary: str      # краткая сводка для чата
 
 
@@ -418,8 +425,21 @@ async def compare_projects(
             },
         },
         "winner": {
-            "security": analysis1.project_name if analysis1.security_score > analysis2.security_score else analysis2.project_name,
-            "quality": analysis1.project_name if analysis1.quality_score > analysis2.quality_score else analysis2.project_name,
-            "overall": analysis1.project_name if (analysis1.security_score + analysis1.quality_score) > (analysis2.security_score + analysis2.quality_score) else analysis2.project_name,
+            "security": (
+                analysis1.project_name
+                if analysis1.security_score > analysis2.security_score
+                else analysis2.project_name
+            ),
+            "quality": (
+                analysis1.project_name
+                if analysis1.quality_score > analysis2.quality_score
+                else analysis2.project_name
+            ),
+            "overall": (
+                analysis1.project_name
+                if (analysis1.security_score + analysis1.quality_score)
+                > (analysis2.security_score + analysis2.quality_score)
+                else analysis2.project_name
+            ),
         },
     }

@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.application.chat.dto import ChatRequest, ChatResponse
+from src.application.chat.dto import ChatRequest
 from src.application.chat.use_case import ChatUseCase
 from src.domain.ports.config import ModelConfig
 from src.domain.ports.llm import LLMMessage, LLMResponse

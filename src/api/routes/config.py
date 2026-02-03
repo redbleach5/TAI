@@ -119,9 +119,9 @@ def _to_toml_structure(updates: dict) -> dict:
     if "persistence" in updates:
         result["persistence"] = updates["persistence"]
     if "web_search" in updates:
+        ws_keys = ("searxng_url", "brave_api_key", "tavily_api_key", "google_api_key", "google_cx")
         result["web_search"] = {
-            k: v for k, v in updates["web_search"].items()
-            if k in ("searxng_url", "brave_api_key", "tavily_api_key", "google_api_key", "google_cx")
+            k: v for k, v in updates["web_search"].items() if k in ws_keys
         }
     if "logging" in updates:
         result["logging"] = updates["logging"]

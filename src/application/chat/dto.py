@@ -25,7 +25,7 @@ class ChatRequest(BaseModel):
     model: str | None = None  # Override model (Cursor-like)
     context_files: list[ContextFile] | None = None  # Open files from IDE (Cursor-like — model sees these automatically)
     active_file_path: str | None = None  # Path of the focused tab — "current file" for the model
-    apply_edits_required: bool = True  # If True (default), agent write_file is proposed only; user applies or rejects in UI (Cursor-like)
+    apply_edits_required: bool = True  # Agent write_file proposed only; user applies/rejects in UI
 
 
 class ChatResponse(BaseModel):

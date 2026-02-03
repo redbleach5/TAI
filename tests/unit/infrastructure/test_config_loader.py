@@ -4,7 +4,6 @@ import os
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from src.infrastructure.config.toml_loader import load_config, _apply_env_overrides
 

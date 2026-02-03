@@ -14,10 +14,8 @@ import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
 from src.infrastructure.analyzer.models import (
-    ArchitectureInfo,
     FileMetrics,
     ProjectAnalysis,
     SecurityIssue,

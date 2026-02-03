@@ -1,6 +1,5 @@
 """Tests for tool parser (Agent ReAct format)."""
 
-import pytest
 
 from src.application.agent.tool_parser import (
     parse_tool_call,

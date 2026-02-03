@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from src.infrastructure.agents.analyzer import CodeAnalyzer, CodeIssue
+from src.infrastructure.agents.analyzer import CodeAnalyzer
 
 
 @pytest.fixture

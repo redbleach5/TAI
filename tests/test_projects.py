@@ -1,8 +1,5 @@
 """Tests for Projects API."""
 
-import os
-import tempfile
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient

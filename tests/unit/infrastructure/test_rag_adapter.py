@@ -1,7 +1,7 @@
 """Tests for ChromaDB RAG adapter."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from pathlib import Path
 import tempfile
 import os

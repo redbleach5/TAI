@@ -1,12 +1,10 @@
 """Tests for WorkflowUseCase."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
-from src.application.workflow.dto import WorkflowRequest, WorkflowResponse
+from src.application.workflow.dto import WorkflowRequest
 from src.application.workflow.use_case import WorkflowUseCase
-from src.domain.ports.config import ModelConfig
-from src.domain.services.model_router import ModelRouter
 from src.domain.services.model_selector import ModelSelector
 
 

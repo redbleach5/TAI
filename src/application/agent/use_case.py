@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from src.application.agent.ollama_tools import AGENT_SYSTEM_PROMPT_NATIVE, OLLAMA_TOOLS
-from src.application.agent.tool_parser import parse_all_tool_calls, parse_tool_call, strip_tool_call_from_content
+from src.application.agent.tool_parser import parse_all_tool_calls, strip_tool_call_from_content
 from src.application.agent.tools import AGENT_TOOLS_PROMPT, ToolExecutor, ToolResult
 from src.application.analysis.deep_analyzer import DeepAnalyzer, summary_from_report
 from src.application.chat.dto import ChatRequest, ChatResponse
@@ -19,11 +19,15 @@ if TYPE_CHECKING:
     from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
 
 
-AGENT_SYSTEM_PROMPT = """You are an autonomous coding agent. You can read files, write files, search the codebase, run terminal commands, and list directories.
+AGENT_SYSTEM_PROMPT = (
+    """You are an autonomous coding agent. You can read files, write files, """
+    """search the codebase, run terminal commands, and list directories.
 
 Your goal: accomplish the user's task step by step. Use tools when needed. Think before acting.
 
-""" + AGENT_TOOLS_PROMPT
+"""
+    + AGENT_TOOLS_PROMPT
+)
 
 
 class AgentUseCase:
@@ -55,7 +59,10 @@ class AgentUseCase:
 
     def _use_native_tools(self) -> bool:
         """Check if LLM supports native tool calling (Ollama)."""
-        return hasattr(self._llm, "chat_with_tools") and callable(getattr(self._llm, "chat_with_tools"))
+        return (
+            hasattr(self._llm, "chat_with_tools")
+            and callable(getattr(self._llm, "chat_with_tools"))
+        )
 
     async def _get_agent_context(self, message: str) -> tuple[str, str]:
         """C1: RAG search + project map for agent context."""
@@ -66,7 +73,10 @@ class AgentUseCase:
         try:
             chunks = await self._rag.search(message.strip(), limit=6, min_score=0.4)
             if chunks:
-                parts = [f"### {c.metadata.get('source', '?')}\n```\n{c.content[:500]}\n```" for c in chunks[:5]]
+                parts = [
+                    f"### {c.metadata.get('source', '?')}\n```\n{c.content[:500]}\n```"
+                    for c in chunks[:5]
+                ]
                 rag_context = "[Relevant code]\n\n" + "\n\n".join(parts)
         except Exception:
             pass
@@ -95,7 +105,9 @@ class AgentUseCase:
                 msgs.append({"role": m.role, "content": m.content})
         user_content = request.message
         if request.active_file_path:
-            user_content = f"Current file (user focused): {request.active_file_path}\n\n---\n\n{user_content}"
+            user_content = (
+                f"Current file (user focused): {request.active_file_path}\n\n---\n\n{user_content}"
+            )
         if rag_context:
             user_content = f"{rag_context}\n\n---\n\n{user_content}"
         if request.context_files:
@@ -107,8 +119,10 @@ class AgentUseCase:
         msgs.append({"role": "user", "content": user_content})
         return msgs
 
-    async def _run_project_analysis(self, workspace_path: str, question: str | None) -> tuple[str, str]:
-        """C3.1: Run deep analysis, save to docs/ANALYSIS_REPORT.md, return (summary, report_path)."""
+    async def _run_project_analysis(
+        self, workspace_path: str, question: str | None
+    ) -> tuple[str, str]:
+        """C3.1: Run deep analysis, save to docs/ANALYSIS_REPORT.md; return (summary, path)."""
         deep = DeepAnalyzer(
             llm=self._llm,
             model_selector=self._model_selector,
@@ -162,7 +176,9 @@ class AgentUseCase:
     ) -> ChatResponse:
         """Native Ollama tool calling."""
         rag_context, project_map = await self._get_agent_context(request.message)
-        messages = self._build_ollama_messages(request, rag_context=rag_context, project_map=project_map)
+        messages = self._build_ollama_messages(
+            request, rag_context=rag_context, project_map=project_map
+        )
         full_content: list[str] = []
 
         for _ in range(self._max_iterations):
@@ -212,15 +228,19 @@ class AgentUseCase:
 
         final = "\n\n".join(full_content).strip()
         if not final:
-            final = "*Модель не вернула ответ. Проверь, что модель поддерживает tool calling (GLM 4.7, Qwen, Llama 3.1+).*"
-        return ChatResponse(content=final, model=model, conversation_id=request.conversation_id)
+            final = "*Модель не вернула ответ. Проверь поддержку tool calling (Qwen, Llama 3.1+).*"
+        return ChatResponse(
+            content=final, model=model, conversation_id=request.conversation_id
+        )
 
     async def _execute_prompt_based(
         self, request: ChatRequest, model: str, fallback: str, executor: ToolExecutor
     ) -> ChatResponse:
         """Prompt-based ReAct fallback."""
         rag_context, project_map = await self._get_agent_context(request.message)
-        messages = self._build_initial_messages(request, rag_context=rag_context, project_map=project_map)
+        messages = self._build_initial_messages(
+            request, rag_context=rag_context, project_map=project_map
+        )
         full_content: list[str] = []
 
         for _ in range(self._max_iterations):
@@ -239,18 +259,21 @@ class AgentUseCase:
             obs_parts: list[str] = []
             for i, tc in enumerate(tool_calls, 1):
                 result = await executor.execute(tc.tool, tc.args)
-                obs_parts.append(f"[{i}] {tc.tool}: {result.content if result.success else f'Error: {result.error}'}")
+                part = result.content if result.success else f"Error: {result.error}"
+                obs_parts.append(f"[{i}] {tc.tool}: {part}")
             obs = "\n".join(obs_parts)
             messages.append(LLMMessage(role="assistant", content=content))
             messages.append(LLMMessage(role="user", content=f"Observation:\n{obs}"))
 
         final_content = "\n\n".join(full_content)
-        return ChatResponse(content=final_content, model=model, conversation_id=request.conversation_id)
+        return ChatResponse(
+            content=final_content, model=model, conversation_id=request.conversation_id
+        )
 
     async def execute_stream(
         self, request: ChatRequest
     ) -> AsyncIterator[tuple[str, str]]:
-        """Stream agent response with tool_call, tool_result, and proposed_edit events (Cursor-like apply/reject)."""
+        """Stream agent response: tool_call, tool_result, proposed_edit (Cursor-like)."""
         model, fallback = await self._model_selector.select_model(request.message)
         model = request.model or model
         propose_edits = getattr(request, "apply_edits_required", True)
@@ -347,7 +370,7 @@ class AgentUseCase:
             tool_calls = parse_all_tool_calls(content)
             if not tool_calls:
                 if not content.strip():
-                    fallback = "*Модель не вернула ответ. Для режима Агент нужна модель с поддержкой tool-calling (Qwen 2.5, Llama 3.1+).*"
+                    fallback = "*Модель не вернула ответ. Нужна модель с tool-calling (Qwen 2.5, Llama 3.1+).*"
                     yield ("content", fallback)
                 break
 
@@ -383,7 +406,9 @@ class AgentUseCase:
             messages.extend(request.history[-15:])
         user_content = request.message
         if request.active_file_path:
-            user_content = f"Current file (user focused): {request.active_file_path}\n\n---\n\n{user_content}"
+            user_content = (
+                f"Current file (user focused): {request.active_file_path}\n\n---\n\n{user_content}"
+            )
         if rag_context:
             user_content = f"{rag_context}\n\n---\n\n{user_content}"
         if request.context_files:

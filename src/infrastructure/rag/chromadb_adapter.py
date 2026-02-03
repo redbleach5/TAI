@@ -19,7 +19,6 @@ from src.domain.ports.config import RAGConfig
 from src.domain.ports.embeddings import EmbeddingsPort
 from src.domain.ports.rag import Chunk
 from src.infrastructure.rag.file_collector import (
-    collect_code_files,
     collect_code_files_with_stats,
     chunk_text,
 )

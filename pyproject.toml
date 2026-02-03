@@ -36,12 +36,27 @@ build-backend = "hatchling.build"
 packages = ["src"]
 
 [tool.ruff]
-line-length = 100
+line-length = 120
 target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
 ignore = []
+# Длинные строки в промптах и описаниях инструментов допустимы
+[tool.ruff.lint.per-file-ignores]
+"src/application/agent/ollama_tools.py" = ["E501"]
+"src/application/agent/tools.py" = ["E501"]
+"src/application/analysis/deep_analysis_prompts.py" = ["E501"]
+"src/infrastructure/services/assistant_modes.py" = ["E501"]
+"src/infrastructure/services/prompt_templates.py" = ["E501"]
+"src/infrastructure/agents/summarizer.py" = ["E501"]
+"src/infrastructure/analyzer/security_scanner.py" = ["E501"]
+"src/infrastructure/analyzer/coverage_collector.py" = ["E501"]
+"src/infrastructure/agents/analyzer.py" = ["E501"]
+"src/application/analysis/deep_analyzer.py" = ["E501"]
+"src/application/chat/use_case.py" = ["E501"]
+"src/infrastructure/llm/ollama.py" = ["E501"]
+"src/infrastructure/llm/openai_compatible.py" = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

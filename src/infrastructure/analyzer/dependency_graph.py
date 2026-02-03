@@ -217,7 +217,7 @@ def _find_unused_python_imports(
     content: str,
     imports: list[tuple[str, list[str]]],
 ) -> list[tuple[str, str]]:
-    """Для Python: определяет неиспользуемые импорты (имена не встречаются в коде после импортов)."""
+    """Для Python: неиспользуемые импорты (имена не встречаются в коде после импортов)."""
     unused: list[tuple[str, str]] = []
     try:
         tree = ast.parse(content)
@@ -348,7 +348,8 @@ def format_dependency_graph_markdown(result: DependencyGraphResult) -> str:
         for file_path, name in result.unused_imports[:50]:
             by_file.setdefault(file_path, []).append(name)
         for file_path, names in list(by_file.items())[:20]:
-            parts.append(f"- `{file_path}`: {", ".join(names)}\n")
+            names_str = ", ".join(names)
+            parts.append(f"- `{file_path}`: {names_str}\n")
         if len(result.unused_imports) > 50:
             parts.append(f"*… всего {len(result.unused_imports)} позиций*\n")
     else:

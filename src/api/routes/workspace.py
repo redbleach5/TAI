@@ -106,7 +106,7 @@ async def create_workspace(
     body: WorkspaceCreate,
     store: ProjectsStore = Depends(get_store),
 ):
-    """Create project folder if missing, then set as current workspace (Cursor-like: new project)."""
+    """Create project folder if missing, set as current workspace (Cursor-like)."""
     raw = body.path.strip()
     raw = os.path.expanduser(raw)
     p = Path(raw)

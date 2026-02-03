@@ -3,13 +3,11 @@
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from src.api.container import reset_container
 from src.api.dependencies import get_analyzer
 from src.infrastructure.analyzer import (
     FileMetrics,
-    ProjectAnalysis,
     ProjectAnalyzer,
     ReportGenerator,
     SecurityIssue,

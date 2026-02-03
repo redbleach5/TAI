@@ -3,7 +3,6 @@
 import ast
 from pathlib import Path
 
-import pytest
 
 from src.infrastructure.analyzer.file_metrics import (
     compute_file_metrics,

@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-import pytest
 
 from src.infrastructure.analyzer.security_scanner import (
     SECURITY_PATTERNS,

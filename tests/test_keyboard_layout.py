@@ -1,6 +1,5 @@
 """Tests for Keyboard Layout Fixer."""
 
-import pytest
 from src.infrastructure.services.keyboard_layout import (
     EN_TO_RU,
     RU_TO_EN,

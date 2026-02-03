@@ -1,6 +1,5 @@
 """Tests for Code Security Checker."""
 
-import pytest
 from src.api.dependencies import get_security_checker
 from src.infrastructure.services.code_security import (
     CodeSecurityChecker,
@@ -36,7 +35,9 @@ print(hello("World"))
         checker = CodeSecurityChecker()
         code = "import subprocess\nsubprocess.run(['ls'])"
         result = checker.check(code)
-        assert any("subprocess" in w.lower() for w in result.warnings) or any("subprocess" in b.lower() for b in result.blocked)
+        has_w = any("subprocess" in w.lower() for w in result.warnings)
+        has_b = any("subprocess" in b.lower() for b in result.blocked)
+        assert has_w or has_b
 
     def test_dangerous_system_call_blocked(self):
         """Dangerous system calls should be blocked."""

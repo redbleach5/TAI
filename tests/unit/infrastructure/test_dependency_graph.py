@@ -3,7 +3,6 @@
 import tempfile
 from pathlib import Path
 
-import pytest
 
 from src.infrastructure.analyzer.dependency_graph import (
     build_dependency_graph,

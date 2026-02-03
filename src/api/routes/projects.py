@@ -1,13 +1,12 @@
 """Projects API - manage multiple project contexts."""
 
 import os
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from src.api.dependencies import get_rag_adapter, get_store, limiter
-from src.api.store import Project, ProjectsStore
+from src.api.store import ProjectsStore
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 
 router = APIRouter(prefix="/projects", tags=["projects"])

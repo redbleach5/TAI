@@ -3,7 +3,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.domain.ports.llm import LLMMessage, LLMResponse
 from src.infrastructure.agents.planner import planner_node
 from src.infrastructure.agents.tests_writer import tests_writer_node as write_tests_node
 from src.infrastructure.agents.coder import coder_node
