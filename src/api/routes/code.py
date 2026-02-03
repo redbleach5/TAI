@@ -76,15 +76,15 @@ async def run_code(
     metrics: PerformanceMetrics = Depends(get_metrics),
 ) -> CodeRunResponse:
     """Execute Python code in a sandboxed subprocess.
-    
+
     Security: Code is checked for dangerous operations before execution.
     """
     if not body.code.strip():
         return CodeRunResponse(success=False, output="", error="Код пуст")
-    
+
     # Security check
     security_result = checker.check(body.code)
-    
+
     if not security_result.is_safe:
         blocked_str = "; ".join(security_result.blocked)
         return CodeRunResponse(
@@ -92,9 +92,10 @@ async def run_code(
             output="",
             error=f"Security check failed: {blocked_str}",
         )
-    
+
     # Run with metrics
     import time
+
     start = time.perf_counter()
     success, output, error = await asyncio.to_thread(
         _run_code_sync,
@@ -103,7 +104,7 @@ async def run_code(
         body.timeout,
     )
     metrics.record("code_execution", time.perf_counter() - start)
-    
+
     # Add security warnings to output if any
     if security_result.warnings:
         warnings_str = "\n".join(f"⚠️ {w}" for w in security_result.warnings)
@@ -121,7 +122,7 @@ async def check_code_security(
 ):
     """Check code for security issues without executing."""
     result = checker.check(body.code)
-    
+
     return {
         "is_safe": result.is_safe,
         "warnings": result.warnings,

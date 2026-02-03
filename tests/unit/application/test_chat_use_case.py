@@ -1,7 +1,8 @@
 """Tests for ChatUseCase."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.application.chat.dto import ChatRequest
 from src.application.chat.use_case import ChatUseCase
@@ -15,9 +16,7 @@ from src.domain.services.model_selector import ModelSelector
 def mock_llm():
     """Mock LLM adapter."""
     llm = MagicMock()
-    llm.generate = AsyncMock(
-        return_value=LLMResponse(content="LLM response", model="test-model", done=True)
-    )
+    llm.generate = AsyncMock(return_value=LLMResponse(content="LLM response", model="test-model", done=True))
     return llm
 
 
@@ -31,9 +30,7 @@ def mock_llm_stream():
             yield chunk
 
     llm.generate_stream = stream_gen
-    llm.generate = AsyncMock(
-        return_value=LLMResponse(content="LLM response", model="test-model", done=True)
-    )
+    llm.generate = AsyncMock(return_value=LLMResponse(content="LLM response", model="test-model", done=True))
     return llm
 
 

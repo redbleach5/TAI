@@ -8,14 +8,14 @@ import httpx
 
 class HTTPPool:
     """Shared HTTP connection pool for async requests.
-    
+
     Reuses connections across requests for better performance.
     Thread-safe and handles connection lifecycle.
     """
-    
+
     _instance: "HTTPPool | None" = None
     _lock: asyncio.Lock | None = None
-    
+
     def __init__(self):
         self._client: httpx.AsyncClient | None = None
         self._timeout = httpx.Timeout(30.0, connect=10.0)
@@ -24,18 +24,18 @@ class HTTPPool:
             max_connections=50,
             keepalive_expiry=30.0,
         )
-    
+
     @classmethod
     async def get_instance(cls) -> "HTTPPool":
         """Get singleton instance (async-safe)."""
         if cls._lock is None:
             cls._lock = asyncio.Lock()
-        
+
         async with cls._lock:
             if cls._instance is None:
                 cls._instance = HTTPPool()
             return cls._instance
-    
+
     async def get_client(self) -> httpx.AsyncClient:
         """Get or create the shared HTTP client."""
         if self._client is None or self._client.is_closed:
@@ -48,13 +48,13 @@ class HTTPPool:
                 },
             )
         return self._client
-    
+
     async def close(self) -> None:
         """Close the HTTP client."""
         if self._client and not self._client.is_closed:
             await self._client.aclose()
             self._client = None
-    
+
     @classmethod
     async def reset(cls) -> None:
         """Reset the singleton (for testing)."""
@@ -66,7 +66,7 @@ class HTTPPool:
 @asynccontextmanager
 async def get_http_client():
     """Context manager for getting HTTP client from pool.
-    
+
     Usage:
         async with get_http_client() as client:
             response = await client.get(url)
@@ -85,7 +85,7 @@ async def fetch_url(
     timeout: float | None = None,
 ) -> httpx.Response:
     """Convenience function for HTTP requests using shared pool.
-    
+
     Args:
         url: URL to fetch
         method: HTTP method (GET, POST, etc.)
@@ -93,7 +93,7 @@ async def fetch_url(
         data: Form data (for POST)
         headers: Additional headers
         timeout: Request timeout (overrides default)
-    
+
     Returns:
         httpx.Response object
     """
@@ -103,7 +103,7 @@ async def fetch_url(
             kwargs["data"] = data
         if timeout:
             kwargs["timeout"] = timeout
-        
+
         if method.upper() == "GET":
             return await client.get(url, **kwargs)
         elif method.upper() == "POST":
@@ -118,7 +118,7 @@ async def fetch_json(
     headers: dict | None = None,
 ) -> dict:
     """Fetch JSON from URL using shared pool.
-    
+
     Returns:
         Parsed JSON as dict, or empty dict on error
     """

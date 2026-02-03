@@ -3,7 +3,6 @@
 import tempfile
 from pathlib import Path
 
-
 from src.infrastructure.analyzer.dependency_graph import (
     build_dependency_graph,
     format_dependency_graph_markdown,
@@ -69,12 +68,14 @@ class TestFormatDependencyGraphMarkdown:
     def test_empty_result_returns_empty_string(self):
         """Empty result produces empty string."""
         from src.infrastructure.analyzer.dependency_graph import DependencyGraphResult
+
         result = DependencyGraphResult()
         assert format_dependency_graph_markdown(result) == ""
 
     def test_with_cycles_contains_section(self):
         """Result with cycles contains cycles section."""
         from src.infrastructure.analyzer.dependency_graph import DependencyGraphResult
+
         result = DependencyGraphResult(
             node_count=2,
             edge_count=2,

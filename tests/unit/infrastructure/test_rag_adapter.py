@@ -1,10 +1,11 @@
 """Tests for ChromaDB RAG adapter."""
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock
-from pathlib import Path
-import tempfile
 import os
+import tempfile
+from pathlib import Path
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.domain.ports.config import RAGConfig
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
@@ -77,9 +78,9 @@ class TestCollectCodeFiles:
             # Create a Python file
             py_file = Path(tmpdir) / "test.py"
             py_file.write_text("print('hello')")
-            
+
             result = collect_code_files(Path(tmpdir))
-            
+
             assert len(result) == 1
             assert result[0][0] == "test.py"
             assert "print('hello')" in result[0][1]
@@ -89,7 +90,7 @@ class TestCollectCodeFiles:
         with tempfile.TemporaryDirectory() as tmpdir:
             txt_file = Path(tmpdir) / "readme.txt"
             txt_file.write_text("readme content")
-            
+
             result = collect_code_files(Path(tmpdir))
             assert len(result) == 1
 
@@ -100,7 +101,7 @@ class TestCollectCodeFiles:
             venv_dir.mkdir()
             venv_file = venv_dir / "test.py"
             venv_file.write_text("venv code")
-            
+
             result = collect_code_files(Path(tmpdir))
             assert result == []
 
@@ -111,7 +112,7 @@ class TestCollectCodeFiles:
             cache_dir.mkdir()
             cache_file = cache_dir / "test.py"
             cache_file.write_text("cached")
-            
+
             result = collect_code_files(Path(tmpdir))
             assert result == []
 
@@ -122,9 +123,9 @@ class TestCollectCodeFiles:
             sub_dir.mkdir()
             (sub_dir / "nested.py").write_text("nested")
             (Path(tmpdir) / "root.py").write_text("root")
-            
+
             result = collect_code_files(Path(tmpdir))
-            
+
             assert len(result) == 2
             paths = [r[0] for r in result]
             assert "root.py" in paths
@@ -230,10 +231,10 @@ class TestChromaDBRAGAdapter:
             # Create a Python file to index
             py_file = Path(tmpdir) / "code.py"
             py_file.write_text("def hello(): pass")
-            
+
             # Index
             await adapter.index_path(tmpdir)
-            
+
             # Embeddings should have been called
             mock_embeddings.embed_batch.assert_called()
 

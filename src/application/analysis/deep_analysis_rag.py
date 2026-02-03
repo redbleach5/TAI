@@ -44,9 +44,7 @@ async def gather_initial_rag(rag: Any) -> str:
     for q in RAG_QUERIES:
         if len(chunks_by_query) >= RAG_MAX_CHUNKS:
             break
-        results = await rag.search(
-            q, limit=RAG_CHUNKS_PER_QUERY, min_score=RAG_MIN_SCORE
-        )
+        results = await rag.search(q, limit=RAG_CHUNKS_PER_QUERY, min_score=RAG_MIN_SCORE)
         for c in results:
             src = c.metadata.get("source", "")
             if src not in seen_sources:
@@ -55,11 +53,7 @@ async def gather_initial_rag(rag: Any) -> str:
                 chunks_by_query.append(f"### {src}\n```\n{content}\n```")
                 if len(chunks_by_query) >= RAG_MAX_CHUNKS:
                     break
-    return (
-        "\n\n".join(chunks_by_query)
-        if chunks_by_query
-        else "Не найдено релевантных чанков."
-    )
+    return "\n\n".join(chunks_by_query) if chunks_by_query else "Не найдено релевантных чанков."
 
 
 async def targeted_rag(rag: Any, modules: list[str]) -> str:

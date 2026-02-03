@@ -75,7 +75,7 @@ class TestGitLog:
         """Test log entry has correct structure."""
         response = client.get("/git/log?limit=1")
         data = response.json()
-        
+
         if data.get("entries"):
             entry = data["entries"][0]
             assert "hash" in entry
@@ -112,10 +112,7 @@ class TestGitCommit:
 
     def test_commit_empty_message(self):
         """Test commit with empty message fails."""
-        response = client.post(
-            "/git/commit",
-            json={"message": ""}
-        )
+        response = client.post("/git/commit", json={"message": ""})
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is False
@@ -123,9 +120,6 @@ class TestGitCommit:
 
     def test_commit_nothing_to_commit(self):
         """Test commit when nothing staged."""
-        response = client.post(
-            "/git/commit",
-            json={"message": "test commit", "files": []}
-        )
+        response = client.post("/git/commit", json={"message": "test commit", "files": []})
         # May succeed or fail depending on repo state
         assert response.status_code == 200

@@ -18,16 +18,16 @@ from chromadb.config import Settings
 from src.domain.ports.config import RAGConfig
 from src.domain.ports.embeddings import EmbeddingsPort
 from src.domain.ports.rag import Chunk
-from src.infrastructure.rag.file_collector import (
-    collect_code_files_with_stats,
-    chunk_text,
-)
-from src.infrastructure.rag.index_state import IndexState
 from src.infrastructure.agents.project_mapper import (
     build_project_map,
-    save_project_map,
     load_project_map,
+    save_project_map,
 )
+from src.infrastructure.rag.file_collector import (
+    chunk_text,
+    collect_code_files_with_stats,
+)
+from src.infrastructure.rag.index_state import IndexState
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +61,12 @@ class ChromaDBRAGAdapter:
         max_tokens: int | None = None,
     ) -> list[Chunk]:
         """Search for relevant chunks by query.
-        
+
         Handles ChromaDB query failures gracefully.
         """
         if not query.strip():
             return []
-        
+
         try:
             count = self._collection.count()
             if count == 0:
@@ -74,7 +74,7 @@ class ChromaDBRAGAdapter:
         except Exception as e:
             logger.error(f"Failed to get collection count: {e}")
             return []
-        
+
         try:
             query_embedding = await self._embeddings.embed(query.strip())
             if not query_embedding:
@@ -83,7 +83,7 @@ class ChromaDBRAGAdapter:
         except Exception as e:
             logger.error(f"Failed to embed query: {e}")
             return []
-        
+
         try:
             result = self._collection.query(
                 query_embeddings=[query_embedding],
@@ -93,32 +93,32 @@ class ChromaDBRAGAdapter:
         except Exception as e:
             logger.error(f"ChromaDB query failed: {e}")
             return []
-        
+
         documents = result.get("documents", [[]])[0] or []
         metadatas = result.get("metadatas", [[]])[0] or []
         distances = result.get("distances", [[]])[0] or []
-        
+
         chunks: list[Chunk] = []
         total_chars = 0
         max_chars = max_tokens * 4 if max_tokens else None
-        
+
         for i, doc in enumerate(documents):
             if not doc:
                 continue
-            
+
             meta = metadatas[i] if i < len(metadatas) else {}
             dist = distances[i] if i < len(distances) else 0.0
             score = max(0.0, min(1.0, 1 - (dist / 2))) if dist is not None else 1.0
-            
+
             if score < min_score:
                 continue
-            
+
             if max_chars and total_chars + len(doc) > max_chars:
                 break
-            
+
             total_chars += len(doc)
             chunks.append(Chunk(content=doc, metadata=meta or {}, score=score))
-        
+
         return chunks
 
     async def search_by_file(self, filename: str, limit: int = 10) -> list[Chunk]:
@@ -126,22 +126,22 @@ class ChromaDBRAGAdapter:
         count = self._collection.count()
         if count == 0:
             return []
-        
+
         result = self._collection.get(
             where={"source": {"$eq": filename}},
             limit=limit,
             include=["documents", "metadatas"],
         )
-        
+
         documents = result.get("documents", []) or []
         metadatas = result.get("metadatas", []) or []
-        
+
         chunks: list[Chunk] = []
         for i, doc in enumerate(documents):
             if doc:
                 meta = metadatas[i] if i < len(metadatas) else {}
                 chunks.append(Chunk(content=doc, metadata=meta or {}, score=1.0))
-        
+
         return chunks
 
     def get_stats(self) -> dict:
@@ -198,15 +198,12 @@ class ChromaDBRAGAdapter:
 
         files_with_stats = collect_code_files_with_stats(base)
         current_files: dict[str, dict[str, float | int]] = {
-            rel: {"mtime": mtime, "size": size}
-            for rel, _, mtime, size in files_with_stats
+            rel: {"mtime": mtime, "size": size} for rel, _, mtime, size in files_with_stats
         }
 
         if incremental:
             indexed = self._index_state.get_indexed_files(base_str)
-            new_paths, changed_paths, deleted_paths = IndexState.diff_files(
-                current_files, indexed
-            )
+            new_paths, changed_paths, deleted_paths = IndexState.diff_files(current_files, indexed)
             unchanged_count = len(current_files) - len(new_paths) - len(changed_paths)
             stats["files_added"] = len(new_paths)
             stats["files_updated"] = len(changed_paths)
@@ -221,9 +218,7 @@ class ChromaDBRAGAdapter:
             # Only index new and changed files
             to_index = set(new_paths) | set(changed_paths)
             files_to_process = [
-                (rel, content, mtime, size)
-                for rel, content, mtime, size in files_with_stats
-                if rel in to_index
+                (rel, content, mtime, size) for rel, content, mtime, size in files_with_stats if rel in to_index
             ]
         else:
             self.clear()
@@ -276,16 +271,16 @@ class ChromaDBRAGAdapter:
                 self._config.chunk_overlap,
             )
             for j, chunk in enumerate(chunks):
-                chunk_id = hashlib.sha256(
-                    f"{rel_path}:{j}".encode()
-                ).hexdigest()[:16]
+                chunk_id = hashlib.sha256(f"{rel_path}:{j}".encode()).hexdigest()[:16]
                 all_chunks.append(chunk)
                 all_ids.append(chunk_id)
-                all_metadatas.append({
-                    "source": rel_path,
-                    "chunk": j,
-                    "extension": ext,
-                })
+                all_metadatas.append(
+                    {
+                        "source": rel_path,
+                        "chunk": j,
+                        "extension": ext,
+                    }
+                )
                 stats["total_chars"] += len(chunk)
 
         if not all_chunks:
@@ -324,19 +319,13 @@ class ChromaDBRAGAdapter:
                 except Exception as e:
                     last_error = e
                     if attempt < 2:
-                        logger.warning(
-                            f"Batch {batch_num} embedding failed (attempt {attempt + 1}): {e}"
-                        )
+                        logger.warning(f"Batch {batch_num} embedding failed (attempt {attempt + 1}): {e}")
                         await asyncio.sleep(2**attempt)
                     else:
-                        logger.error(
-                            f"Batch {batch_num} embedding failed after 3 attempts: {e}"
-                        )
+                        logger.error(f"Batch {batch_num} embedding failed after 3 attempts: {e}")
 
             if embeddings is None:
-                logger.error(
-                    f"Skipping batch {batch_num} due to embedding failure: {last_error}"
-                )
+                logger.error(f"Skipping batch {batch_num} due to embedding failure: {last_error}")
                 continue
 
             try:
@@ -353,16 +342,11 @@ class ChromaDBRAGAdapter:
                 await on_progress(batch_num, total_batches)
             if total_batches > 5 and batch_num % max(1, total_batches // 10) == 0:
                 progress_pct = round(batch_num / total_batches * 100)
-                logger.info(
-                    f"Indexing progress: {progress_pct}% ({batch_num}/{total_batches})"
-                )
+                logger.info(f"Indexing progress: {progress_pct}% ({batch_num}/{total_batches})")
 
         self._index_state.update_state(base_str, current_files)
         stats["total_chunks"] = self._collection.count()
-        logger.info(
-            f"Indexing complete: {len(all_chunks)} chunks, "
-            f"total in index: {stats['total_chunks']}"
-        )
+        logger.info(f"Indexing complete: {len(all_chunks)} chunks, total in index: {stats['total_chunks']}")
         self._index_stats = stats
         return stats
 

@@ -34,9 +34,11 @@ async def chat_stream_get(
         message=message,
         conversation_id=conversation_id,
     )
+
     async def event_generator():
         async for kind, chunk in use_case.execute_stream(chat_request):
             yield {"event": kind, "data": chunk}
+
     return EventSourceResponse(event_generator())
 
 
@@ -48,7 +50,9 @@ async def chat_stream_post(
     use_case: ChatUseCase = Depends(get_chat_use_case),
 ):
     """Stream LLM response via SSE (POST - supports context_files from IDE)."""
+
     async def event_generator():
         async for kind, chunk in use_case.execute_stream(chat_request):
             yield {"event": kind, "data": chunk}
+
     return EventSourceResponse(event_generator())

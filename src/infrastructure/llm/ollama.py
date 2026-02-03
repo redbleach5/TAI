@@ -7,14 +7,14 @@ import httpx
 from ollama import AsyncClient
 
 from src.domain.ports.config import OllamaConfig
-
-logger = logging.getLogger(__name__)
 from src.domain.ports.llm import LLMMessage, LLMResponse
 from src.infrastructure.resilience import (
-    get_circuit_breaker,
     CircuitBreakerConfig,
     CircuitOpenError,
+    get_circuit_breaker,
 )
+
+logger = logging.getLogger(__name__)
 
 # Таймаут подключения — при недоступности быстрый фейл (старт не блокируется надолго)
 DEFAULT_CONNECT_TIMEOUT = 5.0
@@ -36,7 +36,7 @@ class OllamaAdapter:
         )
         self._client = AsyncClient(host=config.host, timeout=timeout)
         self._available: bool | None = None
-        
+
         # Circuit Breaker для защиты от каскадных сбоев
         self._breaker = get_circuit_breaker(
             "ollama",
@@ -75,7 +75,7 @@ class OllamaAdapter:
             )
             content = response.message.content if response.message else ""
             return LLMResponse(content=content, model=response.model, done=True)
-        
+
         try:
             return await self._breaker.call(_call)
         except CircuitOpenError:
@@ -126,7 +126,11 @@ class OllamaAdapter:
             if not resp.models:
                 return []
             # ollama package: Model has 'model' attr (newer) or 'name' (legacy)
-            return [getattr(m, "model", getattr(m, "name", "")) for m in resp.models if getattr(m, "model", getattr(m, "name", ""))]
+            return [
+                getattr(m, "model", getattr(m, "name", ""))
+                for m in resp.models
+                if getattr(m, "model", getattr(m, "name", ""))
+            ]
         except (httpx.ConnectTimeout, httpx.ConnectError, ConnectionError) as e:
             logger.debug("Ollama list_models failed (unreachable): %s", e)
             return []
@@ -158,9 +162,14 @@ class OllamaAdapter:
             for tc in tool_calls:
                 fn = getattr(tc, "function", tc) if hasattr(tc, "function") else tc
                 name = getattr(fn, "name", fn.get("name", "")) if isinstance(fn, dict) else getattr(fn, "name", "")
-                args = getattr(fn, "arguments", fn.get("arguments", {})) if isinstance(fn, dict) else getattr(fn, "arguments", {})
+                args = (
+                    getattr(fn, "arguments", fn.get("arguments", {}))
+                    if isinstance(fn, dict)
+                    else getattr(fn, "arguments", {})
+                )
                 if isinstance(args, str):
                     import json
+
                     try:
                         args = json.loads(args) if args else {}
                     except json.JSONDecodeError:
@@ -182,6 +191,7 @@ class OllamaAdapter:
         Merges tool_calls by index (Ollama streams partial tool_calls per chunk).
         """
         import json as _json
+
         model = model or "llama2"
         options = self._ollama_options(temperature)
         try:

@@ -1,7 +1,8 @@
 """Tests for WorkflowUseCase."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 from src.application.workflow.dto import WorkflowRequest
 from src.application.workflow.use_case import WorkflowUseCase
@@ -12,10 +13,10 @@ from src.domain.services.model_selector import ModelSelector
 def mock_llm():
     """Mock LLM adapter."""
     llm = MagicMock()
-    
+
     async def stream_gen(*args, **kwargs):
         yield "Generated content"
-    
+
     llm.generate_stream = stream_gen
     return llm
 
@@ -73,7 +74,7 @@ class TestWorkflowUseCaseExecute:
     async def test_code_request_detects_intent(self, use_case):
         """Code request detects code intent."""
         request = WorkflowRequest(task="напиши функцию сортировки")
-        
+
         # Test only intent detection (workflow may fail without real LLM)
         try:
             response = await use_case.execute(request)
@@ -91,7 +92,7 @@ class TestWorkflowUseCaseStream:
         """Greeting yields done event immediately."""
         request = WorkflowRequest(task="привет")
         events = []
-        
+
         async for event in use_case.execute_stream(request):
             events.append(event)
 
@@ -102,7 +103,7 @@ class TestWorkflowUseCaseStream:
     async def test_stream_code_starts_workflow(self, use_case):
         """Code request starts workflow stream."""
         request = WorkflowRequest(task="напиши код")
-        
+
         events = []
         try:
             async for event in use_case.execute_stream(request):
@@ -113,7 +114,7 @@ class TestWorkflowUseCaseStream:
         except Exception:
             # Some failures expected without real LLM
             pass
-        
+
         # Should have at least started (intent event)
         # Event list may be empty if LLM fails immediately
         assert isinstance(events, list)
@@ -131,9 +132,9 @@ class TestWorkflowUseCaseIntegration:
             model_selector=model_selector,
             rag=mock_rag,
         )
-        
+
         request = WorkflowRequest(task="create a hello world function")
-        
+
         # Execute without mocking internal methods
         try:
             response = await use_case.execute(request)

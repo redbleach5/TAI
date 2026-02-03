@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 from src.infrastructure.analyzer.security_scanner import (
     SECURITY_PATTERNS,
     check_file_security,

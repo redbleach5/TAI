@@ -1,4 +1,5 @@
 """ModelRouter unit tests."""
+
 from src.domain.ports.config import ModelConfig, ProviderModelSet
 from src.domain.services.model_router import ModelRouter
 

@@ -26,21 +26,23 @@ _registry_lock = threading.Lock()
 
 class CircuitState(Enum):
     """Состояния Circuit Breaker."""
-    CLOSED = "closed"      # Нормальная работа
-    OPEN = "open"          # Сервис недоступен
+
+    CLOSED = "closed"  # Нормальная работа
+    OPEN = "open"  # Сервис недоступен
     HALF_OPEN = "half_open"  # Пробный запрос
 
 
 @dataclass
 class CircuitBreakerConfig:
     """Конфигурация Circuit Breaker."""
-    failure_threshold: int = 5      # Ошибок до открытия
+
+    failure_threshold: int = 5  # Ошибок до открытия
     recovery_timeout: float = 30.0  # Секунд до попытки восстановления
-    success_threshold: int = 2      # Успехов для закрытия
-    
+    success_threshold: int = 2  # Успехов для закрытия
+
     # Исключения, которые считаются ошибками (исключая системные)
     tracked_exceptions: tuple = (Exception,)
-    
+
     def __post_init__(self) -> None:
         """Validate configuration."""
         if self.failure_threshold < 1:
@@ -52,7 +54,7 @@ class CircuitBreakerConfig:
         # Exclude system exceptions that shouldn't be tracked
         if self.tracked_exceptions == (Exception,):
             self.tracked_exceptions = (Exception,)  # Keep as-is but document
-    
+
     def is_tracked(self, exc: BaseException) -> bool:
         """Check if exception should be tracked (excludes system exceptions)."""
         if isinstance(exc, (SystemExit, KeyboardInterrupt, GeneratorExit)):
@@ -63,51 +65,52 @@ class CircuitBreakerConfig:
 @dataclass
 class CircuitBreaker:
     """Circuit Breaker для защиты от каскадных сбоев.
-    
+
     Использование:
         breaker = CircuitBreaker("ollama")
-        
+
         try:
             result = await breaker.call(async_function, arg1, arg2)
         except CircuitOpenError:
             # Сервис недоступен, использовать fallback
             pass
     """
+
     name: str
     config: CircuitBreakerConfig = field(default_factory=CircuitBreakerConfig)
-    
+
     _state: CircuitState = field(default=CircuitState.CLOSED, init=False)
     _failure_count: int = field(default=0, init=False)
     _success_count: int = field(default=0, init=False)
     _last_failure_time: float = field(default=0.0, init=False)
     _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
-    
+
     @property
     def state(self) -> CircuitState:
         """Текущее состояние."""
         return self._state
-    
+
     @property
     def is_closed(self) -> bool:
         """Можно ли делать запросы."""
         return self._state == CircuitState.CLOSED
-    
+
     def _should_try_reset(self) -> bool:
         """Проверить, пора ли попробовать восстановление."""
         if self._state != CircuitState.OPEN:
             return False
         return time.time() - self._last_failure_time >= self.config.recovery_timeout
-    
+
     async def call(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Выполнить функцию через Circuit Breaker.
-        
+
         Raises:
             CircuitOpenError: Если circuit открыт
             ValueError: Если func не callable
         """
         if not callable(func):
             raise ValueError("func must be callable")
-        
+
         async with self._lock:
             # Проверка состояния
             if self._state == CircuitState.OPEN:
@@ -117,26 +120,24 @@ class CircuitBreaker:
                     logger.debug(f"Circuit '{self.name}' transitioned to HALF_OPEN")
                 else:
                     retry_in = max(0, self.config.recovery_timeout - (time.time() - self._last_failure_time))
-                    raise CircuitOpenError(
-                        f"Circuit '{self.name}' is OPEN. Retry in {retry_in:.1f}s"
-                    )
-        
+                    raise CircuitOpenError(f"Circuit '{self.name}' is OPEN. Retry in {retry_in:.1f}s")
+
         # Выполнение запроса
         try:
             if asyncio.iscoroutinefunction(func):
                 result = await func(*args, **kwargs)
             else:
                 result = func(*args, **kwargs)
-            
+
             await self._on_success()
             return result
-            
+
         except BaseException as e:
             # Only track configured exceptions, not system exceptions
             if self.config.is_tracked(e):
                 await self._on_failure()
             raise
-    
+
     async def _on_success(self) -> None:
         """Обработка успешного вызова."""
         async with self._lock:
@@ -150,26 +151,26 @@ class CircuitBreaker:
             elif self._state == CircuitState.CLOSED:
                 # Reset failure count on any success in CLOSED state
                 self._failure_count = 0
-    
+
     async def _on_failure(self) -> None:
         """Обработка неудачного вызова."""
         async with self._lock:
             self._failure_count += 1
             self._last_failure_time = time.time()
-            
+
             if self._state == CircuitState.HALF_OPEN:
                 # Одна ошибка в HALF_OPEN - снова OPEN
                 self._state = CircuitState.OPEN
             elif self._failure_count >= self.config.failure_threshold:
                 self._state = CircuitState.OPEN
-    
+
     def reset(self) -> None:
         """Сбросить состояние (для тестов)."""
         self._state = CircuitState.CLOSED
         self._failure_count = 0
         self._success_count = 0
         self._last_failure_time = 0.0
-    
+
     def get_stats(self) -> dict:
         """Получить статистику."""
         return {
@@ -183,6 +184,7 @@ class CircuitBreaker:
 
 class CircuitOpenError(Exception):
     """Ошибка: Circuit Breaker открыт."""
+
     pass
 
 
@@ -195,13 +197,13 @@ def get_circuit_breaker(
     config: CircuitBreakerConfig | None = None,
 ) -> CircuitBreaker:
     """Получить или создать Circuit Breaker по имени.
-    
+
     Thread-safe: uses double-checked locking pattern.
     """
     # Fast path without lock
     if name in _breakers:
         return _breakers[name]
-    
+
     # Slow path with lock
     with _registry_lock:
         # Double-check after acquiring lock

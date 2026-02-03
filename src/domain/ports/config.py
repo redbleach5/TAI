@@ -76,7 +76,7 @@ class OllamaConfig(BaseModel):
     timeout: int = 120
     pool_size: int = 4
     # Optional: maximize context/throughput. None = use model defaults.
-    num_ctx: int | None = None   # Context window (e.g. 32768, 131072). More = longer chats, more VRAM.
+    num_ctx: int | None = None  # Context window (e.g. 32768, 131072). More = longer chats, more VRAM.
     num_predict: int | None = None  # Max tokens to generate (-1 = no limit). None = model default.
 
 

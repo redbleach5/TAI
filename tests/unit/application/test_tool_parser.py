@@ -1,9 +1,8 @@
 """Tests for tool parser (Agent ReAct format)."""
 
-
 from src.application.agent.tool_parser import (
-    parse_tool_call,
     parse_all_tool_calls,
+    parse_tool_call,
     strip_tool_call_from_content,
 )
 
@@ -73,7 +72,7 @@ class TestStripToolCall:
 
     def test_strips_single(self):
         """Remove single tool call block."""
-        content = "Before\n<tool_call>{\"tool\": \"x\"}</tool_call>\nAfter"
+        content = 'Before\n<tool_call>{"tool": "x"}</tool_call>\nAfter'
         assert "Before" in strip_tool_call_from_content(content)
         assert "After" in strip_tool_call_from_content(content)
         assert "tool_call" not in strip_tool_call_from_content(content)

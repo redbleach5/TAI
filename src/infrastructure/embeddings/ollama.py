@@ -42,13 +42,13 @@ class OllamaEmbeddingsAdapter:
     )
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Embed multiple texts.
-        
+
         Retries up to 3 times with exponential backoff on network errors.
         Validates response structure.
         """
         if not texts:
             return []
-        
+
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 resp = await client.post(
@@ -66,15 +66,15 @@ class OllamaEmbeddingsAdapter:
         except httpx.NetworkError as e:
             logger.warning(f"Ollama network error: {e}")
             raise
-        
+
         embeddings = data.get("embeddings", [])
-        
+
         # Validate count matches
         if len(embeddings) != len(texts):
             logger.warning(f"Embedding count mismatch: got {len(embeddings)}, expected {len(texts)}")
             # Pad or truncate
             while len(embeddings) < len(texts):
                 embeddings.append([])
-            embeddings = embeddings[:len(texts)]
-        
+            embeddings = embeddings[: len(texts)]
+
         return embeddings

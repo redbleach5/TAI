@@ -4,8 +4,8 @@ import pytest
 
 from src.infrastructure.llm.reasoning_parser import (
     parse_reasoning_chunk,
-    stream_with_reasoning,
     stream_reasoning_chunks,
+    stream_with_reasoning,
 )
 
 
@@ -47,9 +47,7 @@ class TestParseReasoningChunk:
 
     def test_multiple_think_blocks(self):
         """Multiple think blocks in sequence."""
-        buffer, emitted = parse_reasoning_chunk(
-            "", "<think>first</think>middle<think>second</think>end"
-        )
+        buffer, emitted = parse_reasoning_chunk("", "<think>first</think>middle<think>second</think>end")
         # The parser handles first block, then re-parses with new content
         assert ("thinking", "first") in emitted
         assert any("middle" in e[1] for e in emitted if e[0] == "content")
@@ -93,6 +91,7 @@ class TestStreamWithReasoning:
     @pytest.mark.asyncio
     async def test_simple_stream(self):
         """Simple stream without think blocks."""
+
         async def chunks():
             yield "Hello "
             yield "world"
@@ -106,6 +105,7 @@ class TestStreamWithReasoning:
     @pytest.mark.asyncio
     async def test_stream_with_think(self):
         """Stream with think block."""
+
         async def chunks():
             yield "<think>reasoning"
             yield "</think>answer"
@@ -132,6 +132,7 @@ class TestStreamWithReasoning:
     @pytest.mark.asyncio
     async def test_remaining_buffer_emitted(self):
         """Remaining buffer emitted as content at end."""
+
         async def chunks():
             yield "partial content"
 
@@ -145,6 +146,7 @@ class TestStreamReasoningChunks:
     @pytest.mark.asyncio
     async def test_yields_content(self):
         """Yields content chunks."""
+
         async def chunks():
             yield "Hello world"
 
@@ -157,6 +159,7 @@ class TestStreamReasoningChunks:
     @pytest.mark.asyncio
     async def test_yields_thinking_and_content(self):
         """Yields both thinking and content."""
+
         async def chunks():
             yield "<think>reasoning</think>answer"
 
@@ -169,6 +172,7 @@ class TestStreamReasoningChunks:
     @pytest.mark.asyncio
     async def test_buffered_content_yielded(self):
         """Buffered content yielded at end."""
+
         async def chunks():
             yield "start "
             yield "end"

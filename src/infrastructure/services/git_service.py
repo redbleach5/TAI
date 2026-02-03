@@ -8,6 +8,7 @@ from pathlib import Path
 @dataclass
 class GitStatus:
     """Git repository status."""
+
     branch: str
     files: list[dict] = field(default_factory=list)
     ahead: int = 0
@@ -17,6 +18,7 @@ class GitStatus:
 @dataclass
 class GitCommit:
     """Git commit info."""
+
     hash: str
     message: str
     author: str
@@ -26,6 +28,7 @@ class GitCommit:
 @dataclass
 class GitResult:
     """Result of Git operation."""
+
     success: bool
     data: dict | None = None
     error: str | None = None
@@ -33,15 +36,16 @@ class GitResult:
 
 class GitService:
     """Service for Git operations."""
-    
+
     def __init__(self, cwd: str | None = None):
         """Initialize with working directory."""
         self._cwd = cwd or str(Path.cwd())
-    
+
     async def _run(self, args: list[str]) -> tuple[int, str, str]:
         """Run git command and return (code, stdout, stderr)."""
         proc = await asyncio.create_subprocess_exec(
-            "git", *args,
+            "git",
+            *args,
             cwd=self._cwd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -52,12 +56,12 @@ class GitService:
             stdout.decode("utf-8", errors="replace"),
             stderr.decode("utf-8", errors="replace"),
         )
-    
+
     async def is_repo(self) -> bool:
         """Check if current directory is a Git repo."""
         code, _, _ = await self._run(["rev-parse", "--git-dir"])
         return code == 0
-    
+
     async def status(self) -> GitResult:
         """Get repository status."""
         # Get current branch
@@ -65,7 +69,7 @@ class GitService:
         if code != 0:
             return GitResult(success=False, error="Not a Git repository")
         branch = branch.strip()
-        
+
         # Get status
         code, out, _ = await self._run(["status", "--porcelain"])
         files = []
@@ -74,17 +78,15 @@ class GitService:
                 status = line[:2].strip()
                 filepath = line[3:]
                 files.append({"status": status, "path": filepath})
-        
+
         # Get ahead/behind
         ahead, behind = 0, 0
-        code, out, _ = await self._run([
-            "rev-list", "--left-right", "--count", f"{branch}...@{{u}}"
-        ])
+        code, out, _ = await self._run(["rev-list", "--left-right", "--count", f"{branch}...@{{u}}"])
         if code == 0:
             parts = out.strip().split()
             if len(parts) == 2:
                 ahead, behind = int(parts[0]), int(parts[1])
-        
+
         return GitResult(
             success=True,
             data={
@@ -94,27 +96,29 @@ class GitService:
                 "behind": behind,
             },
         )
-    
+
     async def diff(self, path: str | None = None) -> GitResult:
         """Get diff for file or all changes."""
         args = ["diff"]
         if path:
             args.append(path)
-        
+
         code, out, err = await self._run(args)
         if code != 0:
             return GitResult(success=False, error=err)
-        
+
         return GitResult(success=True, data={"diff": out})
-    
+
     async def log(self, limit: int = 20) -> GitResult:
         """Get commit log."""
-        code, out, err = await self._run([
-            "log",
-            f"-{limit}",
-            "--pretty=format:%H|%s|%an|%ad",
-            "--date=iso",
-        ])
+        code, out, err = await self._run(
+            [
+                "log",
+                f"-{limit}",
+                "--pretty=format:%H|%s|%an|%ad",
+                "--date=iso",
+            ]
+        )
         if code != 0:
             return GitResult(success=False, error=err)
 
@@ -123,12 +127,14 @@ class GitService:
             if line:
                 parts = line.split("|", 3)
                 if len(parts) == 4:
-                    entries.append(GitCommit(
-                        hash=parts[0],
-                        message=parts[1],
-                        author=parts[2],
-                        date=parts[3],
-                    ))
+                    entries.append(
+                        GitCommit(
+                            hash=parts[0],
+                            message=parts[1],
+                            author=parts[2],
+                            date=parts[3],
+                        )
+                    )
 
         return GitResult(success=True, data={"entries": entries})
 
@@ -144,23 +150,27 @@ class GitService:
         parts: list[str] = []
 
         # Recent commits
-        code, out, err = await self._run([
-            "log",
-            f"-{commits_limit}",
-            "--pretty=format:%h %s (%an, %ad)",
-            "--date=short",
-        ])
+        code, out, err = await self._run(
+            [
+                "log",
+                f"-{commits_limit}",
+                "--pretty=format:%h %s (%an, %ad)",
+                "--date=short",
+            ]
+        )
         if code == 0 and out.strip():
             lines = out.strip().split("\n")[:commits_limit]
             parts.append("Recent commits:\n" + "\n".join(f"  {line}" for line in lines))
 
         # Recently changed files (unique, order = most recent first)
-        code, out, err = await self._run([
-            "log",
-            f"-{files_limit * 2}",
-            "--name-only",
-            "--pretty=format:",
-        ])
+        code, out, err = await self._run(
+            [
+                "log",
+                f"-{files_limit * 2}",
+                "--name-only",
+                "--pretty=format:",
+            ]
+        )
         if code == 0 and out.strip():
             seen: set[str] = set()
             files: list[str] = []
@@ -175,7 +185,7 @@ class GitService:
                 parts.append("Recently changed files:\n" + "\n".join(f"  {f}" for f in files))
 
         return "\n\n".join(parts) if parts else ""
-    
+
     async def commit(
         self,
         message: str,
@@ -184,29 +194,29 @@ class GitService:
         """Create a commit."""
         if not message.strip():
             return GitResult(success=False, error="Commit message required")
-        
+
         # Stage files
         if files:
             for f in files:
                 await self._run(["add", f])
         else:
             await self._run(["add", "-A"])
-        
+
         # Commit
         code, out, err = await self._run(["commit", "-m", message])
         if code != 0:
             if "nothing to commit" in err or "nothing to commit" in out:
                 return GitResult(success=False, error="Nothing to commit")
             return GitResult(success=False, error=err)
-        
+
         return GitResult(success=True, data={"message": message})
-    
+
     async def branches(self) -> GitResult:
         """List branches."""
         code, out, err = await self._run(["branch", "--list"])
         if code != 0:
             return GitResult(success=False, error=err)
-        
+
         branches = []
         current = None
         for line in out.strip().split("\n"):
@@ -216,12 +226,12 @@ class GitService:
                 if is_current:
                     current = name
                 branches.append(name)
-        
+
         return GitResult(
             success=True,
             data={"branches": branches, "current": current},
         )
-    
+
     async def checkout(
         self,
         branch: str,
@@ -232,9 +242,9 @@ class GitService:
         if create:
             args.append("-b")
         args.append(branch)
-        
+
         code, _, err = await self._run(args)
         if code != 0:
             return GitResult(success=False, error=err)
-        
+
         return GitResult(success=True, data={"branch": branch})

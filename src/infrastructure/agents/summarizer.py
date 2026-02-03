@@ -6,7 +6,6 @@ from pathlib import Path
 
 from src.domain.ports.llm import LLMMessage, LLMPort
 
-
 # Cache for summaries (in-memory, persisted to file); lock for thread safety
 _summary_cache: dict[str, str] = {}
 _cache_lock = threading.Lock()
@@ -19,6 +18,7 @@ def _load_cache() -> None:
     if _cache_file.exists():
         try:
             import json
+
             _summary_cache = json.loads(_cache_file.read_text())
         except Exception:
             _summary_cache = {}
@@ -30,6 +30,7 @@ def _save_cache() -> None:
     """Save summary cache to file. Caller must hold _cache_lock."""
     try:
         import json
+
         _cache_file.parent.mkdir(parents=True, exist_ok=True)
         _cache_file.write_text(json.dumps(_summary_cache))
     except Exception:
@@ -80,20 +81,20 @@ async def summarize_content(
     use_cache: bool = True,
 ) -> str:
     """Summarize content using LLM.
-    
+
     Args:
         content: Content to summarize
         llm: LLM adapter
         model: Model to use
         max_output_tokens: Max tokens in summary
         use_cache: Whether to use/store in cache
-    
+
     Returns:
         Summarized content
     """
     if not content.strip():
         return ""
-    
+
     # Check cache
     content_hash = _content_hash(content)
     if use_cache:
@@ -107,7 +108,7 @@ async def summarize_content(
         LLMMessage(role="system", content=SUMMARIZE_SYSTEM),
         LLMMessage(role="user", content=SUMMARIZE_USER.format(content=content[:50000])),  # Limit input
     ]
-    
+
     try:
         response = await llm.generate(
             messages=messages,
@@ -116,13 +117,13 @@ async def summarize_content(
             temperature=0.3,
         )
         summary = response.content.strip()
-        
+
         # Cache result
         if use_cache and summary:
             with _cache_lock:
                 _summary_cache[content_hash] = summary
                 _save_cache()
-        
+
         return summary
     except Exception as e:
         return f"[Summary error: {e}]\n\n{content[:1000]}..."
@@ -135,19 +136,19 @@ async def summarize_chunks(
     max_total_tokens: int = 4000,
 ) -> str:
     """Summarize multiple code chunks into a coherent context.
-    
+
     Args:
         chunks: List of {content, source, score} dicts
         llm: LLM adapter
         model: Model to use
         max_total_tokens: Target size for final summary
-    
+
     Returns:
         Combined summary
     """
     if not chunks:
         return ""
-    
+
     # Group by source file
     by_file: dict[str, list[str]] = {}
     for chunk in chunks:
@@ -156,11 +157,11 @@ async def summarize_chunks(
         if source not in by_file:
             by_file[source] = []
         by_file[source].append(content)
-    
+
     # Summarize each file
     file_summaries = []
     tokens_per_file = max_total_tokens // len(by_file) if by_file else max_total_tokens
-    
+
     for source, contents in by_file.items():
         full_content = f"# {source}\n\n" + "\n\n".join(contents)
         summary = await summarize_content(
@@ -170,7 +171,7 @@ async def summarize_chunks(
             max_output_tokens=tokens_per_file,
         )
         file_summaries.append(f"## {source}\n{summary}")
-    
+
     return "\n\n---\n\n".join(file_summaries)
 
 
@@ -181,25 +182,22 @@ async def summarize_conversation(
     max_tokens: int = 1000,
 ) -> str:
     """Summarize conversation history.
-    
+
     Args:
         messages: List of {role, content} messages
         llm: LLM adapter
         model: Model to use
         max_tokens: Max tokens in summary
-    
+
     Returns:
         Conversation summary
     """
     if not messages:
         return ""
-    
+
     # Format conversation
-    conversation = "\n".join(
-        f"{m.get('role', 'user')}: {m.get('content', '')[:500]}"
-        for m in messages
-    )
-    
+    conversation = "\n".join(f"{m.get('role', 'user')}: {m.get('content', '')[:500]}" for m in messages)
+
     prompt = f"""Summarize this conversation, focusing on:
 1. What the user wanted to accomplish
 2. What was discussed/decided
@@ -209,11 +207,14 @@ Conversation:
 {conversation}
 
 Summary:"""
-    
+
     try:
         response = await llm.generate(
             messages=[
-                LLMMessage(role="system", content="You are a conversation summarizer. Be concise but preserve key technical details."),
+                LLMMessage(
+                    role="system",
+                    content="You are a conversation summarizer. Be concise but preserve key technical details.",
+                ),
                 LLMMessage(role="user", content=prompt),
             ],
             model=model,

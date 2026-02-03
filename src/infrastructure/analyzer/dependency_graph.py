@@ -10,9 +10,20 @@ from pathlib import Path
 
 # Директории для игнорирования (как в project_analyzer)
 IGNORE_DIRS = {
-    ".git", ".venv", "venv", "node_modules", "__pycache__",
-    ".pytest_cache", ".mypy_cache", ".ruff_cache", "dist",
-    "build", ".next", "coverage", ".tox", "eggs",
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".ruff_cache",
+    "dist",
+    "build",
+    ".next",
+    "coverage",
+    ".tox",
+    "eggs",
 }
 
 PY_EXT = (".py",)
@@ -22,6 +33,7 @@ TS_JS_EXT = (".ts", ".tsx", ".js", ".jsx", ".mjs")
 @dataclass
 class ImportEdge:
     """Один импорт: откуда — куда (файл -> файл)."""
+
     from_file: str
     to_file: str
     name: str  # импортированное имя/модуль
@@ -30,6 +42,7 @@ class ImportEdge:
 @dataclass
 class DependencyGraphResult:
     """Результат построения графа зависимостей."""
+
     edges: list[ImportEdge] = field(default_factory=list)
     cycles: list[list[str]] = field(default_factory=list)
     unused_imports: list[tuple[str, str]] = field(default_factory=list)  # (file, import_name)
@@ -105,7 +118,7 @@ def _resolve_python_import(
     rel_parts = module.split(".")
     for i in range(len(rel_parts), 0, -1):
         sub = parent / Path(*rel_parts[:i])
-        if (sub.with_suffix(".py") in py_files_set):
+        if sub.with_suffix(".py") in py_files_set:
             return sub.with_suffix(".py")
         if (sub / "__init__.py") in py_files_set:
             return sub / "__init__.py"
@@ -230,7 +243,7 @@ def _find_unused_python_imports(
 
     for node in ast.walk(tree):
         if isinstance(node, (ast.Import, ast.ImportFrom)):
-            for alias in (node.names if hasattr(node, "names") else getattr(node, "names", [])):
+            for alias in node.names if hasattr(node, "names") else getattr(node, "names", []):
                 name = alias.asname or alias.name
                 import_names.add(name)
             continue

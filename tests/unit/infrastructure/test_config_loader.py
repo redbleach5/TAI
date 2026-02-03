@@ -4,8 +4,7 @@ import os
 import tempfile
 from pathlib import Path
 
-
-from src.infrastructure.config.toml_loader import load_config, _apply_env_overrides
+from src.infrastructure.config.toml_loader import _apply_env_overrides, load_config
 
 
 class TestLoadConfig:
@@ -14,7 +13,7 @@ class TestLoadConfig:
     def test_loads_default_config(self):
         """Loads default configuration."""
         config = load_config()
-        
+
         # Should have all required sections
         assert config.server is not None
         assert config.llm is not None
@@ -35,7 +34,7 @@ provider = "custom_provider"
 port = 9999
 """)
             config = load_config(Path(tmpdir))
-            
+
             assert config.llm.provider == "custom_provider"
             assert config.server.port == 9999
 
@@ -54,7 +53,7 @@ port = 8000
 provider = "lm_studio"
 """)
             config = load_config(Path(tmpdir))
-            
+
             # Should be overridden
             assert config.llm.provider == "lm_studio"
             # Should be preserved from default
@@ -65,7 +64,7 @@ provider = "lm_studio"
         with tempfile.TemporaryDirectory() as tmpdir:
             # Empty directory - should use defaults
             config = load_config(Path(tmpdir))
-            
+
             # Should have default values
             assert config.llm.provider == "ollama"
 
@@ -77,7 +76,7 @@ class TestApplyEnvOverrides:
         """LLM_PROVIDER env var overrides config."""
         config = {}
         os.environ["LLM_PROVIDER"] = "lm_studio"
-        
+
         try:
             result = _apply_env_overrides(config)
             assert result["llm"]["provider"] == "lm_studio"
@@ -88,7 +87,7 @@ class TestApplyEnvOverrides:
         """OLLAMA_HOST env var overrides config."""
         config = {}
         os.environ["OLLAMA_HOST"] = "http://custom:11434"
-        
+
         try:
             result = _apply_env_overrides(config)
             assert result["ollama"]["host"] == "http://custom:11434"
@@ -99,7 +98,7 @@ class TestApplyEnvOverrides:
         """PORT env var overrides config."""
         config = {}
         os.environ["PORT"] = "9000"
-        
+
         try:
             result = _apply_env_overrides(config)
             assert result["server"]["port"] == 9000
@@ -110,7 +109,7 @@ class TestApplyEnvOverrides:
         """Invalid PORT value is ignored."""
         config = {"server": {"port": 8000}}
         os.environ["PORT"] = "not_a_number"
-        
+
         try:
             result = _apply_env_overrides(config)
             assert result["server"]["port"] == 8000
@@ -121,7 +120,7 @@ class TestApplyEnvOverrides:
         """LOG_LEVEL env var overrides config."""
         config = {}
         os.environ["LOG_LEVEL"] = "debug"
-        
+
         try:
             result = _apply_env_overrides(config)
             assert result["logging"]["level"] == "DEBUG"
@@ -132,7 +131,7 @@ class TestApplyEnvOverrides:
         """CORS_ORIGINS env var overrides config."""
         config = {}
         os.environ["CORS_ORIGINS"] = "http://a.com, http://b.com"
-        
+
         try:
             result = _apply_env_overrides(config)
             assert result["security"]["cors_origins"] == ["http://a.com", "http://b.com"]
@@ -143,7 +142,7 @@ class TestApplyEnvOverrides:
         """RATE_LIMIT_PER_MINUTE env var overrides config."""
         config = {}
         os.environ["RATE_LIMIT_PER_MINUTE"] = "200"
-        
+
         try:
             result = _apply_env_overrides(config)
             assert result["security"]["rate_limit_requests_per_minute"] == 200
@@ -154,7 +153,7 @@ class TestApplyEnvOverrides:
         """EMBEDDINGS_MODEL env var overrides config."""
         config = {}
         os.environ["EMBEDDINGS_MODEL"] = "custom-embed"
-        
+
         try:
             result = _apply_env_overrides(config)
             assert result["embeddings"]["model"] == "custom-embed"

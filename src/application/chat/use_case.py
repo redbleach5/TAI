@@ -11,8 +11,8 @@ from src.domain.ports.rag import RAGPort
 from src.domain.services.intent_detector import IntentDetector
 from src.domain.services.model_selector import ModelSelector
 from src.infrastructure.llm.reasoning_parser import stream_reasoning_chunks
-from src.infrastructure.services.command_parser import parse_message, CommandType
 from src.infrastructure.services.assistant_modes import get_mode
+from src.infrastructure.services.command_parser import CommandType, parse_message
 
 # When @web was requested but search failed — we return this in context and then short-circuit (no LLM)
 WEB_FAILED_MARKER = "Web search was requested but could not be performed"
@@ -70,7 +70,7 @@ class ChatUseCase:
         # Agent mode: delegate to AgentUseCase
         if request.mode_id == "agent" and self._agent_use_case:
             return await self._agent_use_case.execute(request)
-        
+
         # Check for template intent (greetings, help, etc.)
         intent = self._intent_detector.detect(request.message)
         if intent.response is not None:
@@ -89,12 +89,10 @@ class ChatUseCase:
             model, fallback = await self._model_selector.select_model(request.message)
         temperature = self._get_temperature(request)
         llm_response = await self._generate_with_fallback(messages, model, fallback, temperature)
-        
+
         return self._create_response(request, llm_response.content, llm_response.model)
 
-    async def execute_stream(
-        self, request: ChatRequest
-    ) -> AsyncIterator[tuple[str, str]]:
+    async def execute_stream(self, request: ChatRequest) -> AsyncIterator[tuple[str, str]]:
         """Stream LLM response. Yields (kind, chunk)."""
         request = self._resolve_history(request)
 
@@ -106,13 +104,16 @@ class ChatUseCase:
                 yield (kind, chunk)
             yield ("done", json.dumps({"conversation_id": request.conversation_id or "", "model": model}))
             return
-        
+
         # Check for template intent
         intent = self._intent_detector.detect(request.message)
         if intent.response is not None:
             yield ("content", intent.response)
             conv_id = self._save_to_memory(request, intent.response, "template") if self._memory else None
-            yield ("done", json.dumps({"conversation_id": conv_id or request.conversation_id or "", "model": "template"}))
+            yield (
+                "done",
+                json.dumps({"conversation_id": conv_id or request.conversation_id or "", "model": "template"}),
+            )
             return
 
         # Build messages with command processing
@@ -130,7 +131,7 @@ class ChatUseCase:
         else:
             model, fallback = await self._model_selector.select_model(request.message)
         temperature = self._get_temperature(request)
-        
+
         # Stream response
         full_content: list[str] = []
         raw_stream = self._stream_with_fallback(messages, model, fallback, temperature)
@@ -150,29 +151,26 @@ class ChatUseCase:
         """Build messages for LLM from request, history, and commands."""
         # Get system prompt based on mode
         mode = get_mode(request.mode_id or "default")
-        
-        messages: list[LLMMessage] = [
-            LLMMessage(role="system", content=mode.system_prompt)
-        ]
-        
+
+        messages: list[LLMMessage] = [LLMMessage(role="system", content=mode.system_prompt)]
+
         # Add history
         if request.history:
-            messages.extend(request.history[-self._max_context:])
-        
+            messages.extend(request.history[-self._max_context :])
+
         # Parse and process commands
         parsed = parse_message(request.message)
         extra_context = await self._process_commands(parsed.commands)
-        
+
         # B4: Auto-RAG — if no @rag command, inject relevant chunks
         has_rag_cmd = any(
-            getattr(c, "type", None) and str(getattr(c.type, "value", c.type)) == "rag"
-            for c in parsed.commands
+            getattr(c, "type", None) and str(getattr(c.type, "value", c.type)) == "rag" for c in parsed.commands
         )
         if not has_rag_cmd and self._rag and (parsed.text or request.message).strip():
             auto_rag = await self._auto_rag_search((parsed.text or request.message).strip())
             if auto_rag:
                 extra_context = f"{auto_rag}\n\n---\n\n{extra_context}" if extra_context else auto_rag
-        
+
         # Build user message — Cursor-like: model automatically sees open files, no @ needed
         user_content = parsed.text or request.message
         # Optional: short project structure so model sees layout (like agent mode)
@@ -192,18 +190,16 @@ class ChatUseCase:
             current_file_hint = f"Current file (user is focused on): {request.active_file_path}\n\n"
         # Open files context — always prepended so model sees them without @code/@file
         if request.context_files:
-            file_context = "\n\n".join(
-                f"[file: {f.path}]\n```\n{f.content}\n```"
-                for f in request.context_files
-            )
-            user_content = (
-                f"{current_file_hint}[Open files in editor — use these for context]\n\n{file_context}\n\n---\n\n{user_content}"
-            )
+            file_context = "\n\n".join(f"[file: {f.path}]\n```\n{f.content}\n```" for f in request.context_files)
+            user_content = f"{current_file_hint}[Open files in editor — use these for context]\n\n{file_context}\n\n---\n\n{user_content}"
         elif current_file_hint:
             user_content = f"{current_file_hint}---\n\n{user_content}"
         if extra_context:
             if any(c.type == CommandType.WEB for c in parsed.commands) and WEB_FAILED_MARKER not in extra_context:
-                extra_context = "Результаты веб-поиска (обязательно используй их для ответа на вопрос пользователя):\n\n" + extra_context
+                extra_context = (
+                    "Результаты веб-поиска (обязательно используй их для ответа на вопрос пользователя):\n\n"
+                    + extra_context
+                )
             user_content = f"{extra_context}\n\n---\n\n{user_content}"
         # When project is not indexed, hint so model can suggest indexing (user may forget)
         if (
@@ -231,7 +227,7 @@ class ChatUseCase:
             for c in chunks[:5]:
                 src = c.metadata.get("source", "unknown")
                 parts.append(f"### {src}\n```\n{c.content[:400]}\n```")
-            return f"[Relevant code from project]\n\n" + "\n\n".join(parts)
+            return "[Relevant code from project]\n\n" + "\n\n".join(parts)
         except Exception:
             return ""
 
@@ -239,9 +235,9 @@ class ChatUseCase:
         """Process all commands in PARALLEL and return combined context."""
         if not commands:
             return ""
-        
+
         import asyncio
-        
+
         # Prepare command execution tasks
         workspace_path = self._workspace_path_getter() if self._workspace_path_getter else None
 
@@ -261,27 +257,27 @@ class ChatUseCase:
                 web_search_google_cx=self._web_search_google_cx,
             )
             return result.content if result.content else None
-        
+
         # Execute ALL commands in parallel
         tasks = [execute_cmd(cmd) for cmd in commands]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Collect successful results; when @web was requested but failed, add a note so we
         # short-circuit and show "web search unavailable" instead of calling the LLM with "[No search results found]"
-        WEB_FAILED_NOTE = (
+        web_failed_note = (
             f"[{WEB_FAILED_MARKER} (temporarily unavailable or no results). "
             "Do not claim you have no internet. Tell the user that web search is temporarily unavailable.]"
         )
-        NO_RESULTS_PLACEHOLDER = "[No search results found]"
+        no_results_placeholder = "[No search results found]"
         context_parts = []
         for cmd, r in zip(commands, results):
             if cmd.type == CommandType.WEB and (
                 r is None
                 or isinstance(r, Exception)
-                or (isinstance(r, str) and (not r.strip() or r.strip() == NO_RESULTS_PLACEHOLDER))
+                or (isinstance(r, str) and (not r.strip() or r.strip() == no_results_placeholder))
             ):
-                context_parts.append(WEB_FAILED_NOTE)
-            elif r and not isinstance(r, Exception) and (r.strip() != NO_RESULTS_PLACEHOLDER):
+                context_parts.append(web_failed_note)
+            elif r and not isinstance(r, Exception) and (r.strip() != no_results_placeholder):
                 context_parts.append(r)
 
         return "\n\n---\n\n".join(context_parts)
@@ -295,12 +291,12 @@ class ChatUseCase:
         """Load history from memory if conversation_id provided."""
         if not self._memory or not request.conversation_id:
             return request
-        
+
         loaded = self._memory.load(request.conversation_id)
         if loaded:
             return ChatRequest(
                 message=request.message,
-                history=loaded[-self._max_context:],
+                history=loaded[-self._max_context :],
                 conversation_id=request.conversation_id,
                 mode_id=request.mode_id,
                 model=request.model,
@@ -317,16 +313,14 @@ class ChatUseCase:
         model: str,
     ) -> ChatResponse:
         """Create response and save to memory."""
-        conv_id = request.conversation_id or (
-            self._memory.create_id() if self._memory else None
-        )
-        
+        conv_id = request.conversation_id or (self._memory.create_id() if self._memory else None)
+
         response = ChatResponse(
             content=content,
             model=model,
             conversation_id=conv_id,
         )
-        
+
         self._save_to_memory(request, content, model)
         return response
 
@@ -339,12 +333,12 @@ class ChatUseCase:
         """Save conversation to memory. Returns conversation_id used."""
         if not self._memory:
             return None
-        
+
         conv_id = request.conversation_id or self._memory.create_id()
         history = list(request.history or [])
         history.append(LLMMessage(role="user", content=request.message))
         history.append(LLMMessage(role="assistant", content=content))
-        self._memory.save(conv_id, history[-self._max_context:])
+        self._memory.save(conv_id, history[-self._max_context :])
         return conv_id
 
     async def _generate_with_fallback(
@@ -357,7 +351,7 @@ class ChatUseCase:
         """Generate with fallback if model unavailable."""
         fallback_chain = [model, fallback]
         last_error: Exception | None = None
-        
+
         for m in fallback_chain:
             try:
                 return await self._llm.generate(
@@ -368,7 +362,7 @@ class ChatUseCase:
             except Exception as e:
                 last_error = e
                 continue
-        
+
         raise last_error or RuntimeError("LLM generate failed")
 
     async def _stream_with_fallback(
@@ -381,7 +375,7 @@ class ChatUseCase:
         """Stream with fallback if model unavailable."""
         fallback_chain = [model, fallback]
         last_error: Exception | None = None
-        
+
         for m in fallback_chain:
             try:
                 async for chunk in self._llm.generate_stream(
@@ -394,5 +388,5 @@ class ChatUseCase:
             except Exception as e:
                 last_error = e
                 continue
-        
+
         raise last_error or RuntimeError("LLM stream failed")

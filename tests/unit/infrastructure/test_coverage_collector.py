@@ -3,7 +3,6 @@
 import tempfile
 from pathlib import Path
 
-
 from src.infrastructure.analyzer.coverage_collector import collect_coverage_for_analysis
 
 

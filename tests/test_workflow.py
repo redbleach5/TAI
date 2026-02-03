@@ -1,4 +1,5 @@
 """Workflow API integration test."""
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 

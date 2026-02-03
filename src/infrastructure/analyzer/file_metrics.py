@@ -79,12 +79,8 @@ def compute_file_metrics(file_path: Path, base_path: Path) -> FileMetrics:
     if file_path.suffix == ".py":
         try:
             tree = ast.parse(content)
-            metrics.functions = sum(
-                1 for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
-            )
-            metrics.classes = sum(
-                1 for node in ast.walk(tree) if isinstance(node, ast.ClassDef)
-            )
+            metrics.functions = sum(1 for node in ast.walk(tree) if isinstance(node, ast.FunctionDef))
+            metrics.classes = sum(1 for node in ast.walk(tree) if isinstance(node, ast.ClassDef))
             metrics.imports = extract_imports(tree)
             metrics.complexity = estimate_complexity(tree)
         except SyntaxError:

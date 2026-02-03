@@ -18,8 +18,10 @@ router = APIRouter(prefix="/improve", tags=["improve"])
 
 # Request/Response models
 
+
 class AnalyzeRequestModel(BaseModel):
     """Request to analyze project."""
+
     path: str = "."
     include_linter: bool = True
     use_llm: bool = False
@@ -27,6 +29,7 @@ class AnalyzeRequestModel(BaseModel):
 
 class ImprovementRequestModel(BaseModel):
     """Request to improve file."""
+
     file_path: str
     issue: dict | None = None
     auto_write: bool = True
@@ -39,11 +42,13 @@ class ImprovementRequestModel(BaseModel):
 
 class AddTaskRequestModel(BaseModel):
     """Request to add task to queue."""
+
     file_path: str
     issue: dict | None = None
 
 
 # Endpoints
+
 
 @router.post("/analyze")
 @limiter.limit("25/minute")
@@ -53,9 +58,9 @@ async def analyze_project(
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
 ):
     """Analyze project for issues and improvement suggestions.
-    
+
     Uses current workspace path. Runs analysis in workspace directory.
-    
+
     Returns:
         - total_files, total_lines, total_functions, total_classes
         - avg_complexity
@@ -68,7 +73,7 @@ async def analyze_project(
         use_llm=body.use_llm,
     )
     result = await use_case.analyze(req)
-    
+
     return {
         "total_files": result.total_files,
         "total_lines": result.total_lines,
@@ -98,9 +103,9 @@ async def run_improvement(
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
 ):
     """Run improvement on single file.
-    
+
     Uses current workspace path. Runs improvement in workspace directory.
-    
+
     This endpoint runs the full improvement workflow:
     1. Read original file
     2. Generate improvement plan
@@ -119,7 +124,7 @@ async def run_improvement(
         selection_end_line=body.selection_end_line,
     )
     result = await use_case.improve_file(req)
-    
+
     return {
         "success": result.success,
         "file_path": result.file_path,
@@ -150,12 +155,13 @@ async def run_improvement_stream(
         selection_start_line=body.selection_start_line,
         selection_end_line=body.selection_end_line,
     )
-    
+
     async def generate() -> AsyncIterator[str]:
         async for event in use_case.improve_file_stream(req):
             import json
+
             yield f"data: {json.dumps(event)}\n\n"
-    
+
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",
@@ -167,6 +173,7 @@ async def run_improvement_stream(
 
 
 # Task Queue Endpoints
+
 
 @router.post("/queue/add")
 @limiter.limit("30/minute")
@@ -202,7 +209,9 @@ async def get_queue_status(
             "file_path": status.current_task.file_path,
             "status": status.current_task.status.value,
             "progress": status.current_task.progress,
-        } if status.current_task else None,
+        }
+        if status.current_task
+        else None,
         "tasks": [
             {
                 "id": t.id,
@@ -227,7 +236,7 @@ async def get_task(
     task = use_case.get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    
+
     return {
         "id": task.id,
         "file_path": task.file_path,
@@ -240,7 +249,9 @@ async def get_task(
             "validation_output": task.result.validation_output,
             "error": task.result.error,
             "retries": task.result.retries,
-        } if task.result else None,
+        }
+        if task.result
+        else None,
     }
 
 

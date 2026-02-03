@@ -29,6 +29,7 @@ def _get_workspace_path() -> str:
 @dataclass
 class ToolResult:
     """Result of tool execution."""
+
     success: bool
     content: str
     error: str | None = None
@@ -288,6 +289,7 @@ class ToolExecutor:
             current = get_store().get_current()
             if current:
                 from datetime import datetime
+
                 get_store().update_project(
                     current.id,
                     indexed=True,

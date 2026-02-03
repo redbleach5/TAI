@@ -49,13 +49,13 @@ class OpenAICompatibleEmbeddingsAdapter:
     )
     async def embed_batch(self, texts: list[str]) -> list[list[float]]:
         """Embed multiple texts. OpenAI API accepts array input.
-        
+
         Retries up to 3 times with exponential backoff on network errors.
         Validates response structure.
         """
         if not texts:
             return []
-        
+
         try:
             async with httpx.AsyncClient(timeout=self._timeout) as client:
                 resp = await client.post(
@@ -74,23 +74,23 @@ class OpenAICompatibleEmbeddingsAdapter:
         except httpx.NetworkError as e:
             logger.warning(f"Embedding network error: {e}")
             raise
-        
+
         # Validate response structure
         items = data.get("data", [])
         if not items:
             logger.warning("Empty embedding response")
             return [[] for _ in texts]
-        
+
         # OpenAI format: data[].embedding, sorted by index
         items = sorted(items, key=lambda x: x.get("index", 0))
         embeddings = [item.get("embedding", []) for item in items]
-        
+
         # Validate count matches
         if len(embeddings) != len(texts):
             logger.warning(f"Embedding count mismatch: got {len(embeddings)}, expected {len(texts)}")
             # Pad or truncate
             while len(embeddings) < len(texts):
                 embeddings.append([])
-            embeddings = embeddings[:len(texts)]
-        
+            embeddings = embeddings[: len(texts)]
+
         return embeddings

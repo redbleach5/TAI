@@ -187,6 +187,7 @@ class DeepAnalyzer:
         # 1. Static analysis
         if not self._analyzer:
             from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
+
             self._analyzer = ProjectAnalyzer()
         analysis = await asyncio.to_thread(self._analyzer.analyze, str(project_path))
         generator = ReportGenerator()
@@ -213,17 +214,18 @@ class DeepAnalyzer:
         try:
             git_service = GitService(str(project_path))
             if await git_service.is_repo():
-                git_context = await git_service.get_recent_changes_for_analysis(
-                    commits_limit=15,
-                    files_limit=25,
-                ) or git_context
+                git_context = (
+                    await git_service.get_recent_changes_for_analysis(
+                        commits_limit=15,
+                        files_limit=25,
+                    )
+                    or git_context
+                )
         except Exception as e:
             logging.getLogger(__name__).debug("Git context for deep analysis failed: %s", e)
 
         # 3c. Coverage (A4): pytest-cov/coverage in prompt
-        coverage_context = await asyncio.to_thread(
-            collect_coverage_for_analysis, str(project_path)
-        )
+        coverage_context = await asyncio.to_thread(collect_coverage_for_analysis, str(project_path))
 
         # 4. Initial RAG context (expanded)
         rag_context = "Не доступен. Выполните индексацию workspace."
@@ -231,17 +233,19 @@ class DeepAnalyzer:
             try:
                 rag_context = await gather_initial_rag(self._rag)
             except Exception as e:
-                logging.getLogger(__name__).warning(
-                    "RAG context for deep analysis failed: %s", e, exc_info=True
-                )
+                logging.getLogger(__name__).warning("RAG context for deep analysis failed: %s", e, exc_info=True)
                 rag_context = "Ошибка поиска по индексу."
 
         # 5. Multi-step: targeted RAG per module (A1)
-        used_multi_step = False
         fallback_reason: str | None = None
-        if multi_step and self._rag and rag_context not in (
-            "Не доступен. Выполните индексацию workspace.",
-            "Ошибка поиска по индексу.",
+        if (
+            multi_step
+            and self._rag
+            and rag_context
+            not in (
+                "Не доступен. Выполните индексацию workspace.",
+                "Ошибка поиска по индексу.",
+            )
         ):
             modules = await self._step1_identify_modules(
                 key_files=key_files,
@@ -252,8 +256,9 @@ class DeepAnalyzer:
             if modules:
                 targeted_rag_ctx = await targeted_rag(self._rag, modules)
                 if targeted_rag_ctx:
-                    used_multi_step = True
-                    rag_context = f"{rag_context}\n\n---\n\n### Углублённый контекст по проблемным модулям\n{targeted_rag_ctx}"
+                    rag_context = (
+                        f"{rag_context}\n\n---\n\n### Углублённый контекст по проблемным модулям\n{targeted_rag_ctx}"
+                    )
                 else:
                     fallback_reason = "углублённый контекст по модулям не получен"
             else:
@@ -281,9 +286,7 @@ class DeepAnalyzer:
         ]
 
         try:
-            model, _ = await self._model_selector.select_model(
-                "анализ архитектуры проекта рефакторинг рекомендации"
-            )
+            model, _ = await self._model_selector.select_model("анализ архитектуры проекта рефакторинг рекомендации")
             response = await self._llm.generate(
                 messages=messages,
                 model=model,

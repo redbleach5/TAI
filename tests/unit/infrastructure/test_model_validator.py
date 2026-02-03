@@ -1,10 +1,10 @@
 """Tests for model validator."""
 
-
-import pytest
 from unittest.mock import AsyncMock
 
-from src.domain.ports.config import AppConfig, ModelConfig, LLMConfig
+import pytest
+
+from src.domain.ports.config import AppConfig, LLMConfig, ModelConfig
 from src.infrastructure.config.model_validator import validate_models_config
 from src.shared.logging import setup_logging
 
@@ -27,9 +27,7 @@ def config():
 async def test_validate_all_models_available(config):
     """When all configured models exist, no warning."""
     llm = AsyncMock()
-    llm.list_models = AsyncMock(
-        return_value=["qwen2.5-coder:7b", "glm-4.7-flash:latest", "gpt-oss:20b"]
-    )
+    llm.list_models = AsyncMock(return_value=["qwen2.5-coder:7b", "glm-4.7-flash:latest", "gpt-oss:20b"])
     await validate_models_config(llm, config)
     llm.list_models.assert_called_once()
 

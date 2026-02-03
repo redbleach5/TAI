@@ -14,6 +14,7 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 
 class ProjectCreate(BaseModel):
     """Request to add a project."""
+
     name: str
     path: str
 
@@ -97,6 +98,7 @@ async def index_project(
         os.chdir(project.path)
         stats = await rag.index_path(".", incremental=incremental)
         from datetime import datetime
+
         store.update_project(
             project_id,
             indexed=True,

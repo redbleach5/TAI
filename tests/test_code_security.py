@@ -90,7 +90,7 @@ print(hello("World"))
         # Code with warnings
         code = "import os\nprint('hello')"
         assert checker.is_safe_for_execution(code) is False
-        
+
         # Safe code
         safe_code = "print('hello')"
         assert checker.is_safe_for_execution(safe_code) is True

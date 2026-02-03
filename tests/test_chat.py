@@ -1,4 +1,5 @@
 """Chat API integration test."""
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
@@ -60,9 +61,7 @@ async def test_chat_stream_greeting_emits_content_event():
         transport=ASGITransport(app=app),
         base_url="http://test",
     ) as client:
-        async with client.stream(
-            "GET", "/chat/stream", params={"message": "hello"}
-        ) as resp:
+        async with client.stream("GET", "/chat/stream", params={"message": "hello"}) as resp:
             assert resp.status_code == 200
             events = []
             async for line in resp.aiter_lines():

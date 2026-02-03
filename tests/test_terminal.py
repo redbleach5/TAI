@@ -12,10 +12,7 @@ class TestTerminalExec:
 
     def test_exec_echo(self):
         """Test executing echo command."""
-        response = client.post(
-            "/terminal/exec",
-            json={"command": "echo hello"}
-        )
+        response = client.post("/terminal/exec", json={"command": "echo hello"})
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
@@ -24,10 +21,7 @@ class TestTerminalExec:
 
     def test_exec_pwd(self):
         """Test executing pwd command."""
-        response = client.post(
-            "/terminal/exec",
-            json={"command": "pwd"}
-        )
+        response = client.post("/terminal/exec", json={"command": "pwd"})
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
@@ -35,10 +29,7 @@ class TestTerminalExec:
 
     def test_exec_ls(self):
         """Test executing ls command."""
-        response = client.post(
-            "/terminal/exec",
-            json={"command": "ls"}
-        )
+        response = client.post("/terminal/exec", json={"command": "ls"})
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
@@ -46,10 +37,7 @@ class TestTerminalExec:
 
     def test_exec_blocked_command(self):
         """Test that blocked commands are rejected."""
-        response = client.post(
-            "/terminal/exec",
-            json={"command": "curl http://example.com"}
-        )
+        response = client.post("/terminal/exec", json={"command": "curl http://example.com"})
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is False
@@ -57,10 +45,7 @@ class TestTerminalExec:
 
     def test_exec_dangerous_pattern(self):
         """Test that dangerous patterns are blocked."""
-        response = client.post(
-            "/terminal/exec",
-            json={"command": "echo hello && rm -rf /"}
-        )
+        response = client.post("/terminal/exec", json={"command": "echo hello && rm -rf /"})
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is False
@@ -69,20 +54,14 @@ class TestTerminalExec:
 
     def test_exec_pipe_blocked(self):
         """Test that pipes are blocked."""
-        response = client.post(
-            "/terminal/exec",
-            json={"command": "ls | grep py"}
-        )
+        response = client.post("/terminal/exec", json={"command": "ls | grep py"})
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is False
 
     def test_exec_python_version(self):
         """Test executing python version command (python3 for macOS compatibility)."""
-        response = client.post(
-            "/terminal/exec",
-            json={"command": "python3 --version"}
-        )
+        response = client.post("/terminal/exec", json={"command": "python3 --version"})
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
@@ -90,10 +69,7 @@ class TestTerminalExec:
 
     def test_exec_with_cwd(self):
         """Test executing command in specific directory."""
-        response = client.post(
-            "/terminal/exec",
-            json={"command": "ls", "cwd": "src"}
-        )
+        response = client.post("/terminal/exec", json={"command": "ls", "cwd": "src"})
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
@@ -101,10 +77,7 @@ class TestTerminalExec:
 
     def test_exec_empty_command(self):
         """Test executing empty command."""
-        response = client.post(
-            "/terminal/exec",
-            json={"command": ""}
-        )
+        response = client.post("/terminal/exec", json={"command": ""})
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is False
@@ -116,9 +89,7 @@ class TestTerminalStream:
 
     def test_stream_echo(self):
         """Test streaming echo command."""
-        response = client.get(
-            "/terminal/stream?command=echo%20streaming"
-        )
+        response = client.get("/terminal/stream?command=echo%20streaming")
         assert response.status_code == 200
         # SSE response
         content = response.text

@@ -56,7 +56,7 @@ class MyClass:
     def test_detect_high_complexity(self, analyzer, temp_dir):
         """Detect high complexity functions."""
         file_path = temp_dir / "complex.py"
-        file_path.write_text('''
+        file_path.write_text("""
 def complex_func(a, b, c, d, e, f):
     if a:
         if b:
@@ -73,7 +73,7 @@ def complex_func(a, b, c, d, e, f):
                                     except:
                                         pass
     return True
-''')
+""")
         result = analyzer.analyze_file(file_path)
 
         complexity_issues = [i for i in result.issues if i.issue_type == "complexity"]
@@ -95,13 +95,13 @@ def too_many(a, b, c, d, e, f, g):
     def test_detect_missing_docstring(self, analyzer, temp_dir):
         """Detect missing docstrings."""
         file_path = temp_dir / "no_docs.py"
-        file_path.write_text('''
+        file_path.write_text("""
 def public_func():
     pass
 
 class PublicClass:
     pass
-''')
+""")
         result = analyzer.analyze_file(file_path)
 
         docstring_issues = [i for i in result.issues if "docstring" in i.message.lower()]
@@ -109,8 +109,8 @@ class PublicClass:
 
     def test_analyze_project(self, analyzer, temp_dir):
         """Analyze entire project."""
-        (temp_dir / "module1.py").write_text('def func1(): pass')
-        (temp_dir / "module2.py").write_text('def func2(): pass')
+        (temp_dir / "module1.py").write_text("def func1(): pass")
+        (temp_dir / "module2.py").write_text("def func2(): pass")
 
         result = analyzer.analyze_project(temp_dir)
 
@@ -132,7 +132,7 @@ class PublicClass:
     def test_calculate_complexity(self, analyzer, temp_dir):
         """Calculate complexity correctly."""
         file_path = temp_dir / "complexity.py"
-        file_path.write_text('''
+        file_path.write_text("""
 def simple():
     return 1
 
@@ -141,7 +141,7 @@ def medium(x):
         return x
     else:
         return -x
-''')
+""")
         result = analyzer.analyze_file(file_path)
 
         # Simple function has complexity 1, medium has higher

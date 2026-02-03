@@ -1,4 +1,5 @@
 """IntentDetector unit tests."""
+
 from src.domain.services.intent_detector import IntentDetector
 
 

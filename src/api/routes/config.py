@@ -111,18 +111,14 @@ def _to_toml_structure(updates: dict) -> dict:
     if "ollama" in updates:
         result["ollama"] = {k: v for k, v in updates["ollama"].items() if v is not None}
     if "openai_compatible" in updates:
-        result["openai_compatible"] = {
-            k: v for k, v in updates["openai_compatible"].items() if v is not None
-        }
+        result["openai_compatible"] = {k: v for k, v in updates["openai_compatible"].items() if v is not None}
     if "embeddings" in updates:
         result["embeddings"] = updates["embeddings"]
     if "persistence" in updates:
         result["persistence"] = updates["persistence"]
     if "web_search" in updates:
         ws_keys = ("searxng_url", "brave_api_key", "tavily_api_key", "google_api_key", "google_cx")
-        result["web_search"] = {
-            k: v for k, v in updates["web_search"].items() if k in ws_keys
-        }
+        result["web_search"] = {k: v for k, v in updates["web_search"].items() if k in ws_keys}
     if "logging" in updates:
         result["logging"] = updates["logging"]
     if "models" in updates:

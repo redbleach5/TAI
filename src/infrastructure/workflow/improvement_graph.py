@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 
 class ImprovementState(TypedDict, total=False):
     """State for improvement workflow."""
-    
+
     # Input
     file_path: str
     issue: dict  # CodeIssue as dict
@@ -41,12 +41,12 @@ class ImprovementState(TypedDict, total=False):
     # RAG context (B1) + project map (B2)
     rag_context: str
     project_map: str
-    
+
     # Processing
     plan: str
     improved_code: str
     tests: str
-    
+
     # Validation
     validation_passed: bool
     validation_output: str
@@ -64,7 +64,7 @@ class ImprovementState(TypedDict, total=False):
 @dataclass
 class ImprovementResult:
     """Result of improvement attempt."""
-    
+
     success: bool
     file_path: str
     original_code: str
@@ -94,23 +94,19 @@ async def _analyze_node(
     """Read original file and related files (B3) for improvement. B6: optional selection."""
     file_path = state.get("file_path", "")
     result = file_writer.read_file(file_path)
-    
+
     if not result["success"]:
         return {
             **state,
             "error": result["error"],
             "current_step": "error",
         }
-    
+
     content = result["content"] or ""
     selection_start = state.get("selection_start_line")
     selection_end = state.get("selection_end_line")
-    
-    if (
-        selection_start is not None
-        and selection_end is not None
-        and 1 <= selection_start <= selection_end
-    ):
+
+    if selection_start is not None and selection_end is not None and 1 <= selection_start <= selection_end:
         original_code = _extract_selection(content, selection_start, selection_end)
         if not original_code.strip():
             return {
@@ -122,7 +118,7 @@ async def _analyze_node(
     else:
         original_code = content
         full_file_content = ""
-    
+
     # B3: Read related files (imports, tests) for context
     related_files_context = ""
     related_files = state.get("related_files") or []
@@ -132,7 +128,7 @@ async def _analyze_node(
         r = file_writer.read_file(rel_path)
         if r.get("success") and r.get("content"):
             related_files_context += f"\n### {rel_path}\n```\n{r['content'][:1500]}\n```\n"
-    
+
     out: ImprovementState = {
         **state,
         "original_code": original_code,
@@ -155,15 +151,14 @@ async def _rag_node(
     """RAG search + project map (B1, B2 - Cursor-like)."""
     if not rag:
         return {**state, "rag_context": "", "project_map": "", "current_step": "plan"}
-    
+
     file_path = state.get("file_path", "")
     issue = state.get("issue", {})
-    original_code = state.get("original_code", "")[:500]
-    
+
     query = f"{file_path} {issue.get('message', '')} {issue.get('suggestion', '')}".strip()
     if not query:
         return {**state, "rag_context": "", "project_map": "", "current_step": "plan"}
-    
+
     try:
         chunks = await rag.search(query, limit=8, min_score=0.35)
         if not chunks:
@@ -181,7 +176,7 @@ async def _rag_node(
             rag_context = "\n\n".join(parts) if parts else ""
     except Exception:
         rag_context = ""
-    
+
     # B2: Project map
     project_map = ""
     if rag and hasattr(rag, "get_project_map_markdown"):
@@ -191,7 +186,7 @@ async def _rag_node(
                 project_map = map_md[:2500]
         except Exception:
             pass
-    
+
     return {**state, "rag_context": rag_context, "project_map": project_map, "current_step": "plan"}
 
 
@@ -207,7 +202,7 @@ async def _plan_node(
         LLMMessage(role="system", content=PLAN_SYSTEM),
         LLMMessage(role="user", content=prompt),
     ]
-    
+
     if on_chunk:
         content_parts = []
         async for chunk in llm.generate_stream(messages=messages, model=model):
@@ -217,7 +212,7 @@ async def _plan_node(
     else:
         response = await llm.generate(messages=messages, model=model)
         plan = response.content
-    
+
     return {
         **state,
         "plan": plan,
@@ -237,7 +232,7 @@ async def _code_node(
         LLMMessage(role="system", content=CODE_SYSTEM),
         LLMMessage(role="user", content=prompt),
     ]
-    
+
     if on_chunk:
         content_parts = []
         async for chunk in llm.generate_stream(messages=messages, model=model):
@@ -247,12 +242,12 @@ async def _code_node(
     else:
         response = await llm.generate(messages=messages, model=model)
         improved_code = response.content
-    
+
     # Clean up markdown if present
     if improved_code.startswith("```"):
         lines = improved_code.split("\n")
         improved_code = "\n".join(lines[1:-1] if lines[-1].strip() == "```" else lines[1:])
-    
+
     return {
         **state,
         "improved_code": improved_code,
@@ -310,10 +305,8 @@ async def _validate_node(state: ImprovementState) -> ImprovementState:
         code_file = Path(tmpdir) / "improved.py"
         code_file.write_text(code_to_validate, encoding="utf-8")
         try:
-            returncode, stdout, stderr = await asyncio.to_thread(
-                _run_py_compile_sync, str(code_file)
-            )
-        except Exception as e:
+            returncode, stdout, stderr = await asyncio.to_thread(_run_py_compile_sync, str(code_file))
+        except Exception:
             return {
                 **state,
                 "validation_passed": False,
@@ -343,13 +336,13 @@ def _should_retry(state: ImprovementState) -> Literal["retry", "write", "error"]
     """Check if should retry after validation failure."""
     if state.get("validation_passed"):
         return "write"
-    
+
     retry_count = state.get("retry_count", 0)
     max_retries = state.get("max_retries", 3)
-    
+
     if retry_count < max_retries:
         return "retry"
-    
+
     return "error"
 
 
@@ -413,14 +406,14 @@ async def _write_node(
     selection_start = state.get("selection_start_line")
     selection_end = state.get("selection_end_line")
     auto_write = state.get("auto_write", True)
-    
+
     if full_file_content and selection_start is not None and selection_end is not None:
         content_to_write = _build_full_content_for_selection(
             full_file_content, selection_start, selection_end, improved_code
         )
     else:
         content_to_write = improved_code
-    
+
     write_result: dict = {"proposed_full_content": content_to_write}
     if auto_write:
         result = file_writer.write_file(
@@ -431,7 +424,7 @@ async def _write_node(
         write_result.update(result)
     else:
         write_result["success"] = True
-    
+
     return {
         **state,
         "write_result": write_result,
@@ -459,10 +452,10 @@ def build_improvement_graph(
 ) -> StateGraph:
     """Build improvement workflow graph."""
     writer = file_writer or FileWriter()
-    
+
     async def analyze_wrapper(state: ImprovementState) -> ImprovementState:
         return await _analyze_node(state, writer)
-    
+
     async def rag_wrapper(state: ImprovementState) -> ImprovementState:
         return await _rag_node(state, rag)
 
@@ -471,15 +464,15 @@ def build_improvement_graph(
 
     async def plan_wrapper(state: ImprovementState) -> ImprovementState:
         return await _plan_node(state, llm, model, on_chunk)
-    
+
     async def code_wrapper(state: ImprovementState) -> ImprovementState:
         return await _code_node(state, llm, model, on_chunk)
-    
+
     async def write_wrapper(state: ImprovementState) -> ImprovementState:
         return await _write_node(state, writer)
-    
+
     builder = StateGraph(ImprovementState)
-    
+
     builder.add_node("analyze", analyze_wrapper)
     builder.add_node("rag", rag_wrapper)
     builder.add_node("plan", plan_wrapper)
@@ -488,14 +481,14 @@ def build_improvement_graph(
     builder.add_node("retry", retry_wrapper)
     builder.add_node("write", write_wrapper)
     builder.add_node("error", _error_node)
-    
+
     # Flow
     builder.add_edge(START, "analyze")
     builder.add_edge("analyze", "rag")
     builder.add_edge("rag", "plan")
     builder.add_edge("plan", "code")
     builder.add_edge("code", "validate")
-    
+
     # Retry loop
     builder.add_conditional_edges(
         "validate",
@@ -503,11 +496,11 @@ def build_improvement_graph(
         path_map={"retry": "retry", "write": "write", "error": "error"},
     )
     builder.add_edge("retry", "code")
-    
+
     # End states
     builder.add_edge("write", END)
     builder.add_edge("error", END)
-    
+
     return builder
 
 

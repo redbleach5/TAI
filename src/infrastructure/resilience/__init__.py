@@ -5,8 +5,8 @@ from src.infrastructure.resilience.circuit_breaker import (
     CircuitBreakerConfig,
     CircuitOpenError,
     CircuitState,
-    get_circuit_breaker,
     get_all_breakers,
+    get_circuit_breaker,
     reset_all_breakers,
 )
 

@@ -84,17 +84,11 @@ class ModelSelector:
             return primary, configured.fallback
 
         # Check config override: use if set and available
-        if complexity == TaskComplexity.SIMPLE and self._configured_in_available(
-            configured.simple, available
-        ):
+        if complexity == TaskComplexity.SIMPLE and self._configured_in_available(configured.simple, available):
             primary = configured.simple
-        elif complexity == TaskComplexity.COMPLEX and self._configured_in_available(
-            configured.complex, available
-        ):
+        elif complexity == TaskComplexity.COMPLEX and self._configured_in_available(configured.complex, available):
             primary = configured.complex
-        elif complexity == TaskComplexity.MEDIUM and self._configured_in_available(
-            configured.medium, available
-        ):
+        elif complexity == TaskComplexity.MEDIUM and self._configured_in_available(configured.medium, available):
             primary = configured.medium
         else:
             # Auto-select by capability: simple=smallest, complex=largest, medium=middle

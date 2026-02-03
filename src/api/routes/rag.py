@@ -11,6 +11,7 @@ router = APIRouter(prefix="/rag", tags=["rag"])
 
 class SearchRequest(BaseModel):
     """Request for RAG search."""
+
     query: str
     limit: int = 20
     min_score: float = 0.3
@@ -19,6 +20,7 @@ class SearchRequest(BaseModel):
 
 class ChunkResult(BaseModel):
     """Single search result."""
+
     content: str
     source: str
     score: float
@@ -26,6 +28,7 @@ class ChunkResult(BaseModel):
 
 class SearchResponse(BaseModel):
     """Response from RAG search."""
+
     results: list[ChunkResult]
     total_chars: int
 
@@ -91,7 +94,7 @@ async def search_rag(
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
 ) -> SearchResponse:
     """Search RAG index for relevant code chunks.
-    
+
     Args:
         query: Search query
         limit: Max results (default 20)
@@ -104,17 +107,19 @@ async def search_rag(
         min_score=body.min_score,
         max_tokens=body.max_tokens,
     )
-    
+
     results = []
     total_chars = 0
     for chunk in chunks:
-        results.append(ChunkResult(
-            content=chunk.content,
-            source=chunk.metadata.get("source", "unknown"),
-            score=chunk.score,
-        ))
+        results.append(
+            ChunkResult(
+                content=chunk.content,
+                source=chunk.metadata.get("source", "unknown"),
+                score=chunk.score,
+            )
+        )
         total_chars += len(chunk.content)
-    
+
     return SearchResponse(results=results, total_chars=total_chars)
 
 
@@ -136,7 +141,7 @@ async def get_project_map(
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
 ):
     """Get project map (structure overview).
-    
+
     Returns markdown description of project structure including:
     - File tree
     - Classes and their methods

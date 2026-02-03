@@ -5,18 +5,19 @@ from pydantic import BaseModel
 
 from src.api.dependencies import get_config, get_library, limiter
 from src.domain.ports.config import AppConfig
-from src.infrastructure.services.assistant_modes import list_modes, get_mode
-from src.infrastructure.services.prompt_templates import PromptLibrary, PromptTemplate
+from src.infrastructure.services.assistant_modes import get_mode, list_modes
 from src.infrastructure.services.command_parser import get_help_text
+from src.infrastructure.services.prompt_templates import PromptLibrary, PromptTemplate
 from src.infrastructure.services.web_search import (
-    multi_search,
     format_search_results,
+    multi_search,
 )
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 
 
 # === Modes ===
+
 
 @router.get("/modes")
 @limiter.limit("60/minute")
@@ -42,8 +43,10 @@ async def get_mode_config(request: Request, mode_id: str):
 
 # === Templates ===
 
+
 class TemplateCreate(BaseModel):
     """Create template request."""
+
     id: str
     name: str
     content: str
@@ -53,6 +56,7 @@ class TemplateCreate(BaseModel):
 
 class TemplateFill(BaseModel):
     """Fill template request."""
+
     template_id: str
     variables: dict[str, str]
 
@@ -69,7 +73,7 @@ async def list_templates(
         templates = library.list_by_category(category)
     else:
         templates = library.list_all()
-    
+
     return {
         "templates": [
             {
@@ -95,7 +99,7 @@ async def get_template(
     template = library.get(template_id)
     if not template:
         return {"error": "Template not found"}
-    
+
     return {
         "id": template.id,
         "name": template.name,
@@ -154,6 +158,7 @@ async def fill_template(
 
 # === Commands ===
 
+
 @router.get("/commands/help")
 @limiter.limit("60/minute")
 async def commands_help(request: Request):
@@ -163,8 +168,10 @@ async def commands_help(request: Request):
 
 # === Web Search ===
 
+
 class SearchRequest(BaseModel):
     """Web search request."""
+
     query: str
     max_results: int = 5
 
@@ -188,7 +195,7 @@ async def web_search(
         google_api_key=ws.google_api_key,
         google_cx=ws.google_cx,
     )
-    
+
     return {
         "query": body.query,
         "results": [

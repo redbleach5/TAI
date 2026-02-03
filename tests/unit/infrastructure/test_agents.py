@@ -1,12 +1,13 @@
 """Tests for workflow agents."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.infrastructure.agents.planner import planner_node
-from src.infrastructure.agents.tests_writer import tests_writer_node as write_tests_node
+import pytest
+
 from src.infrastructure.agents.coder import coder_node
+from src.infrastructure.agents.planner import planner_node
 from src.infrastructure.agents.researcher import researcher_node
+from src.infrastructure.agents.tests_writer import tests_writer_node as write_tests_node
 from src.infrastructure.agents.validator import validator_node
 
 
@@ -14,20 +15,24 @@ from src.infrastructure.agents.validator import validator_node
 def mock_llm():
     """Mock LLM adapter with both generate and generate_stream."""
     llm = MagicMock()
-    
+
     # Mock generate for non-streaming calls
     from src.domain.ports.llm import LLMResponse
-    llm.generate = AsyncMock(return_value=LLMResponse(
-        content="Step 1: Define function\nStep 2: Implement logic",
-        model="test-model",
-    ))
-    
+
+    llm.generate = AsyncMock(
+        return_value=LLMResponse(
+            content="Step 1: Define function\nStep 2: Implement logic",
+            model="test-model",
+        )
+    )
+
     # Mock generate_stream as async generator
     async def mock_stream(*args, **kwargs):
         yield "Step 1: Define function\n"
         yield "Step 2: Implement logic"
+
     llm.generate_stream = mock_stream
-    
+
     return llm
 
 
@@ -53,6 +58,7 @@ class TestPlanner:
     @pytest.mark.asyncio
     async def test_planner_updates_state(self, mock_llm, base_state):
         """Planner updates state with plan."""
+
         async def mock_stream(*args, **kwargs):
             yield "Step 1: Define function\n"
             yield "Step 2: Implement logic"
@@ -93,10 +99,13 @@ class TestTestsWriter:
 
         # Mock generate for non-streaming case (on_chunk=None)
         from src.domain.ports.llm import LLMResponse
-        mock_llm.generate = AsyncMock(return_value=LLMResponse(
-            content="def test_factorial():\n    assert factorial(5) == 120",
-            model="test-model",
-        ))
+
+        mock_llm.generate = AsyncMock(
+            return_value=LLMResponse(
+                content="def test_factorial():\n    assert factorial(5) == 120",
+                model="test-model",
+            )
+        )
 
         result = await write_tests_node(base_state, mock_llm, "test-model", None)
 
@@ -116,10 +125,13 @@ class TestCoder:
 
         # Mock generate for non-streaming case (on_chunk=None)
         from src.domain.ports.llm import LLMResponse
-        mock_llm.generate = AsyncMock(return_value=LLMResponse(
-            content="def factorial(n):\n    if n <= 1: return 1\n    return n * factorial(n-1)",
-            model="test-model",
-        ))
+
+        mock_llm.generate = AsyncMock(
+            return_value=LLMResponse(
+                content="def factorial(n):\n    if n <= 1: return 1\n    return n * factorial(n-1)",
+                model="test-model",
+            )
+        )
 
         result = await coder_node(base_state, mock_llm, "test-model", None)
 
@@ -135,9 +147,9 @@ class TestResearcher:
     async def test_researcher_with_rag(self, base_state):
         """Researcher uses RAG for context."""
         mock_rag = MagicMock()
-        mock_rag.search = AsyncMock(return_value=[
-            MagicMock(content="relevant code", metadata={"source": "test.py"}, score=0.9)
-        ])
+        mock_rag.search = AsyncMock(
+            return_value=[MagicMock(content="relevant code", metadata={"source": "test.py"}, score=0.9)]
+        )
 
         base_state["plan"] = "Write factorial"
 

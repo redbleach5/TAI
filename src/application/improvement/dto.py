@@ -6,7 +6,7 @@ from enum import Enum
 
 class TaskStatus(str, Enum):
     """Status of improvement task."""
-    
+
     PENDING = "pending"
     ANALYZING = "analyzing"
     PLANNING = "planning"
@@ -20,7 +20,7 @@ class TaskStatus(str, Enum):
 @dataclass
 class AnalyzeRequest:
     """Request to analyze project or file."""
-    
+
     path: str = "."
     include_linter: bool = True
     use_llm: bool = False
@@ -29,7 +29,7 @@ class AnalyzeRequest:
 @dataclass
 class IssueDTO:
     """Code issue DTO."""
-    
+
     file: str
     line: int | None
     issue_type: str
@@ -41,7 +41,7 @@ class IssueDTO:
 @dataclass
 class FileAnalysisDTO:
     """File analysis DTO."""
-    
+
     path: str
     lines: int
     functions: int
@@ -53,7 +53,7 @@ class FileAnalysisDTO:
 @dataclass
 class AnalyzeResponse:
     """Response from project analysis."""
-    
+
     total_files: int
     total_lines: int
     total_functions: int
@@ -66,7 +66,7 @@ class AnalyzeResponse:
 @dataclass
 class ImprovementRequest:
     """Request to improve specific file/issue."""
-    
+
     file_path: str
     issue: dict | None = None  # If None, general improvement
     auto_write: bool = True
@@ -80,7 +80,7 @@ class ImprovementRequest:
 @dataclass
 class ImprovementResponse:
     """Response from improvement attempt."""
-    
+
     success: bool
     file_path: str
     backup_path: str | None = None
@@ -97,7 +97,7 @@ class ImprovementResponse:
 @dataclass
 class ImprovementTask:
     """Task in improvement queue."""
-    
+
     id: str
     file_path: str
     issue: dict | None
@@ -110,7 +110,7 @@ class ImprovementTask:
 @dataclass
 class QueueStatus:
     """Status of task queue."""
-    
+
     total_tasks: int
     completed: int
     failed: int

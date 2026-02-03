@@ -155,25 +155,33 @@ class OpenAICompatibleAdapter:
         for m in messages:
             role = m.get("role", "")
             if role == "tool":
-                out.append({
-                    "role": "tool",
-                    "content": m.get("content", ""),
-                    "tool_call_id": m.get("tool_call_id", ""),
-                })
+                out.append(
+                    {
+                        "role": "tool",
+                        "content": m.get("content", ""),
+                        "tool_call_id": m.get("tool_call_id", ""),
+                    }
+                )
             elif role == "assistant" and m.get("tool_calls"):
                 tcs = m["tool_calls"]
                 openai_tcs = []
                 for tc in tcs:
-                    fn = tc.get("function", tc) if isinstance(tc.get("function"), dict) else {"name": tc.get("name", ""), "arguments": tc.get("arguments", {})}
+                    fn = (
+                        tc.get("function", tc)
+                        if isinstance(tc.get("function"), dict)
+                        else {"name": tc.get("name", ""), "arguments": tc.get("arguments", {})}
+                    )
                     name = fn.get("name", "") if isinstance(fn, dict) else getattr(fn, "name", "")
                     args = fn.get("arguments", {}) if isinstance(fn, dict) else getattr(fn, "arguments", {})
                     if isinstance(args, dict):
                         args = json.dumps(args) if args else "{}"
-                    openai_tcs.append({
-                        "id": tc.get("id", ""),
-                        "type": "function",
-                        "function": {"name": name, "arguments": args},
-                    })
+                    openai_tcs.append(
+                        {
+                            "id": tc.get("id", ""),
+                            "type": "function",
+                            "function": {"name": name, "arguments": args},
+                        }
+                    )
                 out.append({"role": "assistant", "content": m.get("content") or "", "tool_calls": openai_tcs})
             else:
                 out.append({"role": role, "content": m.get("content", "")})
@@ -223,11 +231,13 @@ class OpenAICompatibleAdapter:
                     args = json.loads(args) if args.strip() else {}
                 except json.JSONDecodeError:
                     args = {}
-            calls.append({
-                "name": name,
-                "arguments": args or {},
-                "id": tc.get("id", ""),
-            })
+            calls.append(
+                {
+                    "name": name,
+                    "arguments": args or {},
+                    "id": tc.get("id", ""),
+                }
+            )
         return (content, calls)
 
     async def chat_with_tools_stream(
@@ -277,12 +287,16 @@ class OpenAICompatibleAdapter:
                             for tc_delta in delta.get("tool_calls") or []:
                                 idx = tc_delta.get("index", 0)
                                 while len(tool_calls_acc) <= idx:
-                                    tool_calls_acc.append({"id": "", "type": "function", "function": {"name": "", "arguments": ""}})
+                                    tool_calls_acc.append(
+                                        {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
+                                    )
                                 acc = tool_calls_acc[idx]
                                 acc["id"] = acc.get("id", "") or tc_delta.get("id", "")
                                 fn = acc.setdefault("function", {"name": "", "arguments": ""})
                                 fn["name"] = fn.get("name", "") or (tc_delta.get("function") or {}).get("name", "")
-                                fn["arguments"] = (fn.get("arguments") or "") + (tc_delta.get("function") or {}).get("arguments", "")
+                                fn["arguments"] = (fn.get("arguments") or "") + (tc_delta.get("function") or {}).get(
+                                    "arguments", ""
+                                )
                         except json.JSONDecodeError:
                             pass
                     calls = []
@@ -294,11 +308,13 @@ class OpenAICompatibleAdapter:
                                 args = json.loads(args) if args.strip() else {}
                             except json.JSONDecodeError:
                                 args = {}
-                        calls.append({
-                            "name": fn.get("name", ""),
-                            "arguments": args or {},
-                            "id": acc.get("id", ""),
-                        })
+                        calls.append(
+                            {
+                                "name": fn.get("name", ""),
+                                "arguments": args or {},
+                                "id": acc.get("id", ""),
+                            }
+                        )
                     if calls:
                         yield ("tool_calls", calls)
                     yield ("done", None)

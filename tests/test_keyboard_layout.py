@@ -1,13 +1,13 @@
 """Tests for Keyboard Layout Fixer."""
 
 from src.infrastructure.services.keyboard_layout import (
+    COMMON_PATTERNS,
     EN_TO_RU,
     RU_TO_EN,
-    COMMON_PATTERNS,
-    looks_like_wrong_layout,
     fix_layout,
-    maybe_fix_query,
     get_layout_hint,
+    looks_like_wrong_layout,
+    maybe_fix_query,
 )
 
 
@@ -39,8 +39,8 @@ class TestLooksLikeWrongLayout:
     def test_common_patterns(self):
         """Common patterns should be detected."""
         assert looks_like_wrong_layout("ghbdtn") is True  # привет
-        assert looks_like_wrong_layout("cjplfq") is True   # создай
-        assert looks_like_wrong_layout("ntcn") is True    # тест
+        assert looks_like_wrong_layout("cjplfq") is True  # создай
+        assert looks_like_wrong_layout("ntcn") is True  # тест
 
     def test_russian_text_not_detected(self):
         """Russian text should not be flagged."""

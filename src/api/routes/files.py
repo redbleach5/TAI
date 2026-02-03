@@ -14,17 +14,20 @@ router = APIRouter(prefix="/files", tags=["files"])
 
 class ReadRequest(BaseModel):
     """Read file request."""
+
     path: str
 
 
 class WriteRequest(BaseModel):
     """Write file request."""
+
     path: str
     content: str
 
 
 class CreateRequest(BaseModel):
     """Create file/directory request."""
+
     path: str
     is_directory: bool = False
     content: str = ""
@@ -32,12 +35,14 @@ class CreateRequest(BaseModel):
 
 class DeleteRequest(BaseModel):
     """Delete request."""
+
     path: str
     backup: bool = True
 
 
 class RenameRequest(BaseModel):
     """Rename request."""
+
     old_path: str
     new_path: str
 
@@ -99,20 +104,20 @@ async def get_tree(
     """Get file tree."""
     service = _get_service()
     result = service.get_tree(path, depth)
-    
+
     if not result.success:
         return {"success": False, "error": result.error}
-    
+
     def node_to_dict(node):
         return {
             "name": node.name,
             "path": node.path,
             "type": "directory" if node.is_dir else "file",
             "size": node.size,
-            "extension": node.path.split('.')[-1] if '.' in node.path and not node.is_dir else None,
+            "extension": node.path.split(".")[-1] if "." in node.path and not node.is_dir else None,
             "children": [node_to_dict(c) for c in node.children] if node.children else None,
         }
-    
+
     return {
         "success": True,
         "tree": node_to_dict(result.data["tree"]),
@@ -125,10 +130,10 @@ async def read_file(request: Request, body: ReadRequest):
     """Read file content."""
     service = _get_service()
     result = service.read(body.path)
-    
+
     if not result.success:
         return {"success": False, "error": result.error}
-    
+
     return {
         "success": True,
         "content": result.data["content"],
@@ -142,10 +147,10 @@ async def write_file(request: Request, body: WriteRequest):
     """Write file content."""
     service = _get_service()
     result = service.write(body.path, body.content)
-    
+
     if not result.success:
         return {"success": False, "error": result.error}
-    
+
     return {"success": True, "path": result.data["path"]}
 
 
@@ -155,10 +160,10 @@ async def create_file(request: Request, body: CreateRequest):
     """Create file or directory."""
     service = _get_service()
     result = service.create(body.path, body.is_directory, body.content)
-    
+
     if not result.success:
         return {"success": False, "error": result.error}
-    
+
     return {"success": True, "path": result.data["path"]}
 
 
@@ -168,10 +173,10 @@ async def delete_file(request: Request, path: str, backup: bool = True):
     """Delete file or directory."""
     service = _get_service()
     result = service.delete(path, backup)
-    
+
     if not result.success:
         return {"success": False, "error": result.error}
-    
+
     return {"success": True, "deleted": result.data["deleted"]}
 
 
@@ -181,10 +186,10 @@ async def rename_file(request: Request, body: RenameRequest):
     """Rename or move file/directory."""
     service = _get_service()
     result = service.rename(body.old_path, body.new_path)
-    
+
     if not result.success:
         return {"success": False, "error": result.error}
-    
+
     return {
         "success": True,
         "old": result.data["old"],

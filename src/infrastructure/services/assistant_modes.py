@@ -6,6 +6,7 @@ from enum import Enum
 
 class AssistantMode(Enum):
     """Доступные режимы: только Чат и Агент."""
+
     DEFAULT = "default"
     AGENT = "agent"
 
@@ -13,6 +14,7 @@ class AssistantMode(Enum):
 @dataclass
 class ModeConfig:
     """Конфигурация режима."""
+
     id: str
     name: str
     description: str

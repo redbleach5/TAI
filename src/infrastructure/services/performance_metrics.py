@@ -18,39 +18,41 @@ from typing import Callable
 
 logger = logging.getLogger(__name__)
 
+
 @dataclass
 class StageMetrics:
     """Метрики для одного этапа."""
+
     name: str
     samples: list[float] = field(default_factory=list)
     max_samples: int = 100
-    
+
     def add(self, duration: float) -> None:
         """Добавить замер."""
         self.samples.append(duration)
         if len(self.samples) > self.max_samples:
-            self.samples = self.samples[-self.max_samples:]
-    
+            self.samples = self.samples[-self.max_samples :]
+
     @property
     def count(self) -> int:
         return len(self.samples)
-    
+
     @property
     def avg(self) -> float:
         return mean(self.samples) if self.samples else 0.0
-    
+
     @property
     def med(self) -> float:
         return median(self.samples) if self.samples else 0.0
-    
+
     @property
     def min_time(self) -> float:
         return min(self.samples) if self.samples else 0.0
-    
+
     @property
     def max_time(self) -> float:
         return max(self.samples) if self.samples else 0.0
-    
+
     def to_dict(self) -> dict:
         return {
             "name": self.name,
@@ -64,18 +66,18 @@ class StageMetrics:
 
 class PerformanceMetrics:
     """Менеджер метрик производительности.
-    
+
     Функции:
     - Сбор метрик по этапам
     - Персистентность данных
     - API для мониторинга
-    
+
     Thread-safe: uses lock for all state modifications.
     """
-    
+
     def __init__(self, persist_path: str | None = None):
         """Инициализация.
-        
+
         Args:
             persist_path: Путь для сохранения метрик
         """
@@ -84,10 +86,10 @@ class PerformanceMetrics:
         self._persist_path.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         self._load()
-    
+
     def record(self, stage: str, duration: float) -> None:
         """Записать время выполнения этапа (thread-safe).
-        
+
         Args:
             stage: Название этапа
             duration: Время выполнения (должно быть >= 0)
@@ -95,29 +97,31 @@ class PerformanceMetrics:
         if duration < 0:
             logger.warning(f"Negative duration {duration} for stage '{stage}', using 0")
             duration = 0.0
-        
+
         with self._lock:
             if stage not in self._stages:
                 self._stages[stage] = StageMetrics(name=stage)
             self._stages[stage].add(duration)
-            
+
             # Сохраняем каждые 10 замеров
             if self._stages[stage].count % 10 == 0:
                 self._save_unsafe()  # Already under lock
-    
+
     def measure(self, stage: str) -> Callable:
         """Декоратор для измерения времени функции.
-        
+
         Usage:
             @metrics.measure("chat")
             async def process_chat(...):
                 ...
         """
+
         def decorator(func: Callable) -> Callable:
             import asyncio
             import functools
-            
+
             if asyncio.iscoroutinefunction(func):
+
                 @functools.wraps(func)
                 async def async_wrapper(*args, **kwargs):
                     start = time.perf_counter()
@@ -125,8 +129,10 @@ class PerformanceMetrics:
                         return await func(*args, **kwargs)
                     finally:
                         self.record(stage, time.perf_counter() - start)
+
                 return async_wrapper
             else:
+
                 @functools.wraps(func)
                 def sync_wrapper(*args, **kwargs):
                     start = time.perf_counter()
@@ -134,16 +140,18 @@ class PerformanceMetrics:
                         return func(*args, **kwargs)
                     finally:
                         self.record(stage, time.perf_counter() - start)
+
                 return sync_wrapper
+
         return decorator
-    
+
     def get_stats(self, stage: str) -> dict | None:
         """Получить статистику по этапу (thread-safe)."""
         with self._lock:
             if stage in self._stages:
                 return self._stages[stage].to_dict()
             return None
-    
+
     def get_all_stats(self) -> dict:
         """Получить статистику по всем этапам (thread-safe)."""
         with self._lock:
@@ -152,17 +160,17 @@ class PerformanceMetrics:
                 "total_samples": sum(s.count for s in self._stages.values()),
                 "updated_at": datetime.now().isoformat(),
             }
-    
+
     def estimate_duration(self, stage: str, default: float = 5.0) -> float:
         """Оценить время выполнения этапа (thread-safe).
-        
+
         Использует медиану если есть данные, иначе default.
         """
         with self._lock:
             if stage in self._stages and self._stages[stage].count >= 3:
                 return self._stages[stage].med
             return default
-    
+
     def _load(self) -> None:
         """Загрузить метрики с диска (called during init, no lock needed)."""
         metrics_file = self._persist_path / "stage_metrics.json"
@@ -181,7 +189,7 @@ class PerformanceMetrics:
                     self._stages[stage.name] = stage
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning(f"Failed to load metrics: {e}")
-    
+
     def _save_unsafe(self) -> None:
         """Сохранить метрики на диск (caller must hold lock, atomic write)."""
         metrics_file = self._persist_path / "stage_metrics.json"
@@ -213,12 +221,12 @@ class PerformanceMetrics:
                 raise
         except OSError as e:
             logger.warning(f"Failed to save metrics: {e}")
-    
+
     def _save(self) -> None:
         """Сохранить метрики на диск (thread-safe)."""
         with self._lock:
             self._save_unsafe()
-    
+
     def reset(self) -> None:
         """Сбросить все метрики (thread-safe)."""
         with self._lock:

@@ -38,7 +38,7 @@ class IntentDetector:
         """Initialize with cache size."""
         # Создаем кэшированную версию _detect
         self._cached_detect = lru_cache(maxsize=cache_size)(self._detect_impl)
-    
+
     def _detect_impl(self, text: str) -> Intent:
         """Internal detection logic (cached)."""
         if not text:
@@ -49,8 +49,7 @@ class IntentDetector:
                 return Intent(
                     kind="greeting",
                     response=(
-                        "Привет! Я CodeGen AI — локальный помощник для генерации кода. "
-                        "Задай вопрос или опиши задачу."
+                        "Привет! Я CodeGen AI — локальный помощник для генерации кода. Задай вопрос или опиши задачу."
                     ),
                 )
 
@@ -74,7 +73,7 @@ class IntentDetector:
         """Detect intent from message (cached). Returns template response for greeting/help."""
         text = message.strip().lower()
         return self._cached_detect(text)
-    
+
     def cache_info(self) -> dict:
         """Get cache statistics."""
         info = self._cached_detect.cache_info()
@@ -84,7 +83,7 @@ class IntentDetector:
             "size": info.currsize,
             "maxsize": info.maxsize,
         }
-    
+
     def clear_cache(self) -> None:
         """Clear the intent cache."""
         self._cached_detect.cache_clear()

@@ -28,9 +28,7 @@ async def coder_node(
     messages = [
         LLMMessage(
             role="system",
-            content=(
-                "You are a coding assistant. Output only Python code. No markdown, no explanations."
-            ),
+            content=("You are a coding assistant. Output only Python code. No markdown, no explanations."),
         ),
         LLMMessage(role="user", content=user_content),
     ]

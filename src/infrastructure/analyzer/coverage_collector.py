@@ -45,7 +45,9 @@ def collect_coverage_for_analysis(project_path: str) -> str:
             timeout=15,
         )
         if report_result.returncode != 0:
-            if "No module named 'coverage'" in (report_result.stderr or "") or "coverage: command not found" in (report_result.stderr or ""):
+            if "No module named 'coverage'" in (report_result.stderr or "") or "coverage: command not found" in (
+                report_result.stderr or ""
+            ):
                 return "Покрытие не измерено: установите coverage (pip install coverage)."
             if "No data to report" in (report_result.stdout or report_result.stderr or ""):
                 return "Покрытие не измерено: тесты не запускались или не собрали данные (проверьте pytest)."

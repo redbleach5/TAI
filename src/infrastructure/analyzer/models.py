@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 @dataclass
 class FileMetrics:
     """Метрики одного файла."""
+
     path: str
     lines_total: int = 0
     lines_code: int = 0
@@ -25,6 +26,7 @@ class FileMetrics:
 @dataclass
 class SecurityIssue:
     """Проблема безопасности."""
+
     severity: str  # critical, high, medium, low
     file: str
     line: int
@@ -35,6 +37,7 @@ class SecurityIssue:
 @dataclass
 class ArchitectureInfo:
     """Информация об архитектуре."""
+
     layers: dict[str, list[str]] = field(default_factory=dict)
     dependencies: dict[str, list[str]] = field(default_factory=dict)
     entry_points: list[str] = field(default_factory=list)
@@ -44,6 +47,7 @@ class ArchitectureInfo:
 @dataclass
 class ProjectAnalysis:
     """Результат полного анализа проекта."""
+
     project_path: str
     project_name: str
     analyzed_at: str

@@ -10,6 +10,7 @@ PROJECTS_FILE = Path("output/projects.json")
 
 class Project(BaseModel):
     """Project configuration."""
+
     id: str
     name: str
     path: str

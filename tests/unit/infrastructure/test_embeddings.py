@@ -1,9 +1,10 @@
 """Tests for embeddings adapters."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from src.domain.ports.config import OllamaConfig, EmbeddingsConfig, OpenAICompatibleConfig
+import pytest
+
+from src.domain.ports.config import EmbeddingsConfig, OllamaConfig, OpenAICompatibleConfig
 from src.infrastructure.embeddings.ollama import OllamaEmbeddingsAdapter
 from src.infrastructure.embeddings.openai_compatible import OpenAICompatibleEmbeddingsAdapter
 
@@ -31,9 +32,7 @@ class TestOllamaEmbeddingsAdapter:
         mock_response.json.return_value = {"embeddings": [[0.1, 0.2, 0.3]]}
 
         with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
             result = await adapter.embed("Hello world")
 
         assert result == [0.1, 0.2, 0.3]
@@ -43,14 +42,10 @@ class TestOllamaEmbeddingsAdapter:
         """embed_batch returns embeddings for multiple texts."""
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "embeddings": [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]]
-        }
+        mock_response.json.return_value = {"embeddings": [[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]]}
 
         with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
             result = await adapter.embed_batch(["text1", "text2", "text3"])
 
         assert len(result) == 3
@@ -70,9 +65,7 @@ class TestOllamaEmbeddingsAdapter:
         mock_response.json.return_value = {"embeddings": []}
 
         with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
             result = await adapter.embed("text")
 
         assert result == []
@@ -102,14 +95,10 @@ class TestOpenAICompatibleEmbeddingsAdapter:
         """embed returns embedding via OpenAI-compatible API."""
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "data": [{"embedding": [0.1, 0.2, 0.3]}]
-        }
+        mock_response.json.return_value = {"data": [{"embedding": [0.1, 0.2, 0.3]}]}
 
         with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
             result = await adapter.embed("Hello")
 
         assert result == [0.1, 0.2, 0.3]
@@ -127,9 +116,7 @@ class TestOpenAICompatibleEmbeddingsAdapter:
         }
 
         with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
             result = await adapter.embed_batch(["text1", "text2"])
 
         assert len(result) == 2

@@ -9,6 +9,7 @@ from typing import Any
 @dataclass
 class ParsedToolCall:
     """Parsed tool call from LLM output."""
+
     tool: str
     args: dict[str, Any]
     raw: str
@@ -16,12 +17,12 @@ class ParsedToolCall:
 
 def parse_tool_call(content: str) -> ParsedToolCall | None:
     """Parse first tool call from LLM response.
-    
+
     Expected format:
     <tool_call>
     {"tool": "read_file", "path": "src/main.py"}
     </tool_call>
-    
+
     Returns:
         ParsedToolCall if found, None otherwise
     """
@@ -29,7 +30,7 @@ def parse_tool_call(content: str) -> ParsedToolCall | None:
     match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
     if not match:
         return None
-    
+
     raw = match.group(1).strip()
     try:
         data = json.loads(raw)

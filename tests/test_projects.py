@@ -1,12 +1,11 @@
 """Tests for Projects API."""
 
-
 import pytest
 from fastapi.testclient import TestClient
 
-from src.main import app
 from src.api.container import reset_container
 from src.api.store import PROJECTS_FILE
+from src.main import app
 
 client = TestClient(app)
 
@@ -41,10 +40,7 @@ class TestProjectsAdd:
     def test_add_project(self):
         """Test adding a project."""
         # Use current directory as test path
-        response = client.post(
-            "/projects",
-            json={"name": "Test Project", "path": "."}
-        )
+        response = client.post("/projects", json={"name": "Test Project", "path": "."})
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
@@ -53,10 +49,7 @@ class TestProjectsAdd:
 
     def test_add_project_invalid_path(self):
         """Test adding project with invalid path."""
-        response = client.post(
-            "/projects",
-            json={"name": "Invalid", "path": "/nonexistent/path/12345"}
-        )
+        response = client.post("/projects", json={"name": "Invalid", "path": "/nonexistent/path/12345"})
         assert response.status_code == 400
         assert "does not exist" in response.json()["detail"]
 
@@ -64,7 +57,7 @@ class TestProjectsAdd:
         """Test adding project with duplicate name creates unique ID."""
         client.post("/projects", json={"name": "Test", "path": "."})
         response = client.post("/projects", json={"name": "Test", "path": "."})
-        
+
         assert response.status_code == 200
         data = response.json()
         # Should have suffix like test-1
@@ -80,7 +73,7 @@ class TestProjectsSelect:
         # Add project first
         add_res = client.post("/projects", json={"name": "My Project", "path": "."})
         project_id = add_res.json()["project"]["id"]
-        
+
         # Select it
         response = client.post(f"/projects/{project_id}/select")
         assert response.status_code == 200
@@ -102,11 +95,11 @@ class TestProjectsRemove:
         # Add project first
         add_res = client.post("/projects", json={"name": "To Remove", "path": "."})
         project_id = add_res.json()["project"]["id"]
-        
+
         # Remove it
         response = client.delete(f"/projects/{project_id}")
         assert response.status_code == 200
-        
+
         # Verify removed
         list_res = client.get("/projects")
         ids = [p["id"] for p in list_res.json()["projects"]]
@@ -134,7 +127,7 @@ class TestProjectsCurrent:
         add_res = client.post("/projects", json={"name": "Current", "path": "."})
         project_id = add_res.json()["project"]["id"]
         client.post(f"/projects/{project_id}/select")
-        
+
         # Get current
         response = client.get("/projects/current")
         assert response.status_code == 200

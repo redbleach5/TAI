@@ -7,6 +7,7 @@ from src.domain.ports.llm import LLMMessage
 
 class ContextFile(BaseModel):
     """File content for chat context (Cursor-like)."""
+
     path: str
     content: str
 

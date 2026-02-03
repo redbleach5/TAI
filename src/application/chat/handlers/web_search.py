@@ -2,21 +2,21 @@
 
 from src.application.chat.handlers.base import CommandHandler, CommandResult
 from src.infrastructure.services.web_search import (
-    multi_search,
     format_search_results,
+    multi_search,
 )
 
 
 class WebSearchHandler(CommandHandler):
     """Handles @web command - searches the internet using multiple engines."""
-    
+
     @property
     def command_type(self) -> str:
         return "web"
-    
+
     async def execute(self, argument: str, **context) -> CommandResult:
         """Execute web search using multiple engines in parallel.
-        
+
         Args:
             argument: Search query
         """
@@ -26,7 +26,7 @@ class WebSearchHandler(CommandHandler):
                 success=False,
                 error="Web search requires a query. Example: @web python async tutorial",
             )
-        
+
         try:
             # Use multi-engine parallel search (config/context or env for keys)
             searxng_url = context.get("web_search_searxng_url")

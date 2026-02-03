@@ -10,7 +10,6 @@ from pathlib import Path
 from src.infrastructure.analyzer.file_metrics import extract_imports
 from src.infrastructure.analyzer.models import ArchitectureInfo
 
-
 ENTRY_PATTERNS = ["main.py", "app.py", "run.py", "index.py", "__main__.py", "cli.py"]
 CONFIG_PATTERNS = ["*.toml", "*.yaml", "*.yml", "*.json", "*.ini", "*.env*"]
 STDLIB_PREFIXES = ("os", "sys", "re", "json", "typing", "dataclass")
@@ -67,10 +66,7 @@ def analyze_architecture(path: Path, files: list[Path]) -> ArchitectureInfo:
                 rel_path = str(file_path.relative_to(path))
             except ValueError:
                 continue
-            local_imports = [
-                i for i in imports
-                if not i.startswith(STDLIB_PREFIXES)
-            ]
+            local_imports = [i for i in imports if not i.startswith(STDLIB_PREFIXES)]
             if local_imports:
                 arch.dependencies[rel_path] = local_imports[:10]
         except (SyntaxError, OSError):

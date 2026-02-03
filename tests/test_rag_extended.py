@@ -1,6 +1,5 @@
 """Tests for extended RAG functionality."""
 
-
 import pytest
 from fastapi.testclient import TestClient
 
@@ -40,7 +39,7 @@ class TestRAGStatus:
         """Test getting RAG status."""
         # Index first
         client.post("/rag/index?path=src")
-        
+
         response = client.get("/rag/status")
         assert response.status_code == 200
         data = response.json()
@@ -55,11 +54,8 @@ class TestRAGSearch:
         """Test RAG search."""
         # Index first
         client.post("/rag/index?path=src")
-        
-        response = client.post(
-            "/rag/search",
-            json={"query": "FastAPI router", "limit": 5}
-        )
+
+        response = client.post("/rag/search", json={"query": "FastAPI router", "limit": 5})
         assert response.status_code == 200
         data = response.json()
         assert "results" in data
@@ -68,11 +64,8 @@ class TestRAGSearch:
     def test_search_with_min_score(self):
         """Test search with minimum score filter."""
         client.post("/rag/index?path=src")
-        
-        response = client.post(
-            "/rag/search",
-            json={"query": "FastAPI", "limit": 10, "min_score": 0.5}
-        )
+
+        response = client.post("/rag/search", json={"query": "FastAPI", "limit": 10, "min_score": 0.5})
         assert response.status_code == 200
         data = response.json()
         # All results should have score >= min_score
@@ -82,11 +75,8 @@ class TestRAGSearch:
     def test_search_with_max_tokens(self):
         """Test search with token limit."""
         client.post("/rag/index?path=src")
-        
-        response = client.post(
-            "/rag/search",
-            json={"query": "router", "limit": 100, "max_tokens": 500}
-        )
+
+        response = client.post("/rag/search", json={"query": "router", "limit": 100, "max_tokens": 500})
         assert response.status_code == 200
         data = response.json()
         # Total chars should be roughly limited (500 tokens * 4 chars)
@@ -99,7 +89,7 @@ class TestRAGFiles:
     def test_list_files(self):
         """Test listing indexed files."""
         client.post("/rag/index?path=src")
-        
+
         response = client.get("/rag/files")
         assert response.status_code == 200
         data = response.json()
@@ -115,7 +105,7 @@ class TestRAGProjectMap:
         """Test getting project map."""
         # Index first to generate map
         client.post("/rag/index?path=src")
-        
+
         response = client.get("/rag/project-map")
         assert response.status_code == 200
         data = response.json()
@@ -131,12 +121,12 @@ class TestRAGClear:
         """Test clearing index."""
         # Index first
         client.post("/rag/index?path=src")
-        
+
         response = client.post("/rag/clear")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "ok"
-        
+
         # Verify cleared
         status = client.get("/rag/status")
         assert status.json()["total_chunks"] == 0

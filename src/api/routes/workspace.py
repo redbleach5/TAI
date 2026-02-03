@@ -18,11 +18,13 @@ router = APIRouter(prefix="/workspace", tags=["workspace"])
 
 class WorkspaceSet(BaseModel):
     """Set workspace (open folder) request."""
+
     path: str
 
 
 class WorkspaceCreate(BaseModel):
     """Create new project folder and set as workspace."""
+
     path: str
     name: str | None = None
 
@@ -30,6 +32,7 @@ class WorkspaceCreate(BaseModel):
 def _get_workspace_path() -> str:
     """Get current workspace path (current project or cwd). Used by files router."""
     from src.api.dependencies import get_store
+
     store = get_store()
     current = store.get_current()
     return current.path if current else str(Path.cwd().resolve())
@@ -158,6 +161,7 @@ async def index_workspace(
 
         if current:
             from datetime import datetime
+
             store.update_project(
                 current.id,
                 indexed=True,
@@ -195,19 +199,23 @@ async def index_workspace_stream(
 
         async def on_progress(batch_num: int, total_batches: int) -> None:
             pct = round(batch_num / total_batches * 100) if total_batches else 0
-            await queue.put({
-                "event": "progress",
-                "data": json.dumps({"progress": pct, "batch": batch_num, "total": total_batches}),
-            })
+            await queue.put(
+                {
+                    "event": "progress",
+                    "data": json.dumps({"progress": pct, "batch": batch_num, "total": total_batches}),
+                }
+            )
 
         async def run_index() -> None:
             original_cwd = os.getcwd()
             try:
                 os.chdir(path)
-                await queue.put({
-                    "event": "progress",
-                    "data": json.dumps({"progress": 0, "batch": 0, "total": 1}),
-                })
+                await queue.put(
+                    {
+                        "event": "progress",
+                        "data": json.dumps({"progress": 0, "batch": 0, "total": 1}),
+                    }
+                )
                 stats = await rag.index_path(
                     ".",
                     incremental=incremental,
@@ -216,6 +224,7 @@ async def index_workspace_stream(
 
                 if current:
                     from datetime import datetime
+
                     store.update_project(
                         current.id,
                         indexed=True,
@@ -223,15 +232,19 @@ async def index_workspace_stream(
                         last_indexed=datetime.now().isoformat(),
                     )
 
-                await queue.put({
-                    "event": "done",
-                    "data": json.dumps({"status": "ok", "project": project_id, "stats": stats}),
-                })
+                await queue.put(
+                    {
+                        "event": "done",
+                        "data": json.dumps({"status": "ok", "project": project_id, "stats": stats}),
+                    }
+                )
             except Exception as e:
-                await queue.put({
-                    "event": "error",
-                    "data": json.dumps({"detail": str(e)}),
-                })
+                await queue.put(
+                    {
+                        "event": "error",
+                        "data": json.dumps({"detail": str(e)}),
+                    }
+                )
             finally:
                 os.chdir(original_cwd)
                 await queue.put(None)

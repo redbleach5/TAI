@@ -6,14 +6,14 @@ from slowapi.util import get_remote_address
 from src.api.container import get_container
 from src.api.store import ProjectsStore
 from src.application.chat.use_case import ChatUseCase
-from src.application.workflow.use_case import WorkflowUseCase
 from src.application.improvement.use_case import SelfImprovementUseCase
+from src.application.workflow.use_case import WorkflowUseCase
 from src.domain.ports.config import AppConfig
-from src.infrastructure.agents.file_writer import FileWriter
-from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
 from src.domain.ports.llm import LLMPort
 from src.domain.services.model_router import ModelRouter
 from src.domain.services.model_selector import ModelSelector
+from src.infrastructure.agents.file_writer import FileWriter
+from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
 from src.infrastructure.persistence.conversation_memory import ConversationMemory
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 from src.infrastructure.services.code_security import CodeSecurityChecker

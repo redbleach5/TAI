@@ -2,8 +2,8 @@
 
 from fastapi import APIRouter, Depends, Request
 
-from src.api.dependencies import get_llm_adapter, get_model_router, limiter
 from src.api.container import get_container
+from src.api.dependencies import get_llm_adapter, get_model_router, limiter
 from src.domain.ports.llm import LLMPort
 from src.domain.services.model_router import ModelRouter
 from src.infrastructure.resilience import get_all_breakers, reset_all_breakers
@@ -16,8 +16,10 @@ def _get_llm_for_provider(provider: str) -> LLMPort:
     container = get_container()
     if provider == "lm_studio":
         from src.infrastructure.llm.openai_compatible import OpenAICompatibleAdapter
+
         return OpenAICompatibleAdapter(container.config.openai_compatible)
     from src.infrastructure.llm.ollama import OllamaAdapter
+
     return OllamaAdapter(container.config.ollama)
 
 

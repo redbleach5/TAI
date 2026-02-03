@@ -14,18 +14,22 @@ def _rag_section_for_plan(state: dict[str, Any]) -> str:
         parts.append(f"\nProject structure:\n{project_map[:1500]}\n\n")
     rag_context = state.get("rag_context") or ""
     if rag_context:
-        parts.append("""
+        parts.append(
+            """
 Relevant code from project (follow similar patterns):
 {rag_context}
 
-""".format(rag_context=rag_context))
+""".format(rag_context=rag_context)
+        )
     related = state.get("related_files_context") or ""
     if related:
-        parts.append("""
+        parts.append(
+            """
 Related files (imports, tests - consider when planning):
 {related}
 
-""".format(related=related))
+""".format(related=related)
+        )
     return "".join(parts)
 
 
@@ -36,10 +40,10 @@ def build_plan_prompt(state: dict[str, Any]) -> str:
     rag_section = _rag_section_for_plan(state)
     return f"""You need to improve this code to fix the following issue:
 
-Issue: {issue.get('message', 'General improvement')}
-Severity: {issue.get('severity', 'medium')}
-Type: {issue.get('issue_type', 'refactor')}
-Suggestion: {issue.get('suggestion', 'Improve code quality')}
+Issue: {issue.get("message", "General improvement")}
+Severity: {issue.get("severity", "medium")}
+Type: {issue.get("issue_type", "refactor")}
+Suggestion: {issue.get("suggestion", "Improve code quality")}
 {rag_section}
 Original code:
 ```python
@@ -58,18 +62,22 @@ def _rag_section_for_code(state: dict[str, Any]) -> str:
         parts.append(f"\nProject structure:\n{project_map[:1200]}\n\n")
     rag_context = state.get("rag_context") or ""
     if rag_context:
-        parts.append("""
+        parts.append(
+            """
 Project context (follow similar patterns):
 {rag_context}
 
-""".format(rag_context=rag_context[:2000]))
+""".format(rag_context=rag_context[:2000])
+        )
     related = state.get("related_files_context") or ""
     if related:
-        parts.append("""
+        parts.append(
+            """
 Related files (preserve imports, consider callers/tests):
 {related}
 
-""".format(related=related[:2000]))
+""".format(related=related[:2000])
+        )
     return "".join(parts)
 
 
@@ -102,7 +110,7 @@ Similar code from codebase (may help fix this error):
     rag_section = _rag_section_for_code(state)
     return f"""Improve this Python code following the plan below.
 
-Issue to fix: {issue.get('message', 'General improvement')}
+Issue to fix: {issue.get("message", "General improvement")}
 
 Plan:
 {plan}

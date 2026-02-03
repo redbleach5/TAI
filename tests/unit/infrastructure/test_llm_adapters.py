@@ -1,8 +1,9 @@
 """Tests for LLM adapters (Ollama, OpenAI-compatible)."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import httpx
+import pytest
 
 from src.domain.ports.config import OllamaConfig, OpenAICompatibleConfig
 from src.domain.ports.llm import LLMMessage
@@ -55,6 +56,7 @@ class TestOllamaAdapter:
     @pytest.mark.asyncio
     async def test_generate_stream(self, adapter):
         """Generate stream yields content chunks."""
+
         async def mock_stream():
             for text in ["Hello", " ", "world"]:
                 chunk = MagicMock()
@@ -77,9 +79,7 @@ class TestOllamaAdapter:
         mock_response.status_code = 200
 
         with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
             result = await adapter.is_available()
 
         assert result is True
@@ -154,14 +154,10 @@ class TestOpenAICompatibleAdapter:
         """Generate calls OpenAI-compatible API."""
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "choices": [{"message": {"content": "Hello!"}}]
-        }
+        mock_response.json.return_value = {"choices": [{"message": {"content": "Hello!"}}]}
 
         with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
 
             messages = [LLMMessage(role="user", content="Hi")]
             result = await adapter.generate(messages, model="local")
@@ -174,16 +170,14 @@ class TestOpenAICompatibleAdapter:
         """Generate uses 'default' model if not specified."""
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "choices": [{"message": {"content": "Response"}}]
-        }
+        mock_response.json.return_value = {"choices": [{"message": {"content": "Response"}}]}
 
         with patch("httpx.AsyncClient") as mock_client:
             mock_instance = mock_client.return_value.__aenter__.return_value
             mock_instance.post = AsyncMock(return_value=mock_response)
 
             messages = [LLMMessage(role="user", content="Hi")]
-            result = await adapter.generate(messages)
+            await adapter.generate(messages)
 
             call_args = mock_instance.post.call_args
             assert call_args.kwargs["json"]["model"] == "default"
@@ -199,9 +193,7 @@ class TestOpenAICompatibleAdapter:
         )
 
         with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
 
             messages = [LLMMessage(role="user", content="Hi")]
             with pytest.raises(httpx.HTTPStatusError):
@@ -214,9 +206,7 @@ class TestOpenAICompatibleAdapter:
         mock_response.status_code = 200
 
         with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
             result = await adapter.is_available()
 
         assert result is True
@@ -237,14 +227,10 @@ class TestOpenAICompatibleAdapter:
         """list_models returns model IDs."""
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {
-            "data": [{"id": "model-1"}, {"id": "model-2"}]
-        }
+        mock_response.json.return_value = {"data": [{"id": "model-1"}, {"id": "model-2"}]}
 
         with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-                return_value=mock_response
-            )
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_response)
             result = await adapter.list_models()
 
         assert result == ["model-1", "model-2"]
@@ -253,9 +239,7 @@ class TestOpenAICompatibleAdapter:
     async def test_list_models_empty_on_error(self, adapter):
         """list_models returns empty list on error."""
         with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-                side_effect=Exception("Error")
-            )
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(side_effect=Exception("Error"))
             result = await adapter.list_models()
 
         assert result == []

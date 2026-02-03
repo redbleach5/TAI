@@ -17,8 +17,7 @@ CODE_SMELL_PATTERNS: list[tuple[str, str]] = [
 ]
 
 _COMPILED: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(pattern, re.MULTILINE), desc)
-    for pattern, desc in CODE_SMELL_PATTERNS
+    (re.compile(pattern, re.MULTILINE), desc) for pattern, desc in CODE_SMELL_PATTERNS
 ]
 
 MAX_SMELLS = 20

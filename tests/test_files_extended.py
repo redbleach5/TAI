@@ -35,14 +35,14 @@ class TestFileTree:
         response = client.get("/files/tree")
         assert response.status_code == 200
         data = response.json()
-        
+
         def find_pycache(node):
             if node["name"] == "__pycache__":
                 return True
             if node.get("children"):
                 return any(find_pycache(c) for c in node["children"])
             return False
-        
+
         assert not find_pycache(data["tree"])
 
     def test_get_tree_invalid_path(self):
@@ -61,10 +61,7 @@ class TestFileCreate:
         """Test creating a new file."""
         test_path = "test_created_file_12345.txt"
         try:
-            response = client.post(
-                "/files/create",
-                json={"path": test_path, "is_directory": False}
-            )
+            response = client.post("/files/create", json={"path": test_path, "is_directory": False})
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
@@ -77,10 +74,7 @@ class TestFileCreate:
         """Test creating a new directory."""
         test_path = "test_created_dir_12345"
         try:
-            response = client.post(
-                "/files/create",
-                json={"path": test_path, "is_directory": True}
-            )
+            response = client.post("/files/create", json={"path": test_path, "is_directory": True})
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
@@ -91,10 +85,7 @@ class TestFileCreate:
 
     def test_create_existing_file(self):
         """Test creating a file that already exists."""
-        response = client.post(
-            "/files/create",
-            json={"path": "pyproject.toml", "is_directory": False}
-        )
+        response = client.post("/files/create", json={"path": "pyproject.toml", "is_directory": False})
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is False
@@ -108,7 +99,7 @@ class TestFileDelete:
         """Test deleting a file."""
         test_path = "test_delete_file_12345.txt"
         Path(test_path).write_text("test content")
-        
+
         response = client.delete(f"/files/delete?path={test_path}")
         assert response.status_code == 200
         data = response.json()
@@ -127,7 +118,7 @@ class TestFileDelete:
         """Test that delete creates backup."""
         test_path = "test_delete_backup_12345.txt"
         Path(test_path).write_text("backup test content")
-        
+
         response = client.delete(f"/files/delete?path={test_path}&backup=true")
         assert response.status_code == 200
         data = response.json()
@@ -141,14 +132,11 @@ class TestFileRename:
         """Test renaming a file."""
         old_path = "test_rename_old_12345.txt"
         new_path = "test_rename_new_12345.txt"
-        
+
         try:
             Path(old_path).write_text("rename test")
-            
-            response = client.post(
-                "/files/rename",
-                json={"old_path": old_path, "new_path": new_path}
-            )
+
+            response = client.post("/files/rename", json={"old_path": old_path, "new_path": new_path})
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is True
@@ -161,10 +149,7 @@ class TestFileRename:
 
     def test_rename_nonexistent(self):
         """Test renaming non-existent file returns error."""
-        response = client.post(
-            "/files/rename",
-            json={"old_path": "nonexistent_12345.txt", "new_path": "new_12345.txt"}
-        )
+        response = client.post("/files/rename", json={"old_path": "nonexistent_12345.txt", "new_path": "new_12345.txt"})
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is False
@@ -173,13 +158,10 @@ class TestFileRename:
     def test_rename_to_existing(self):
         """Test renaming to existing file returns error."""
         old_path = "test_rename_src_12345.txt"
-        
+
         try:
             Path(old_path).write_text("test")
-            response = client.post(
-                "/files/rename",
-                json={"old_path": old_path, "new_path": "pyproject.toml"}
-            )
+            response = client.post("/files/rename", json={"old_path": old_path, "new_path": "pyproject.toml"})
             assert response.status_code == 200
             data = response.json()
             assert data["success"] is False

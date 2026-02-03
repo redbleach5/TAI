@@ -64,9 +64,7 @@ class TestDeepAnalyzer:
     @pytest.fixture
     def mock_llm(self):
         llm = MagicMock()
-        llm.generate = AsyncMock(
-            return_value=MagicMock(content="# Резюме\nПроект в порядке.")
-        )
+        llm.generate = AsyncMock(return_value=MagicMock(content="# Резюме\nПроект в порядке."))
         return llm
 
     @pytest.fixture

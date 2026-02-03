@@ -3,7 +3,6 @@
 import tempfile
 from pathlib import Path
 
-
 from src.api.container import reset_container
 from src.api.dependencies import get_analyzer
 from src.infrastructure.analyzer import (
@@ -22,7 +21,7 @@ class TestProjectAnalyzer:
         with tempfile.TemporaryDirectory() as tmpdir:
             analyzer = ProjectAnalyzer()
             analysis = analyzer.analyze(tmpdir)
-            
+
             assert analysis.total_files == 0
             assert analysis.total_lines == 0
             assert analysis.security_score == 100
@@ -42,10 +41,10 @@ class Greeter:
     def greet(self, name):
         return f"Hello, {name}!"
 """)
-            
+
             analyzer = ProjectAnalyzer()
             analysis = analyzer.analyze(tmpdir)
-            
+
             assert analysis.total_files == 1
             assert analysis.total_lines > 0
             assert "Python" in analysis.languages
@@ -66,13 +65,13 @@ password = "secret123"  # High
 DEBUG = True  # Medium
 print("debug")  # Low
 """)
-            
+
             analyzer = ProjectAnalyzer()
             analysis = analyzer.analyze(tmpdir)
-            
+
             assert len(analysis.security_issues) > 0
             assert analysis.security_score < 100
-            
+
             severities = {i.severity for i in analysis.security_issues}
             assert "critical" in severities
 
@@ -93,10 +92,10 @@ except:  # Bare except
 
 global x  # Global
 """)
-            
+
             analyzer = ProjectAnalyzer()
             analysis = analyzer.analyze(tmpdir)
-            
+
             assert len(analysis.code_smells) > 0
 
     def test_analyze_architecture(self):
@@ -108,10 +107,10 @@ global x  # Global
             (Path(tmpdir) / "src" / "main.py").write_text("print('main')")
             (Path(tmpdir) / "tests" / "test_main.py").write_text("def test(): pass")
             (Path(tmpdir) / "config.toml").write_text("[app]")
-            
+
             analyzer = ProjectAnalyzer()
             analysis = analyzer.analyze(tmpdir)
-            
+
             assert "src" in analysis.architecture.layers
             assert "tests" in analysis.architecture.layers
             assert any("config" in f for f in analysis.architecture.config_files)
@@ -122,10 +121,10 @@ global x  # Global
             (Path(tmpdir) / "main.py").write_text("print('python')")
             (Path(tmpdir) / "app.js").write_text("console.log('js');")
             (Path(tmpdir) / "style.css").write_text("body { color: red; }")
-            
+
             analyzer = ProjectAnalyzer()
             analysis = analyzer.analyze(tmpdir)
-            
+
             assert len(analysis.languages) >= 3
             assert "Python" in analysis.languages
             assert "JavaScript" in analysis.languages
@@ -138,17 +137,17 @@ global x  # Global
             venv = Path(tmpdir) / ".venv"
             venv.mkdir()
             (venv / "lib.py").write_text("venv code")
-            
+
             node = Path(tmpdir) / "node_modules"
             node.mkdir()
             (node / "lib.js").write_text("node code")
-            
+
             # Create included file
             (Path(tmpdir) / "main.py").write_text("main code")
-            
+
             analyzer = ProjectAnalyzer()
             analysis = analyzer.analyze(tmpdir)
-            
+
             assert analysis.total_files == 1
             assert not any(".venv" in f.path for f in analysis.file_metrics)
             assert not any("node_modules" in f.path for f in analysis.file_metrics)
@@ -173,10 +172,10 @@ def complex_func(x):
         except ValueError:
             pass
 """)
-            
+
             analyzer = ProjectAnalyzer()
             analysis = analyzer.analyze(tmpdir)
-            
+
             assert len(analysis.file_metrics) == 1
             assert analysis.file_metrics[0].complexity > 1
 
@@ -195,13 +194,13 @@ class TestReportGenerator:
         """Should generate valid Markdown report."""
         with tempfile.TemporaryDirectory() as tmpdir:
             (Path(tmpdir) / "main.py").write_text("print('hello')")
-            
+
             analyzer = ProjectAnalyzer()
             analysis = analyzer.analyze(tmpdir)
-            
+
             generator = ReportGenerator()
             report = generator.generate_markdown(analysis)
-            
+
             assert "# 📊 Отчёт анализа проекта" in report
             assert "Краткое резюме" in report
             assert "Безопасность" in report
@@ -214,14 +213,14 @@ class TestReportGenerator:
             project_dir = Path(tmpdir) / "project"
             project_dir.mkdir()
             (project_dir / "main.py").write_text("print('hello')")
-            
+
             analyzer = ProjectAnalyzer()
             analysis = analyzer.analyze(str(project_dir))
-            
+
             generator = ReportGenerator()
             output_file = Path(tmpdir) / "report.md"
             result = generator.save_report(analysis, output_file)
-            
+
             assert result.exists()
             content = result.read_text()
             assert "Отчёт анализа проекта" in content
@@ -230,13 +229,13 @@ class TestReportGenerator:
         """Report should contain scores."""
         with tempfile.TemporaryDirectory() as tmpdir:
             (Path(tmpdir) / "main.py").write_text("print('hello')")
-            
+
             analyzer = ProjectAnalyzer()
             analysis = analyzer.analyze(tmpdir)
-            
+
             generator = ReportGenerator()
             report = generator.generate_markdown(analysis)
-            
+
             assert "Безопасность" in report
             assert "Качество" in report
             assert "/100" in report
@@ -246,10 +245,10 @@ class TestReportGenerator:
         with tempfile.TemporaryDirectory() as tmpdir:
             analyzer = ProjectAnalyzer()
             analysis = analyzer.analyze(tmpdir)
-            
+
             generator = ReportGenerator()
             report = generator.generate_markdown(analysis)
-            
+
             # Should not crash
             assert "Отчёт анализа проекта" in report
 
@@ -260,7 +259,7 @@ class TestFileMetrics:
     def test_file_metrics_defaults(self):
         """FileMetrics should have correct defaults."""
         metrics = FileMetrics(path="test.py")
-        
+
         assert metrics.lines_total == 0
         assert metrics.lines_code == 0
         assert metrics.functions == 0
@@ -281,6 +280,6 @@ class TestSecurityIssue:
             issue="eval() detected",
             recommendation="Use ast.literal_eval()",
         )
-        
+
         assert issue.severity == "critical"
         assert issue.line == 10

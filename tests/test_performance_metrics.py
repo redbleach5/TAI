@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 import pytest
+
 from src.api.dependencies import get_metrics
 from src.infrastructure.services.performance_metrics import (
     PerformanceMetrics,
@@ -139,11 +140,11 @@ class TestPerformanceMetrics:
             metrics1 = PerformanceMetrics(persist_path=tmpdir)
             for _ in range(10):  # Trigger save
                 metrics1.record("stage1", 1.0)
-            
+
             # Check file exists
             metrics_file = Path(tmpdir) / "stage_metrics.json"
             assert metrics_file.exists()
-            
+
             # Load in new instance
             metrics2 = PerformanceMetrics(persist_path=tmpdir)
             assert "stage1" in metrics2._stages
@@ -161,12 +162,12 @@ class TestPerformanceMetrics:
         """Measure decorator should work for sync functions."""
         with tempfile.TemporaryDirectory() as tmpdir:
             metrics = PerformanceMetrics(persist_path=tmpdir)
-            
+
             @metrics.measure("test_func")
             def slow_func():
                 time.sleep(0.01)
                 return "done"
-            
+
             result = slow_func()
             assert result == "done"
             assert "test_func" in metrics._stages
@@ -177,15 +178,15 @@ class TestPerformanceMetrics:
     async def test_measure_decorator_async(self):
         """Measure decorator should work for async functions."""
         import asyncio
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
             metrics = PerformanceMetrics(persist_path=tmpdir)
-            
+
             @metrics.measure("async_func")
             async def async_slow_func():
                 await asyncio.sleep(0.01)
                 return "async done"
-            
+
             result = await async_slow_func()
             assert result == "async done"
             assert "async_func" in metrics._stages
