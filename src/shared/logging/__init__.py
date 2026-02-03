@@ -30,7 +30,7 @@ def setup_logging(
         structlog.stdlib.add_log_level,
         structlog.processors.TimeStamper(fmt="iso"),
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.format_exc_info,
+        # format_exc_info omitted to avoid structlog warning with ProcessorFormatter; exceptions still in log record
     ]
 
     structlog.configure(

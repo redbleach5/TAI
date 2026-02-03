@@ -16,8 +16,8 @@ from src.infrastructure.resilience import (
     CircuitOpenError,
 )
 
-# Таймаут подключения к удалённому серверу — при недоступности не зависать бесконечно
-DEFAULT_CONNECT_TIMEOUT = 15.0
+# Таймаут подключения — при недоступности быстрый фейл (старт не блокируется надолго)
+DEFAULT_CONNECT_TIMEOUT = 5.0
 
 
 class OllamaAdapter:
@@ -127,6 +127,9 @@ class OllamaAdapter:
                 return []
             # ollama package: Model has 'model' attr (newer) or 'name' (legacy)
             return [getattr(m, "model", getattr(m, "name", "")) for m in resp.models if getattr(m, "model", getattr(m, "name", ""))]
+        except (httpx.ConnectTimeout, httpx.ConnectError, ConnectionError) as e:
+            logger.debug("Ollama list_models failed (unreachable): %s", e)
+            return []
         except Exception as e:
             logger.warning("Ollama list_models failed: %s", e, exc_info=True)
             return []

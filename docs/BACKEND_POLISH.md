@@ -32,7 +32,7 @@
 |------|----------|--------|
 | `improvement_graph.py` | Промпты и хелперы (build_plan_prompt, build_code_prompt) в improvement_prompts.py | ✅ |
 | `deep_analyzer.py` | Промпты в deep_analysis_prompts.py; RAG в deep_analysis_rag.py (gather_initial_rag, targeted_rag) | ✅ |
-| `web_search.py` | Форматирование и провайдеры (URL/заголовки) в функции/стратегии | ⬜ |
+| `web_search.py` | Форматирование и провайдеры (URL/заголовки) в функции/стратегии | ✅ |
 
 ---
 
