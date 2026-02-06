@@ -40,6 +40,7 @@ class ChromaDBRAGAdapter:
         config: RAGConfig,
         embeddings: EmbeddingsPort,
     ) -> None:
+        """Initialize with RAG config and embeddings port."""
         self._config = config
         self._embeddings = embeddings
         chromadb_path = Path(config.chromadb_path).resolve()
@@ -52,6 +53,16 @@ class ChromaDBRAGAdapter:
         )
         self._index_stats: dict = {}
         self._index_state = IndexState(str(chromadb_path))
+
+    def close(self) -> None:
+        """Release ChromaDB resources (call during app shutdown)."""
+        try:
+            # PersistentClient doesn't have explicit close, but we clear references
+            self._collection = None  # type: ignore[assignment]
+            self._client = None  # type: ignore[assignment]
+            logger.debug("ChromaDB adapter closed")
+        except Exception:
+            logger.debug("ChromaDB close error (non-critical)", exc_info=True)
 
     async def search(
         self,
@@ -72,7 +83,7 @@ class ChromaDBRAGAdapter:
             if count == 0:
                 return []
         except Exception as e:
-            logger.error(f"Failed to get collection count: {e}")
+            logger.error("Failed to get collection count: %s", e)
             return []
 
         try:
@@ -81,7 +92,7 @@ class ChromaDBRAGAdapter:
                 logger.warning("Empty query embedding returned")
                 return []
         except Exception as e:
-            logger.error(f"Failed to embed query: {e}")
+            logger.error("Failed to embed query: %s", e)
             return []
 
         try:
@@ -91,7 +102,7 @@ class ChromaDBRAGAdapter:
                 include=["documents", "metadatas", "distances"],
             )
         except Exception as e:
-            logger.error(f"ChromaDB query failed: {e}")
+            logger.error("ChromaDB query failed: %s", e)
             return []
 
         documents = result.get("documents", [[]])[0] or []
@@ -178,6 +189,7 @@ class ChromaDBRAGAdapter:
             generate_map: Whether to build project map
             incremental: If True, only index new/changed files; if False, full reindex
             on_progress: Optional callback(batch_num, total_batches)
+
         """
         base = Path(path).resolve()
         base_str = str(base)
@@ -196,7 +208,7 @@ class ChromaDBRAGAdapter:
             "incremental": incremental,
         }
 
-        files_with_stats = collect_code_files_with_stats(base)
+        files_with_stats = collect_code_files_with_stats(base, max_files=self._config.max_file_count)
         current_files: dict[str, dict[str, float | int]] = {
             rel: {"mtime": mtime, "size": size} for rel, _, mtime, size in files_with_stats
         }
@@ -237,6 +249,7 @@ class ChromaDBRAGAdapter:
                     stats["project_map"] = str(map_path)
                     stats["project_stats"] = project_map.stats
                 except Exception as e:
+                    logger.warning("Project map generation failed: %s", e)
                     stats["project_map_error"] = str(e)
             self._index_state.update_state(base_str, current_files)
             stats["total_chunks"] = self._collection.count()
@@ -252,6 +265,7 @@ class ChromaDBRAGAdapter:
                 stats["project_map"] = str(map_path)
                 stats["project_stats"] = project_map.stats
             except Exception as e:
+                logger.warning("Project map generation failed: %s", e)
                 stats["project_map_error"] = str(e)
 
         for rel_path, _, _, _ in files_to_process:
@@ -319,13 +333,13 @@ class ChromaDBRAGAdapter:
                 except Exception as e:
                     last_error = e
                     if attempt < 2:
-                        logger.warning(f"Batch {batch_num} embedding failed (attempt {attempt + 1}): {e}")
+                        logger.warning("Batch %d embedding failed (attempt %d): %s", batch_num, attempt + 1, e)
                         await asyncio.sleep(2**attempt)
                     else:
-                        logger.error(f"Batch {batch_num} embedding failed after 3 attempts: {e}")
+                        logger.error("Batch %d embedding failed after 3 attempts: %s", batch_num, e)
 
             if embeddings is None:
-                logger.error(f"Skipping batch {batch_num} due to embedding failure: {last_error}")
+                logger.error("Skipping batch %d due to embedding failure: %s", batch_num, last_error)
                 continue
 
             try:
@@ -336,17 +350,17 @@ class ChromaDBRAGAdapter:
                     metadatas=batch_metas,
                 )
             except Exception as e:
-                logger.error(f"Batch {batch_num} ChromaDB upsert failed: {e}")
+                logger.error("Batch %d ChromaDB upsert failed: %s", batch_num, e)
 
             if on_progress:
                 await on_progress(batch_num, total_batches)
             if total_batches > 5 and batch_num % max(1, total_batches // 10) == 0:
                 progress_pct = round(batch_num / total_batches * 100)
-                logger.info(f"Indexing progress: {progress_pct}% ({batch_num}/{total_batches})")
+                logger.info("Indexing progress: %d%% (%d/%d)", progress_pct, batch_num, total_batches)
 
         self._index_state.update_state(base_str, current_files)
         stats["total_chunks"] = self._collection.count()
-        logger.info(f"Indexing complete: {len(all_chunks)} chunks, total in index: {stats['total_chunks']}")
+        logger.info("Indexing complete: %d chunks, total in index: %d", len(all_chunks), stats["total_chunks"])
         self._index_stats = stats
         return stats
 
@@ -363,7 +377,7 @@ class ChromaDBRAGAdapter:
             self._collection.delete(where={"source": {"$eq": source_path}})
             return 1
         except Exception as e:
-            logger.warning(f"Failed to delete chunks for {source_path}: {e}")
+            logger.warning("Failed to delete chunks for %s: %s", source_path, e)
             return 0
 
     def clear(self) -> None:

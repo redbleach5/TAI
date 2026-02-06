@@ -2,16 +2,19 @@
 
 import asyncio
 import json
+import logging
 import os
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from src.api.dependencies import get_rag_adapter, get_store, limiter
+from src.api.dependencies import get_rag_adapter, get_store, get_workspace_path, limiter
 from src.api.store import ProjectsStore
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/workspace", tags=["workspace"])
 
@@ -19,23 +22,19 @@ router = APIRouter(prefix="/workspace", tags=["workspace"])
 class WorkspaceSet(BaseModel):
     """Set workspace (open folder) request."""
 
-    path: str
+    path: str = Field(..., min_length=1, max_length=1024)
 
 
 class WorkspaceCreate(BaseModel):
     """Create new project folder and set as workspace."""
 
-    path: str
-    name: str | None = None
+    path: str = Field(..., min_length=1, max_length=1024)
+    name: str | None = Field(None, max_length=255)
 
 
 def _get_workspace_path() -> str:
     """Get current workspace path (current project or cwd). Used by files router."""
-    from src.api.dependencies import get_store
-
-    store = get_store()
-    current = store.get_current()
-    return current.path if current else str(Path.cwd().resolve())
+    return get_workspace_path()
 
 
 @router.get("")
@@ -43,7 +42,7 @@ def _get_workspace_path() -> str:
 async def get_workspace(
     request: Request,
     store: ProjectsStore = Depends(get_store),
-):
+) -> dict:
     """Get current workspace path and name."""
     current = store.get_current()
     if current:
@@ -79,7 +78,7 @@ async def set_workspace(
     request: Request,
     body: WorkspaceSet,
     store: ProjectsStore = Depends(get_store),
-):
+) -> dict:
     """Open folder - set as current workspace (add project and select)."""
     p = Path(body.path)
     if not p.is_absolute():
@@ -108,7 +107,7 @@ async def create_workspace(
     request: Request,
     body: WorkspaceCreate,
     store: ProjectsStore = Depends(get_store),
-):
+) -> dict:
     """Create project folder if missing, set as current workspace (Cursor-like)."""
     raw = body.path.strip()
     raw = os.path.expanduser(raw)
@@ -145,7 +144,7 @@ async def index_workspace(
     incremental: bool = True,
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
     store: ProjectsStore = Depends(get_store),
-):
+) -> dict:
     """Index current workspace for RAG search.
 
     incremental: If True (default), only index new/changed files. If False, full reindex.
@@ -174,6 +173,9 @@ async def index_workspace(
             "project": project_id,
             "stats": stats,
         }
+    except Exception:
+        logger.exception("Failed to index workspace at %s", path)
+        raise HTTPException(status_code=500, detail="Failed to index workspace")
     finally:
         os.chdir(original_cwd)
 
@@ -185,7 +187,7 @@ async def index_workspace_stream(
     incremental: bool = True,
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
     store: ProjectsStore = Depends(get_store),
-):
+) -> EventSourceResponse:
     """Index current workspace for RAG search, stream progress via SSE.
 
     incremental: If True (default), only index new/changed files. If False, full reindex.
@@ -239,6 +241,7 @@ async def index_workspace_stream(
                     }
                 )
             except Exception as e:
+                logger.exception("Workspace indexing stream failed for %s", path)
                 await queue.put(
                     {
                         "event": "error",

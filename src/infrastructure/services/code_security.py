@@ -88,6 +88,7 @@ class CodeSecurityChecker:
         Args:
             strict_mode: Блокировать при любом предупреждении
             allow_file_ops: Разрешить операции с файлами (open)
+
         """
         self.strict_mode = strict_mode
         self.allow_file_ops = allow_file_ops
@@ -120,6 +121,7 @@ class CodeSecurityChecker:
 
         Returns:
             SecurityCheckResult с результатом проверки
+
         """
         if not code or not code.strip():
             return SecurityCheckResult(is_safe=True, warnings=[], blocked=[])

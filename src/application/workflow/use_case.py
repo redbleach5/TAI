@@ -1,6 +1,7 @@
 """Workflow use case - runs LangGraph workflow."""
 
 import asyncio
+import logging
 import uuid
 from collections.abc import AsyncIterator
 
@@ -16,6 +17,8 @@ from src.domain.ports.llm import LLMPort
 from src.domain.ports.rag import RAGPort
 from src.domain.services.model_selector import ModelSelector
 from src.infrastructure.workflow import build_workflow_graph, compile_workflow_graph
+
+logger = logging.getLogger(__name__)
 
 
 def _state_to_response(session_id: str, state: WorkflowState) -> WorkflowResponse:
@@ -51,6 +54,7 @@ class WorkflowUseCase:
         rag: RAGPort | None = None,
         checkpointer: MemorySaver | None = None,
     ) -> None:
+        """Initialize with LLM, model selector, and optional RAG and checkpointer."""
         self._llm = llm
         self._model_selector = model_selector
         self._rag = rag
@@ -58,6 +62,7 @@ class WorkflowUseCase:
 
     async def execute(self, request: WorkflowRequest) -> WorkflowResponse:
         """Run workflow synchronously, return full result."""
+        logger.debug("Workflow execute: task=%s", request.task[:80])
         session_id = request.session_id or str(uuid.uuid4())
         builder = build_workflow_graph(
             self._llm,
@@ -111,6 +116,7 @@ class WorkflowUseCase:
                     )
                 )
             except Exception as e:
+                logger.error("Workflow graph execution failed: %s", e, exc_info=True)
                 queue.put_nowait(WorkflowStreamEvent(event_type="error", chunk=str(e)))
 
         task = asyncio.create_task(run_graph())

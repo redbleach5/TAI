@@ -1,7 +1,11 @@
 """Researcher agent - RAG search for relevant code context."""
 
+import logging
+
 from src.domain.entities.workflow_state import WorkflowState
 from src.domain.ports.rag import RAGPort
+
+logger = logging.getLogger(__name__)
 
 # Default context limits
 DEFAULT_CHUNK_LIMIT = 20
@@ -24,6 +28,7 @@ async def researcher_node(
         limit: Max chunks to retrieve (default 20)
         max_tokens: Max tokens in context (default 6000)
         min_score: Minimum relevance score (default 0.35)
+
     """
     if rag is None:
         return {**state, "context": "", "project_map": "", "current_step": "researcher"}
@@ -51,7 +56,7 @@ async def researcher_node(
                     if map_md:
                         project_map = map_md[:3000]
                 except Exception:
-                    pass
+                    logger.debug("Failed to get project map for researcher", exc_info=True)
             return {**state, "context": "", "project_map": project_map, "current_step": "researcher"}
 
         # Group chunks by source file for better context
@@ -85,6 +90,6 @@ async def researcher_node(
             if map_md:
                 project_map = map_md[:3000]  # Limit size
         except Exception:
-            pass
+            logger.debug("Failed to get project map for researcher", exc_info=True)
 
     return {**state, "context": context, "project_map": project_map, "current_step": "researcher"}

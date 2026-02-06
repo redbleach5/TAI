@@ -8,7 +8,7 @@ from src.main import app
 
 @pytest.fixture
 async def llm_available():
-    """True if backend reports LLM (Ollama/LM Studio) available. Use to skip tests that need a real model."""
+    """Return True if backend reports LLM (Ollama/LM Studio) available; use to skip tests that need a real model."""
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",

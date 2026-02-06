@@ -26,7 +26,7 @@ class TestOllamaEmbeddingsAdapter:
 
     @pytest.mark.asyncio
     async def test_embed_single_text(self, adapter):
-        """embed returns embedding for single text."""
+        """Embed returns embedding for single text."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"embeddings": [[0.1, 0.2, 0.3]]}
@@ -59,7 +59,7 @@ class TestOllamaEmbeddingsAdapter:
 
     @pytest.mark.asyncio
     async def test_embed_returns_empty_on_no_result(self, adapter):
-        """embed returns empty list if no embeddings returned."""
+        """Embed returns empty list if no embeddings returned."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"embeddings": []}
@@ -92,7 +92,7 @@ class TestOpenAICompatibleEmbeddingsAdapter:
 
     @pytest.mark.asyncio
     async def test_embed_single(self, adapter):
-        """embed returns embedding via OpenAI-compatible API."""
+        """Embed returns embedding via OpenAI-compatible API."""
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"data": [{"embedding": [0.1, 0.2, 0.3]}]}

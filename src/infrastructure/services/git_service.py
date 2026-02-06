@@ -1,8 +1,11 @@
 """Git Service - handles Git operations."""
 
 import asyncio
+import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

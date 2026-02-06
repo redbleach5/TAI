@@ -48,6 +48,7 @@ class ReportGenerator:
 
         Returns:
             Markdown строка с отчётом
+
         """
         if analysis is None:
             return "# Отчёт анализа проекта\n\n**Ошибка:** Нет данных для анализа."
@@ -86,7 +87,7 @@ class ReportGenerator:
 ---"""
 
     def _executive_summary(self, analysis: ProjectAnalysis) -> str:
-        """Executive Summary."""
+        """Build executive summary section."""
         # Определяем общую оценку
         security_score = analysis.security_score if analysis.security_score is not None else 0
         quality_score = analysis.quality_score if analysis.quality_score is not None else 0
@@ -372,6 +373,7 @@ class ReportGenerator:
 
         Returns:
             Path к созданному файлу
+
         """
         output = Path(output_path)
         content = self.generate_markdown(analysis)

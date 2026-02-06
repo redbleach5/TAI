@@ -71,6 +71,7 @@ class ModelRouter:
         provider: str,
         cache_size: int = 128,
     ) -> None:
+        """Initialize router with config, provider, and optional cache size."""
         self._config = config
         self._provider = provider
         self._models = config.get_models_for_provider(provider)
@@ -79,7 +80,7 @@ class ModelRouter:
         self._cached_detect = lru_cache(maxsize=cache_size)(self._detect_impl)
 
     def _detect_impl(self, text: str) -> TaskComplexity:
-        """Internal complexity detection (cached)."""
+        """Detect complexity (cached)."""
         if len(text) < 20:
             return TaskComplexity.SIMPLE
 

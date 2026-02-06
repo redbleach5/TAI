@@ -63,6 +63,7 @@ class SearchCache:
         Args:
             ttl: Time-to-live in seconds (default 5 minutes)
             max_entries: Maximum cache entries (default 100)
+
         """
         self._cache: OrderedDict[str, tuple[list[SearchResult], float]] = OrderedDict()
         self._ttl = ttl
@@ -151,6 +152,7 @@ def normalize_url(url: str) -> str:
             )
         )
     except Exception:
+        logger.debug("URL normalization failed for %s", url, exc_info=True)
         return url
 
 
@@ -210,6 +212,7 @@ async def multi_search(
 
     Returns:
         List of SearchResult from best available source
+
     """
     if not query.strip():
         return []
@@ -264,10 +267,10 @@ async def _parallel_search(
             results = await asyncio.wait_for(coro, timeout=timeout + 5)  # Extra buffer
             return (name, results)
         except asyncio.TimeoutError:
-            logger.debug(f"Search '{name}' timed out")
+            logger.debug("Search '%s' timed out", name)
             return (name, [])
         except Exception as e:
-            logger.debug(f"Search '{name}' failed: {e}")
+            logger.debug("Search '%s' failed: %s", name, e)
             return (name, [])
 
     searxng_base = (searxng_url or "").strip()
@@ -295,7 +298,7 @@ async def _parallel_search(
 
     for item in done:
         if isinstance(item, Exception):
-            logger.debug(f"Search task exception: {item}")
+            logger.debug("Search task exception: %s", item)
             continue
         name, results = item
         for r in results:
@@ -359,10 +362,10 @@ async def search_duckduckgo(
             last_error = e
             if attempt < retries:
                 wait_time = 2**attempt  # Exponential backoff: 1, 2, 4...
-                logger.debug(f"DuckDuckGo retry {attempt + 1} after {wait_time}s: {e}")
+                logger.debug("DuckDuckGo retry %d after %ds: %s", attempt + 1, wait_time, e)
                 await asyncio.sleep(wait_time)
 
-    logger.warning(f"DuckDuckGo search failed after {retries + 1} attempts: {last_error}")
+    logger.warning("DuckDuckGo search failed after %d attempts: %s", retries + 1, last_error)
     return []
 
 
@@ -443,10 +446,10 @@ async def search_searxng(
             last_error = e
             if attempt < retries:
                 wait_time = 2**attempt
-                logger.debug(f"SearXNG retry {attempt + 1}: {e}")
+                logger.debug("SearXNG retry %d: %s", attempt + 1, e)
                 await asyncio.sleep(wait_time)
 
-    logger.debug(f"SearXNG {instance} failed: {last_error}")
+    logger.debug("SearXNG %s failed: %s", instance, last_error)
     return []
 
 
@@ -495,10 +498,10 @@ async def search_tavily(
             last_error = e
             if attempt < retries:
                 wait_time = 2**attempt
-                logger.debug(f"Tavily retry {attempt + 1}: {e}")
+                logger.debug("Tavily retry %d: %s", attempt + 1, e)
                 await asyncio.sleep(wait_time)
 
-    logger.debug(f"Tavily search failed: {last_error}")
+    logger.debug("Tavily search failed: %s", last_error)
     return []
 
 
@@ -543,10 +546,10 @@ async def search_google(
             last_error = e
             if attempt < retries:
                 wait_time = 2**attempt
-                logger.debug(f"Google retry {attempt + 1}: {e}")
+                logger.debug("Google retry %d: %s", attempt + 1, e)
                 await asyncio.sleep(wait_time)
 
-    logger.debug(f"Google search failed: {last_error}")
+    logger.debug("Google search failed: %s", last_error)
     return []
 
 
@@ -595,10 +598,10 @@ async def search_brave(
             last_error = e
             if attempt < retries:
                 wait_time = 2**attempt
-                logger.debug(f"Brave retry {attempt + 1}: {e}")
+                logger.debug("Brave retry %d: %s", attempt + 1, e)
                 await asyncio.sleep(wait_time)
 
-    logger.debug(f"Brave search failed: {last_error}")
+    logger.debug("Brave search failed: %s", last_error)
     return []
 
 

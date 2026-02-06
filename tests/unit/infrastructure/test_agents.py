@@ -38,7 +38,7 @@ def mock_llm():
 
 @pytest.fixture
 def base_state():
-    """Base workflow state as dict (TypedDict)."""
+    """Return base workflow state as dict (TypedDict)."""
     return {
         "task": "Write a factorial function",
         "intent_kind": "code",

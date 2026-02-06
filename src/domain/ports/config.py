@@ -57,6 +57,7 @@ class ResolvedModelSet:
         complex: str,
         fallback: str,
     ) -> None:
+        """Initialize with resolved model IDs for simple, medium, complex, and fallback."""
         self.simple = simple
         self.medium = medium
         self.complex = complex
@@ -119,6 +120,7 @@ class RAGConfig(BaseModel):
     chunk_size: int = 500
     chunk_overlap: int = 50
     batch_size: int = 100  # Batch size for embedding requests
+    max_file_count: int = 10000  # Max files to collect during indexing
 
 
 class AgentConfig(BaseModel):

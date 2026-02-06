@@ -12,6 +12,11 @@ class CommandType(Enum):
     CODE = "code"  # @code file.py - include file in context
     FILE = "file"  # @file path - read file content
     RAG = "rag"  # @rag query - search codebase
+    FOLDER = "folder"  # @folder path - include directory contents
+    GIT = "git"  # @git - git status, log, diff summary
+    DIFF = "diff"  # @diff [file] - git diff as context
+    GREP = "grep"  # @grep pattern - text search in codebase
+    RUN = "run"  # @run command - execute command, inject output
     CLEAR = "clear"  # @clear - clear context
     HELP = "help"  # @help - show available commands
 
@@ -35,7 +40,10 @@ class ParsedMessage:
 
 
 # Command patterns
-COMMAND_PATTERN = re.compile(r"@(web|code|file|rag|clear|help)(?:\s+([^\n@]+))?", re.IGNORECASE)
+COMMAND_PATTERN = re.compile(
+    r"@(web|code|file|rag|folder|git|diff|grep|run|clear|help)(?:\s+([^\n@]+))?",
+    re.IGNORECASE,
+)
 
 
 def parse_message(message: str) -> ParsedMessage:
@@ -53,6 +61,7 @@ def parse_message(message: str) -> ParsedMessage:
         "@web python asyncio tutorial how to use"
         "@code src/main.py what does this do?"
         "@rag authentication how is it implemented"
+
     """
     if not message:
         return ParsedMessage(text="")
@@ -98,12 +107,18 @@ def get_help_text() -> str:
 | `@web <query>` | Search the web | `@web python async tutorial` |
 | `@code <file>` | Include code file | `@code src/main.py` |
 | `@file <path>` | Read any file | `@file README.md` |
-| `@rag <query>` | Search codebase | `@rag how auth works` |
+| `@folder <path>` | Include entire directory | `@folder src/api/routes` |
+| `@rag <query>` | Semantic codebase search | `@rag how auth works` |
+| `@grep <pattern>` | Text search in codebase | `@grep def authenticate` |
+| `@git` | Git status, log, diff summary | `@git` or `@git status` |
+| `@diff [file]` | Git diff (all or specific file) | `@diff` or `@diff src/main.py` |
+| `@run <command>` | Execute command, show output | `@run pytest tests/ -v` |
 | `@clear` | Clear context | `@clear` |
 | `@help` | Show this help | `@help` |
 
 **Tips:**
 - Commands can be combined: `@web python @rag auth explain the difference`
 - Commands are processed before the LLM sees your message
-- Use `@code` for code files, `@file` for any text file
+- `@rag` — semantic search (by meaning), `@grep` — exact text search (by pattern)
+- `@git` shows overview, `@diff` shows full diff content
 """

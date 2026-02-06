@@ -1,5 +1,6 @@
 """TOML configuration loader with env overrides."""
 
+import logging
 import os
 import tomllib
 from pathlib import Path
@@ -19,6 +20,8 @@ from src.domain.ports.config import (
     ServerConfig,
     WebSearchConfig,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _load_toml(path: Path) -> dict:
@@ -47,7 +50,7 @@ def _apply_env_overrides(config: dict) -> dict:
         try:
             config.setdefault("server", {})["port"] = int(port)
         except ValueError:
-            pass
+            logger.warning("Invalid PORT env value: %r, ignoring", port)
     if level := os.getenv("LOG_LEVEL"):
         config.setdefault("logging", {})["level"] = level.upper()
     if path := os.getenv("LOG_FILE"):
@@ -58,14 +61,14 @@ def _apply_env_overrides(config: dict) -> dict:
         try:
             config.setdefault("security", {})["rate_limit_requests_per_minute"] = int(rate)
         except ValueError:
-            pass
+            logger.warning("Invalid RATE_LIMIT_PER_MINUTE env value: %r, ignoring", rate)
     if model := os.getenv("EMBEDDINGS_MODEL"):
         config.setdefault("embeddings", {})["model"] = model
     if iterations := os.getenv("AGENT_MAX_ITERATIONS"):
         try:
             config.setdefault("agent", {})["max_iterations"] = int(iterations)
         except ValueError:
-            pass
+            logger.warning("Invalid AGENT_MAX_ITERATIONS env value: %r, ignoring", iterations)
     if url := os.getenv("SEARXNG_URL"):
         config.setdefault("web_search", {})["searxng_url"] = url.strip() or None
     if key := os.getenv("BRAVE_API_KEY"):
@@ -80,8 +83,8 @@ def _apply_env_overrides(config: dict) -> dict:
 
 
 def load_config(config_dir: Path | None = None) -> AppConfig:
-    """
-    Load configuration from TOML files with env overrides.
+    """Load configuration from TOML files with env overrides.
+
     Loads default.toml, then development.toml if exists.
     """
     if config_dir is None:

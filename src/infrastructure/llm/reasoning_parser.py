@@ -16,6 +16,7 @@ def parse_reasoning_chunk(
 
     Returns:
         (remaining_buffer, [(kind, text), ...])
+
     """
     buffer += chunk
     emitted: list[tuple[ParsedKind, str]] = []
@@ -60,6 +61,7 @@ async def stream_with_reasoning(
 
     Returns:
         (full_content, full_thinking)
+
     """
     content_parts: list[str] = []
     thinking_parts: list[str] = []

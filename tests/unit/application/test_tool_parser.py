@@ -67,6 +67,45 @@ class TestParseAllToolCalls:
         assert result[1].tool == "write_file"
 
 
+class TestParseToolCallEdgeCases:
+    """Edge cases for tool call parsing."""
+
+    def test_whitespace_around_json(self):
+        """Whitespace inside tags should be tolerated."""
+        content = '<tool_call>\n  {"tool": "read_file", "path": "a.py"}  \n</tool_call>'
+        result = parse_tool_call(content)
+        assert result is not None
+        assert result.tool == "read_file"
+
+    def test_tool_call_with_surrounding_text(self):
+        """Text before and after tool call."""
+        content = 'Let me read it.\n<tool_call>{"tool": "read_file", "path": "x.py"}</tool_call>\nDone.'
+        result = parse_tool_call(content)
+        assert result is not None
+        assert result.tool == "read_file"
+
+    def test_nested_json_in_content(self):
+        """JSON content field with nested structures."""
+        content = '<tool_call>{"tool": "write_file", "path": "a.py", "content": "x = {\\\"a\\\": 1}"}</tool_call>'
+        result = parse_tool_call(content)
+        assert result is not None
+        assert result.tool == "write_file"
+
+    def test_missing_tool_field(self):
+        """JSON without 'tool' key returns None."""
+        content = '<tool_call>{"path": "a.py"}</tool_call>'
+        result = parse_tool_call(content)
+        assert result is None
+
+    def test_empty_tool_call_tags(self):
+        """Empty tool_call tags return None."""
+        assert parse_tool_call("<tool_call></tool_call>") is None
+
+    def test_empty_input(self):
+        """Empty input returns None."""
+        assert parse_tool_call("") is None
+
+
 class TestStripToolCall:
     """Tests for strip_tool_call_from_content."""
 
@@ -76,3 +115,20 @@ class TestStripToolCall:
         assert "Before" in strip_tool_call_from_content(content)
         assert "After" in strip_tool_call_from_content(content)
         assert "tool_call" not in strip_tool_call_from_content(content)
+
+    def test_strips_multiple(self):
+        """Remove multiple tool call blocks."""
+        content = (
+            'Text\n<tool_call>{"tool": "a"}</tool_call>'
+            '\nMiddle\n<tool_call>{"tool": "b"}</tool_call>\nEnd'
+        )
+        result = strip_tool_call_from_content(content)
+        assert "tool_call" not in result
+        assert "Text" in result
+        assert "Middle" in result
+        assert "End" in result
+
+    def test_no_tool_calls(self):
+        """Text without tool calls returns unchanged."""
+        content = "Just some text"
+        assert strip_tool_call_from_content(content) == content

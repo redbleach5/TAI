@@ -40,7 +40,7 @@ class IntentDetector:
         self._cached_detect = lru_cache(maxsize=cache_size)(self._detect_impl)
 
     def _detect_impl(self, text: str) -> Intent:
-        """Internal detection logic (cached)."""
+        """Run internal detection logic (cached)."""
         if not text:
             return Intent(kind="chat")
 

@@ -17,6 +17,7 @@ class IndexState:
     """Tracks which files are indexed and their modification state."""
 
     def __init__(self, chromadb_path: str) -> None:
+        """Initialize with ChromaDB storage path for index state."""
         self._chromadb_path = Path(chromadb_path)
         self._state_file = self._chromadb_path / INDEX_STATE_FILENAME
         self._state: dict[str, dict[str, dict[str, float | int]]] = {}
@@ -31,7 +32,7 @@ class IndexState:
             data = json.loads(self._state_file.read_text(encoding="utf-8"))
             self._state = data
         except (OSError, json.JSONDecodeError) as e:
-            logger.warning(f"Failed to load index state: {e}, starting fresh")
+            logger.warning("Failed to load index state: %s, starting fresh", e)
             self._state = {}
 
     def _save(self) -> None:
@@ -43,7 +44,7 @@ class IndexState:
                 encoding="utf-8",
             )
         except OSError as e:
-            logger.error(f"Failed to save index state: {e}")
+            logger.error("Failed to save index state: %s", e)
 
     def get_indexed_files(self, base_path: str) -> dict[str, dict[str, float | int]]:
         """Get indexed files for a base path. Returns {rel_path: {mtime, size}}."""
@@ -78,6 +79,7 @@ class IndexState:
 
         Returns:
             (new_files, changed_files, deleted_files)
+
         """
         current_paths = set(current)
         indexed_paths = set(indexed)

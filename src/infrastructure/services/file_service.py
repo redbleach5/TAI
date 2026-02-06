@@ -90,6 +90,7 @@ class FileService:
         Args:
             path: Subdirectory (relative to root)
             max_depth: Maximum depth to traverse
+
         """
         target = self._root / path if path else self._root
 
@@ -113,12 +114,12 @@ class FileService:
                             continue
                         node.children.append(build_tree(child, depth + 1))
                 except PermissionError:
-                    pass
+                    logger.debug("Permission denied scanning directory: %s", p)
             elif p.is_file():
                 try:
                     node.size = p.stat().st_size
                 except OSError:
-                    pass
+                    logger.debug("Failed to stat file: %s", p)
 
             return node
 
@@ -160,6 +161,7 @@ class FileService:
             path: File path (relative to root)
             content: Content to write
             create_backup: Whether to backup existing file
+
         """
         target = self._root / path
 
@@ -182,6 +184,7 @@ class FileService:
                 data={"path": str(target.relative_to(self._root))},
             )
         except Exception as e:
+            logger.warning("File write failed for %s: %s", path, e)
             return FileResult(success=False, error=str(e))
 
     def create(
@@ -211,6 +214,7 @@ class FileService:
                 data={"path": str(target.relative_to(self._root))},
             )
         except Exception as e:
+            logger.warning("File create failed for %s: %s", path, e)
             return FileResult(success=False, error=str(e))
 
     def delete(
@@ -240,6 +244,7 @@ class FileService:
 
             return FileResult(success=True, data={"deleted": path})
         except Exception as e:
+            logger.warning("File delete failed for %s: %s", path, e)
             return FileResult(success=False, error=str(e))
 
     def rename(self, old_path: str, new_path: str) -> FileResult:
@@ -264,6 +269,7 @@ class FileService:
                 data={"old": old_path, "new": new_path},
             )
         except Exception as e:
+            logger.warning("File rename failed %s -> %s: %s", old_path, new_path, e)
             return FileResult(success=False, error=str(e))
 
     def _backup_file(self, path: Path) -> Path | None:

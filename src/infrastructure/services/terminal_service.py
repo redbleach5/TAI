@@ -1,7 +1,10 @@
 """Terminal Service - handles shell command execution."""
 
 import asyncio
+import logging
 from dataclasses import dataclass
+
+logger = logging.getLogger(__name__)
 
 # Allowed commands (whitelist)
 ALLOWED_COMMANDS = {
@@ -77,6 +80,7 @@ class TerminalService:
 
         Returns:
             (is_valid, error_message)
+
         """
         if not command.strip():
             return False, "Empty command"
@@ -108,6 +112,7 @@ class TerminalService:
 
         Returns:
             CommandResult with output or error
+
         """
         # Validate
         is_valid, error = self.validate_command(command)
@@ -142,12 +147,14 @@ class TerminalService:
             )
 
         except asyncio.TimeoutError:
+            logger.warning("Command timed out after %ss: %s", cmd_timeout, command)
             return CommandResult(
                 success=False,
                 error=f"Command timed out after {cmd_timeout}s",
                 exit_code=-1,
             )
         except Exception as e:
+            logger.warning("Command execution failed: %s — %s", command, e)
             return CommandResult(
                 success=False,
                 error=str(e),
@@ -163,6 +170,7 @@ class TerminalService:
 
         Yields:
             Lines of output (stdout and stderr combined)
+
         """
         # Validate
         is_valid, error = self.validate_command(command)
@@ -189,6 +197,7 @@ class TerminalService:
             await proc.wait()
 
         except Exception as e:
+            logger.warning("Stream command failed: %s — %s", command, e)
             yield f"Error: {e}"
 
     def list_allowed_commands(self) -> list[str]:

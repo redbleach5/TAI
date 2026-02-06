@@ -28,6 +28,7 @@ class ModelSelector:
         model_router: ModelRouter,
         config: "AppConfig",
     ) -> None:
+        """Initialize selector with LLM, model router, and app config."""
         self._llm = llm
         self._model_router = model_router
         self._config = config
@@ -116,3 +117,7 @@ class ModelSelector:
         """Clear available models cache (e.g. after pulling new model)."""
         self._cache = None
         self._cache_time = 0.0
+
+    async def warm_cache(self) -> None:
+        """Preload available models cache at startup so first request does not wait on list_models."""
+        await self._get_available()

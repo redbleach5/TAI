@@ -1,13 +1,15 @@
 """Files API routes - uses FileService."""
 
+import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 
-from src.api.dependencies import limiter
-from src.api.routes.workspace import _get_workspace_path
+from src.api.dependencies import get_file_service, limiter
 from src.infrastructure.services.file_service import FileService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -15,42 +17,36 @@ router = APIRouter(prefix="/files", tags=["files"])
 class ReadRequest(BaseModel):
     """Read file request."""
 
-    path: str
+    path: str = Field(..., min_length=1, max_length=1024)
 
 
 class WriteRequest(BaseModel):
     """Write file request."""
 
-    path: str
-    content: str
+    path: str = Field(..., min_length=1, max_length=1024)
+    content: str = Field(..., max_length=10_000_000)  # 10 MB limit
 
 
 class CreateRequest(BaseModel):
     """Create file/directory request."""
 
-    path: str
+    path: str = Field(..., min_length=1, max_length=1024)
     is_directory: bool = False
-    content: str = ""
+    content: str = Field("", max_length=10_000_000)
 
 
 class DeleteRequest(BaseModel):
     """Delete request."""
 
-    path: str
+    path: str = Field(..., min_length=1, max_length=1024)
     backup: bool = True
 
 
 class RenameRequest(BaseModel):
     """Rename request."""
 
-    old_path: str
-    new_path: str
-
-
-def _get_service() -> FileService:
-    """Get FileService instance with workspace root."""
-    root = _get_workspace_path()
-    return FileService(root_path=root)
+    old_path: str = Field(..., min_length=1, max_length=1024)
+    new_path: str = Field(..., min_length=1, max_length=1024)
 
 
 def _get_browse_roots() -> list[dict]:
@@ -65,7 +61,7 @@ def _get_browse_roots() -> list[dict]:
 
 
 @router.get("/browse")
-async def browse_dirs(request: Request, path: str = ""):
+async def browse_dirs(request: Request, path: str = "") -> dict:
     """List directories for folder picker. path='' returns roots."""
     if not path:
         return {"dirs": _get_browse_roots(), "parent": None}
@@ -77,10 +73,10 @@ async def browse_dirs(request: Request, path: str = ""):
 
     home = Path.home()
     if not str(p).startswith(str(home)) and p != Path.cwd():
-        return {"dirs": [], "parent": None, "error": "Access denied"}
+        raise HTTPException(status_code=403, detail="Access denied")
 
     if not p.exists() or not p.is_dir():
-        return {"dirs": [], "parent": None, "error": "Path not found"}
+        raise HTTPException(status_code=404, detail="Path not found")
 
     dirs = []
     try:
@@ -88,7 +84,7 @@ async def browse_dirs(request: Request, path: str = ""):
             if child.is_dir() and not child.name.startswith("."):
                 dirs.append({"path": str(child), "name": child.name})
     except PermissionError:
-        pass
+        logger.warning("Permission denied browsing %s", p)
 
     parent = str(p.parent) if p.parent != p else None
     return {"dirs": dirs, "parent": parent}
@@ -100,13 +96,17 @@ async def get_tree(
     request: Request,
     path: str | None = None,
     depth: int = 10,
-):
+    service: FileService = Depends(get_file_service),
+) -> dict:
     """Get file tree."""
-    service = _get_service()
-    result = service.get_tree(path, depth)
+    try:
+        result = service.get_tree(path, depth)
+    except Exception:
+        logger.exception("Failed to get file tree for path=%s", path)
+        raise HTTPException(status_code=500, detail="Failed to get file tree")
 
     if not result.success:
-        return {"success": False, "error": result.error}
+        raise HTTPException(status_code=400, detail=result.error or "Failed to get file tree")
 
     def node_to_dict(node):
         return {
@@ -126,13 +126,20 @@ async def get_tree(
 
 @router.post("/read")
 @limiter.limit("120/minute")
-async def read_file(request: Request, body: ReadRequest):
+async def read_file(
+    request: Request,
+    body: ReadRequest,
+    service: FileService = Depends(get_file_service),
+) -> dict:
     """Read file content."""
-    service = _get_service()
-    result = service.read(body.path)
+    try:
+        result = service.read(body.path)
+    except Exception:
+        logger.exception("Failed to read file %s", body.path)
+        raise HTTPException(status_code=500, detail="Failed to read file")
 
     if not result.success:
-        return {"success": False, "error": result.error}
+        raise HTTPException(status_code=400, detail=result.error or "Failed to read file")
 
     return {
         "success": True,
@@ -143,52 +150,81 @@ async def read_file(request: Request, body: ReadRequest):
 
 @router.post("/write")
 @limiter.limit("60/minute")
-async def write_file(request: Request, body: WriteRequest):
+async def write_file(
+    request: Request,
+    body: WriteRequest,
+    service: FileService = Depends(get_file_service),
+) -> dict:
     """Write file content."""
-    service = _get_service()
-    result = service.write(body.path, body.content)
+    try:
+        result = service.write(body.path, body.content)
+    except Exception:
+        logger.exception("Failed to write file %s", body.path)
+        raise HTTPException(status_code=500, detail="Failed to write file")
 
     if not result.success:
-        return {"success": False, "error": result.error}
+        raise HTTPException(status_code=400, detail=result.error or "Failed to write file")
 
     return {"success": True, "path": result.data["path"]}
 
 
 @router.post("/create")
 @limiter.limit("60/minute")
-async def create_file(request: Request, body: CreateRequest):
+async def create_file(
+    request: Request,
+    body: CreateRequest,
+    service: FileService = Depends(get_file_service),
+) -> dict:
     """Create file or directory."""
-    service = _get_service()
-    result = service.create(body.path, body.is_directory, body.content)
+    try:
+        result = service.create(body.path, body.is_directory, body.content)
+    except Exception:
+        logger.exception("Failed to create %s", body.path)
+        raise HTTPException(status_code=500, detail="Failed to create file/directory")
 
     if not result.success:
-        return {"success": False, "error": result.error}
+        raise HTTPException(status_code=400, detail=result.error or "Failed to create")
 
     return {"success": True, "path": result.data["path"]}
 
 
 @router.delete("/delete")
 @limiter.limit("30/minute")
-async def delete_file(request: Request, path: str, backup: bool = True):
+async def delete_file(
+    request: Request,
+    path: str,
+    backup: bool = True,
+    service: FileService = Depends(get_file_service),
+) -> dict:
     """Delete file or directory."""
-    service = _get_service()
-    result = service.delete(path, backup)
+    try:
+        result = service.delete(path, backup)
+    except Exception:
+        logger.exception("Failed to delete %s", path)
+        raise HTTPException(status_code=500, detail="Failed to delete")
 
     if not result.success:
-        return {"success": False, "error": result.error}
+        raise HTTPException(status_code=400, detail=result.error or "Failed to delete")
 
     return {"success": True, "deleted": result.data["deleted"]}
 
 
 @router.post("/rename")
 @limiter.limit("30/minute")
-async def rename_file(request: Request, body: RenameRequest):
+async def rename_file(
+    request: Request,
+    body: RenameRequest,
+    service: FileService = Depends(get_file_service),
+) -> dict:
     """Rename or move file/directory."""
-    service = _get_service()
-    result = service.rename(body.old_path, body.new_path)
+    try:
+        result = service.rename(body.old_path, body.new_path)
+    except Exception:
+        logger.exception("Failed to rename %s -> %s", body.old_path, body.new_path)
+        raise HTTPException(status_code=500, detail="Failed to rename")
 
     if not result.success:
-        return {"success": False, "error": result.error}
+        raise HTTPException(status_code=400, detail=result.error or "Failed to rename")
 
     return {
         "success": True,

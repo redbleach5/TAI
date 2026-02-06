@@ -1,11 +1,14 @@
 """Chat use case - orchestration layer."""
 
+import asyncio
 import json
+import logging
 from collections.abc import AsyncIterator, Callable
 from typing import TYPE_CHECKING
 
 from src.application.chat.dto import ChatRequest, ChatResponse
 from src.application.chat.handlers import CommandRegistry, get_default_registry
+from src.application.shared.llm_fallback import generate_with_fallback, stream_with_fallback
 from src.domain.ports.llm import LLMMessage, LLMPort
 from src.domain.ports.rag import RAGPort
 from src.domain.services.intent_detector import IntentDetector
@@ -13,6 +16,8 @@ from src.domain.services.model_selector import ModelSelector
 from src.infrastructure.llm.reasoning_parser import stream_reasoning_chunks
 from src.infrastructure.services.assistant_modes import get_mode
 from src.infrastructure.services.command_parser import CommandType, parse_message
+
+logger = logging.getLogger(__name__)
 
 # When @web was requested but search failed — we return this in context and then short-circuit (no LLM)
 WEB_FAILED_MARKER = "Web search was requested but could not be performed"
@@ -47,6 +52,7 @@ class ChatUseCase:
         web_search_google_api_key: str | None = None,
         web_search_google_cx: str | None = None,
     ) -> None:
+        """Initialize chat use case with LLM, selector, optional memory/RAG/agent."""
         self._llm = llm
         self._model_selector = model_selector
         self._max_context = max_context_messages
@@ -65,6 +71,7 @@ class ChatUseCase:
 
     async def execute(self, request: ChatRequest) -> ChatResponse:
         """Process chat request: detect intent, process commands, call LLM."""
+        logger.debug("Chat execute: message=%s, mode=%s", request.message[:80], request.mode_id)
         request = self._resolve_history(request)
 
         # Agent mode: delegate to AgentUseCase
@@ -148,72 +155,133 @@ class ChatUseCase:
         yield ("done", done_data)
 
     async def _build_messages(self, request: ChatRequest) -> list[LLMMessage]:
-        """Build messages for LLM from request, history, and commands."""
-        # Get system prompt based on mode
-        mode = get_mode(request.mode_id or "default")
+        """Build messages for LLM from request, history, and commands.
 
+        Orchestrates sub-methods for each context section:
+        1. System prompt + history
+        2. Command processing + auto-RAG
+        3. Project map, git context, open files, indexing hint
+        """
+        mode = get_mode(request.mode_id or "default")
         messages: list[LLMMessage] = [LLMMessage(role="system", content=mode.system_prompt)]
 
-        # Add history
         if request.history:
             messages.extend(request.history[-self._max_context :])
 
         # Parse and process commands
         parsed = parse_message(request.message)
         extra_context = await self._process_commands(parsed.commands)
+        extra_context = await self._maybe_add_auto_rag(parsed, request.message, extra_context)
 
-        # B4: Auto-RAG — if no @rag command, inject relevant chunks
+        # Build user content through sub-methods
+        user_content = parsed.text or request.message
+        user_content = self._prepend_project_map(user_content)
+        user_content = await self._prepend_auto_git(user_content, parsed.commands)
+        user_content = self._prepend_open_files(user_content, request)
+        user_content = self._prepend_extra_context(user_content, extra_context, parsed.commands)
+        user_content = self._append_indexing_hint(user_content, parsed.text or request.message)
+
+        messages.append(LLMMessage(role="user", content=user_content))
+        return messages
+
+    async def _maybe_add_auto_rag(self, parsed, raw_message: str, extra_context: str) -> str:
+        """Auto-RAG: inject relevant codebase chunks if no explicit @rag command."""
         has_rag_cmd = any(
             getattr(c, "type", None) and str(getattr(c.type, "value", c.type)) == "rag" for c in parsed.commands
         )
-        if not has_rag_cmd and self._rag and (parsed.text or request.message).strip():
-            auto_rag = await self._auto_rag_search((parsed.text or request.message).strip())
+        if not has_rag_cmd and self._rag and (parsed.text or raw_message).strip():
+            auto_rag = await self._auto_rag_search((parsed.text or raw_message).strip())
             if auto_rag:
-                extra_context = f"{auto_rag}\n\n---\n\n{extra_context}" if extra_context else auto_rag
+                return f"{auto_rag}\n\n---\n\n{extra_context}" if extra_context else auto_rag
+        return extra_context
 
-        # Build user message — Cursor-like: model automatically sees open files, no @ needed
-        user_content = parsed.text or request.message
-        # Optional: short project structure so model sees layout (like agent mode)
-        project_map_prefix = ""
-        if self._rag and hasattr(self._rag, "get_project_map_markdown"):
-            try:
-                map_md = self._rag.get_project_map_markdown()
-                if map_md:
-                    project_map_prefix = f"[Project structure]\n{map_md[:1500]}\n\n---\n\n"
-            except Exception:
-                pass
-        if project_map_prefix:
-            user_content = project_map_prefix + user_content
-        # Current file hint (so model knows which file user is focused on)
+    def _prepend_project_map(self, user_content: str) -> str:
+        """Prepend short project structure so model sees layout."""
+        if not self._rag or not hasattr(self._rag, "get_project_map_markdown"):
+            return user_content
+        try:
+            map_md = self._rag.get_project_map_markdown()
+            if map_md:
+                return f"[Project structure]\n{map_md[:1500]}\n\n---\n\n{user_content}"
+        except Exception:
+            logger.debug("Failed to get project map for chat context", exc_info=True)
+        return user_content
+
+    async def _prepend_auto_git(self, user_content: str, commands: list) -> str:
+        """Auto-inject git status when no explicit @git/@diff command."""
+        has_git_cmd = any(
+            getattr(c, "type", None) and str(getattr(c.type, "value", c.type)) in ("git", "diff")
+            for c in commands
+        )
+        if not has_git_cmd:
+            git_hint = await self._auto_git_context()
+            if git_hint:
+                return f"{git_hint}\n\n---\n\n{user_content}"
+        return user_content
+
+    def _prepend_open_files(self, user_content: str, request: ChatRequest) -> str:
+        """Prepend open editor files and active file hint (Cursor-like)."""
         current_file_hint = ""
         if request.active_file_path:
             current_file_hint = f"Current file (user is focused on): {request.active_file_path}\n\n"
-        # Open files context — always prepended so model sees them without @code/@file
         if request.context_files:
             file_context = "\n\n".join(f"[file: {f.path}]\n```\n{f.content}\n```" for f in request.context_files)
-            user_content = f"{current_file_hint}[Open files in editor — use these for context]\n\n{file_context}\n\n---\n\n{user_content}"
-        elif current_file_hint:
-            user_content = f"{current_file_hint}---\n\n{user_content}"
-        if extra_context:
-            if any(c.type == CommandType.WEB for c in parsed.commands) and WEB_FAILED_MARKER not in extra_context:
-                extra_context = (
-                    "Результаты веб-поиска (обязательно используй их для ответа на вопрос пользователя):\n\n"
-                    + extra_context
-                )
-            user_content = f"{extra_context}\n\n---\n\n{user_content}"
-        # When project is not indexed, hint so model can suggest indexing (user may forget)
+            return f"{current_file_hint}[Open files in editor — use these for context]\n\n{file_context}\n\n---\n\n{user_content}"
+        if current_file_hint:
+            return f"{current_file_hint}---\n\n{user_content}"
+        return user_content
+
+    def _prepend_extra_context(self, user_content: str, extra_context: str, commands: list) -> str:
+        """Prepend command results (web search, RAG, etc.) to user content."""
+        if not extra_context:
+            return user_content
+        if any(c.type == CommandType.WEB for c in commands) and WEB_FAILED_MARKER not in extra_context:
+            extra_context = (
+                "Результаты веб-поиска (обязательно используй их для ответа на вопрос пользователя):\n\n"
+                + extra_context
+            )
+        return f"{extra_context}\n\n---\n\n{user_content}"
+
+    def _append_indexing_hint(self, user_content: str, query: str) -> str:
+        """Append indexing hint when project is not indexed."""
         if (
             self._rag
             and self._is_indexed_getter
             and not self._is_indexed_getter()
-            and (parsed.text or request.message).strip()
+            and query.strip()
         ):
             user_content += (
                 "\n\n[Note: Project not indexed. To search the codebase, user can run Index in the UI "
                 "or switch to Agent mode and ask to index the project.]"
             )
-        messages.append(LLMMessage(role="user", content=user_content))
-        return messages
+        return user_content
+
+    async def _auto_git_context(self) -> str:
+        """Auto-inject short git status so model knows what files changed (Cursor-like)."""
+        workspace_path = self._workspace_path_getter() if self._workspace_path_getter else None
+        if not workspace_path:
+            return ""
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "git", "status", "--short", "--branch",
+                cwd=workspace_path,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=5)
+            if proc.returncode != 0:
+                return ""
+            status = stdout.decode("utf-8", errors="replace").strip()
+            if not status:
+                return ""
+            # Limit to first 30 lines to avoid huge context
+            lines = status.splitlines()
+            if len(lines) > 30:
+                status = "\n".join(lines[:30]) + f"\n... and {len(lines) - 30} more files"
+            return f"[Git status — recent changes in project]\n```\n{status}\n```"
+        except Exception:
+            logger.debug("Auto git-context failed", exc_info=True)
+            return ""
 
     async def _auto_rag_search(self, query: str) -> str:
         """B4: Auto RAG search when user doesn't use @rag."""
@@ -229,10 +297,16 @@ class ChatUseCase:
                 parts.append(f"### {src}\n```\n{c.content[:400]}\n```")
             return "[Relevant code from project]\n\n" + "\n\n".join(parts)
         except Exception:
+            logger.debug("Auto-RAG search failed", exc_info=True)
             return ""
 
     async def _process_commands(self, commands: list) -> str:
-        """Process all commands in PARALLEL and return combined context."""
+        """Process all @ commands in parallel and return combined context.
+
+        Each command (@web, @rag, @code, @file) is executed concurrently.
+        Results are joined as context sections separated by '---'.
+        When @web fails, a special marker is injected to short-circuit the response.
+        """
         if not commands:
             return ""
 
@@ -349,21 +423,7 @@ class ChatUseCase:
         temperature: float = 0.7,
     ):
         """Generate with fallback if model unavailable."""
-        fallback_chain = [model, fallback]
-        last_error: Exception | None = None
-
-        for m in fallback_chain:
-            try:
-                return await self._llm.generate(
-                    messages=messages,
-                    model=m,
-                    temperature=temperature,
-                )
-            except Exception as e:
-                last_error = e
-                continue
-
-        raise last_error or RuntimeError("LLM generate failed")
+        return await generate_with_fallback(self._llm, messages, [model, fallback], temperature=temperature)
 
     async def _stream_with_fallback(
         self,
@@ -373,20 +433,5 @@ class ChatUseCase:
         temperature: float = 0.7,
     ) -> AsyncIterator[str]:
         """Stream with fallback if model unavailable."""
-        fallback_chain = [model, fallback]
-        last_error: Exception | None = None
-
-        for m in fallback_chain:
-            try:
-                async for chunk in self._llm.generate_stream(
-                    messages=messages,
-                    model=m,
-                    temperature=temperature,
-                ):
-                    yield chunk
-                return
-            except Exception as e:
-                last_error = e
-                continue
-
-        raise last_error or RuntimeError("LLM stream failed")
+        async for chunk in stream_with_fallback(self._llm, messages, [model, fallback], temperature=temperature):
+            yield chunk

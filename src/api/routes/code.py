@@ -1,17 +1,21 @@
 """Code execution API - sandboxed code runner with security checks."""
 
 import asyncio
+import logging
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.api.dependencies import get_metrics, get_security_checker, limiter
 from src.infrastructure.services.code_security import CodeSecurityChecker
 from src.infrastructure.services.performance_metrics import PerformanceMetrics
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/code", tags=["code"])
 
@@ -19,9 +23,9 @@ router = APIRouter(prefix="/code", tags=["code"])
 class CodeRunRequest(BaseModel):
     """Request to run code."""
 
-    code: str
-    tests: str | None = None
-    timeout: int = 30
+    code: str = Field(..., min_length=1, max_length=500_000)
+    tests: str | None = Field(None, max_length=500_000)
+    timeout: int = Field(30, ge=1, le=300)
 
 
 class CodeRunResponse(BaseModel):
@@ -62,8 +66,9 @@ def _run_code_sync(code: str, tests: str | None, timeout: int) -> tuple[bool, st
             success = result.returncode == 0
             return success, output.strip(), None
         except subprocess.TimeoutExpired:
-            return False, "", f"Timeout: код выполнялся дольше {timeout} секунд"
+            return False, "", f"Timeout: code execution exceeded {timeout} seconds"
         except Exception as e:
+            logger.warning("Code execution error: %s", e)
             return False, "", str(e)
 
 
@@ -80,7 +85,7 @@ async def run_code(
     Security: Code is checked for dangerous operations before execution.
     """
     if not body.code.strip():
-        return CodeRunResponse(success=False, output="", error="Код пуст")
+        return CodeRunResponse(success=False, output="", error="Empty code")
 
     # Security check
     security_result = checker.check(body.code)
@@ -94,8 +99,6 @@ async def run_code(
         )
 
     # Run with metrics
-    import time
-
     start = time.perf_counter()
     success, output, error = await asyncio.to_thread(
         _run_code_sync,
@@ -107,7 +110,7 @@ async def run_code(
 
     # Add security warnings to output if any
     if security_result.warnings:
-        warnings_str = "\n".join(f"⚠️ {w}" for w in security_result.warnings)
+        warnings_str = "\n".join(f"Warning: {w}" for w in security_result.warnings)
         output = f"{warnings_str}\n\n{output}" if output else warnings_str
 
     return CodeRunResponse(success=success, output=output, error=error)
@@ -119,7 +122,7 @@ async def check_code_security(
     request: Request,
     body: CodeRunRequest,
     checker: CodeSecurityChecker = Depends(get_security_checker),
-):
+) -> dict:
     """Check code for security issues without executing."""
     result = checker.check(body.code)
 
@@ -135,7 +138,7 @@ async def check_code_security(
 async def get_code_metrics(
     request: Request,
     metrics: PerformanceMetrics = Depends(get_metrics),
-):
+) -> dict:
     """Get code execution performance metrics."""
     stats = metrics.get_stats("code_execution")
     return {"code_execution": stats}

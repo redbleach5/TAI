@@ -1,28 +1,43 @@
 # Документация TAI
 
-Краткий индекс документации проекта.
+Краткий индекс: справочная документация и материалы для разработки.
 
 ---
 
-## Документы
+## Справочная документация
+
+Для пользователей и интеграции: как устроен проект, как настроить, куда смотреть отчёты.
 
 | Документ | Назначение |
 |----------|------------|
-| **[ROADMAP.md](ROADMAP.md)** | План развития: стратегия (фокус на полировке бэкенда), текущее состояние, дорожная карта, порядок работ, известные проблемы |
-| **[BACKEND_POLISH.md](BACKEND_POLISH.md)** | Чеклист полировки бэкенда: качество кода (DI, project_analyzer, большие файлы), надёжность, производительность, тесты |
-| [PART5_PLAN.md](PART5_PLAN.md) | Пошаговый план Части 5: DI, разбиение project_analyzer, вынос логики из больших файлов |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Архитектура: слои, потоки данных (чат, RAG, workflow) |
-| [CHECKLIST.md](CHECKLIST.md) | Руководство по ручной проверке по фазам (запуск, чат, workflow, RAG, IDE и т.д.) |
-| [WEB_SEARCH.md](WEB_SEARCH.md) | Веб-поиск (@web): SearXNG (свой URL), Brave, Tavily — настройка по образцу Cherry Studio |
-| [ANALYSIS_QUALITY_ASSESSMENT.md](ANALYSIS_QUALITY_ASSESSMENT.md) | Оценка качества анализа по запросу в чате (vs Cursor), что улучшить |
-| [OPEN_SOURCE_ALTERNATIVES.md](OPEN_SOURCE_ALTERNATIVES.md) | Анализ: где уже есть open-source решения (чанкинг, .gitignore, граф зависимостей, веб-поиск и др.), рекомендации по внедрению |
-| [TASK_DISPATCHER_ROUTER.md](TASK_DISPATCHER_ROUTER.md) | Нужен ли диспетчер/роутер задач: текущий роутинг, когда вводить, варианты (Task Router, очередь для тяжёлых задач, Celery/ARQ) |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Архитектура: слои, DI, потоки данных, обработка ошибок, валидация, логирование |
+| [WEB_SEARCH.md](WEB_SEARCH.md) | Веб-поиск (@web): SearXNG, Brave, Tavily, Google — настройка |
+| [PERFORMANCE.md](PERFORMANCE.md) | Производительность и узкие места (бенчмарк, где время уходит) |
+| [OLLAMA_GPU.md](OLLAMA_GPU.md) | Ollama и GPU на удалённом сервере: проверка использования VRAM |
+| [ANALYSIS_REPORT.md](ANALYSIS_REPORT.md) | Пример отчёта анализа проекта (генерируется по запросу в чате) |
+
+---
+
+## Для разработки и развития проекта
+
+Планы, чеклисты и руководства по проверке — в подпапке **[dev/](dev/)**:
+
+| Документ | Назначение |
+|----------|------------|
+| [dev/ROADMAP.md](dev/ROADMAP.md) | План развития: стратегия, текущее состояние, дорожная карта |
+| [dev/BACKEND_POLISH.md](dev/BACKEND_POLISH.md) | Чеклист полировки бэкенда (основная работа завершена) |
+| [dev/CHECKLIST.md](dev/CHECKLIST.md) | Руководство по ручной проверке по фазам |
+| [dev/PART5_PLAN.md](dev/PART5_PLAN.md) | Пошаговый план Части 5 (завершён) |
+
+Полный индекс документов для разработки: [dev/README.md](dev/README.md).
 
 ---
 
 ## Где что искать
 
-- **«Что сделано и что делать дальше?»** → [ROADMAP.md](ROADMAP.md)
-- **«Чем заняться по бэкенду?»** → [BACKEND_POLISH.md](BACKEND_POLISH.md)
 - **«Как устроен проект?»** → [ARCHITECTURE.md](ARCHITECTURE.md)
-- **«Как проверить после изменений?»** → [CHECKLIST.md](CHECKLIST.md)
+- **«Какие стандарты кода?»** → [../CONTRIBUTING.md](../CONTRIBUTING.md)
+- **«Как настроить веб-поиск?»** → [WEB_SEARCH.md](WEB_SEARCH.md)
+- **«Что сделано и что делать дальше?»** → [dev/ROADMAP.md](dev/ROADMAP.md)
+- **«Что сделано по бэкенду?»** → [dev/BACKEND_POLISH.md](dev/BACKEND_POLISH.md)
+- **«Как проверить после изменений?»** → [dev/CHECKLIST.md](dev/CHECKLIST.md)

@@ -1,11 +1,11 @@
 """Self-improvement use case - orchestrates analysis and improvement."""
 
 import asyncio
+import logging
 import os
 import uuid
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
-from typing import Any
 
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -29,6 +29,8 @@ from src.infrastructure.workflow.improvement_graph import (
     build_improvement_graph,
     compile_improvement_graph,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _issue_to_dto(issue: CodeIssue) -> IssueDTO:
@@ -55,6 +57,7 @@ class SelfImprovementUseCase:
         checkpointer: MemorySaver | None = None,
         workspace_path_getter: Callable[[], str] | None = None,
     ) -> None:
+        """Initialize with LLM, model selector, and optional file writer, RAG, checkpointer."""
         self._llm = llm
         self._model_selector = model_selector
         self._file_writer = file_writer or FileWriter()
@@ -75,6 +78,7 @@ class SelfImprovementUseCase:
 
         Uses workspace path from getter; chdirs to workspace for analysis.
         """
+        logger.debug("Starting improvement analysis for path=%s", request.path)
         workspace_path = self._workspace_path_getter()
         original_cwd = os.getcwd()
         async with self._workspace_lock:
@@ -176,12 +180,13 @@ class SelfImprovementUseCase:
     async def improve_file(
         self,
         request: ImprovementRequest,
-        on_chunk: Any = None,
+        on_chunk: Callable[[str, str], None] | None = None,
     ) -> ImprovementResponse:
         """Improve single file using LLM workflow.
 
         Uses workspace path from getter; chdirs to workspace for file ops.
         """
+        logger.debug("Starting file improvement for %s", request.file_path)
         workspace_path = self._workspace_path_getter()
         original_cwd = os.getcwd()
         async with self._workspace_lock:
@@ -332,7 +337,11 @@ class SelfImprovementUseCase:
                 pass
 
     async def _process_queue(self) -> None:
-        """Process tasks from queue."""
+        """Process improvement tasks from queue sequentially.
+
+        Runs in a background asyncio task. Picks tasks one by one,
+        updates their status through the workflow stages, and records results.
+        """
         while self._running:
             try:
                 task_id = await asyncio.wait_for(self._queue.get(), timeout=1.0)
@@ -372,6 +381,7 @@ class SelfImprovementUseCase:
                 task.error = result.error
 
             except Exception as e:
+                logger.error("Improvement task %s failed: %s", task_id, e, exc_info=True)
                 task.status = TaskStatus.FAILED
                 task.error = str(e)
                 task.progress = 1.0

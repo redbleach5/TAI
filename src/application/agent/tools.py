@@ -1,13 +1,17 @@
 """Agent tools - definitions and executor for ReAct-style agent."""
 
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from src.api.dependencies import get_store
+from src.domain.ports.rag import RAGPort
 from src.infrastructure.services.file_service import FileService
 from src.infrastructure.services.terminal_service import TerminalService
+
+logger = logging.getLogger(__name__)
 
 # Type for optional web search: (query: str) -> formatted results string
 WebSearchRun = Callable[[str], Awaitable[str]]
@@ -80,11 +84,12 @@ class ToolExecutor:
     def __init__(
         self,
         workspace_path: str | None = None,
-        rag=None,
+        rag: RAGPort | None = None,
         propose_edits: bool = False,
         deep_analyzer_run: DeepAnalyzerRun | None = None,
         web_search_run: WebSearchRun | None = None,
     ) -> None:
+        """Initialize executor with workspace path and optional RAG/tools."""
         self._workspace = Path(workspace_path or _get_workspace_path()).resolve()
         self._file_service = FileService(root_path=str(self._workspace))
         self._terminal = TerminalService(cwd=str(self._workspace))
@@ -93,34 +98,34 @@ class ToolExecutor:
         self._deep_analyzer_run = deep_analyzer_run
         self._web_search_run = web_search_run
 
+    def _tool_dispatch(self) -> dict[str, Callable[[dict[str, Any]], Any]]:
+        """Build tool name -> handler mapping for dispatch."""
+        return {
+            "read_file": self._read_file,
+            "write_file": self._write_file,
+            "search_rag": self._search_rag,
+            "run_terminal": self._run_terminal,
+            "list_files": self._list_files,
+            "get_index_status": self._get_index_status,
+            "index_workspace": self._index_workspace,
+            "run_project_analysis": self._run_project_analysis,
+            "web_search": self._web_search,
+        }
+
     async def execute(self, tool: str, args: dict[str, Any]) -> ToolResult:
-        """Execute tool with given args."""
+        """Execute tool with given args using dispatch table."""
+        logger.debug("Executing tool=%s args=%s", tool, {k: str(v)[:100] for k, v in args.items()})
         tool_lower = tool.lower().strip()
-        if tool_lower == "read_file":
-            return await self._read_file(args)
-        if tool_lower == "write_file":
-            return await self._write_file(args)
-        if tool_lower == "search_rag":
-            return await self._search_rag(args)
-        if tool_lower == "run_terminal":
-            return await self._run_terminal(args)
-        if tool_lower == "list_files":
-            return await self._list_files(args)
-        if tool_lower == "get_index_status":
-            return await self._get_index_status(args)
-        if tool_lower == "index_workspace":
-            return await self._index_workspace(args)
-        if tool_lower == "run_project_analysis":
-            return await self._run_project_analysis(args)
-        if tool_lower == "web_search":
-            return await self._web_search(args)
-        return ToolResult(
-            success=False,
-            content="",
-            error=f"Unknown tool: {tool}",
-            tool=tool,
-            args=args,
-        )
+        handler = self._tool_dispatch().get(tool_lower)
+        if handler is None:
+            return ToolResult(
+                success=False,
+                content="",
+                error=f"Unknown tool: {tool}",
+                tool=tool,
+                args=args,
+            )
+        return await handler(args)
 
     async def _read_file(self, args: dict) -> ToolResult:
         path = args.get("path", "").strip()

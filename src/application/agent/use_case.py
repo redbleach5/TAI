@@ -1,6 +1,7 @@
 """Agent Use Case - native Ollama tools or ReAct-style fallback."""
 
 import json
+import logging
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -10,9 +11,12 @@ from src.application.agent.tool_parser import parse_all_tool_calls, strip_tool_c
 from src.application.agent.tools import AGENT_TOOLS_PROMPT, ToolExecutor, ToolResult
 from src.application.analysis.deep_analyzer import DeepAnalyzer, summary_from_report
 from src.application.chat.dto import ChatRequest, ChatResponse
+from src.application.shared.llm_fallback import generate_with_fallback, stream_with_fallback
 from src.domain.ports.llm import LLMMessage, LLMPort
 from src.domain.services.model_selector import ModelSelector
 from src.infrastructure.services.web_search import format_search_results, multi_search
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.domain.ports.rag import RAGPort
@@ -45,6 +49,7 @@ class AgentUseCase:
         web_search_google_api_key: str | None = None,
         web_search_google_cx: str | None = None,
     ) -> None:
+        """Initialize agent with LLM, model selector, optional RAG and web search config."""
         self._llm = llm
         self._model_selector = model_selector
         self._rag = rag
@@ -72,14 +77,14 @@ class AgentUseCase:
                 parts = [f"### {c.metadata.get('source', '?')}\n```\n{c.content[:500]}\n```" for c in chunks[:5]]
                 rag_context = "[Relevant code]\n\n" + "\n\n".join(parts)
         except Exception:
-            pass
+            logger.debug("Agent RAG search failed for context gathering", exc_info=True)
         if self._rag and hasattr(self._rag, "get_project_map_markdown"):
             try:
                 map_md = self._rag.get_project_map_markdown()
                 if map_md:
                     project_map = map_md[:2000]
             except Exception:
-                pass
+                logger.debug("Failed to get project map for agent context", exc_info=True)
         return rag_context, project_map
 
     def _build_ollama_messages(
@@ -88,7 +93,11 @@ class AgentUseCase:
         rag_context: str = "",
         project_map: str = "",
     ) -> list[dict[str, Any]]:
-        """Build messages in Ollama format for native tools."""
+        """Build messages in Ollama dict format for native tool calling.
+
+        Constructs system prompt + history + user message with RAG context,
+        project map, and open files embedded.
+        """
         system = AGENT_SYSTEM_PROMPT_NATIVE
         if project_map:
             system = f"[Project structure]\n{project_map}\n\n---\n\n{system}"
@@ -143,6 +152,7 @@ class AgentUseCase:
 
     async def execute(self, request: ChatRequest) -> ChatResponse:
         """Run agent loop until done or max iterations (sync: writes to disk, no proposed_edits)."""
+        logger.debug("Agent execute: message=%s, mode=%s", request.message[:80], request.mode_id)
         model, fallback = await self._model_selector.select_model(request.message)
         model = request.model or model
         executor = ToolExecutor(
@@ -371,6 +381,11 @@ class AgentUseCase:
         rag_context: str = "",
         project_map: str = "",
     ) -> list[LLMMessage]:
+        """Build LLMMessage list for prompt-based (ReAct) agent mode.
+
+        Constructs system prompt with tool definitions + history + user message
+        with RAG context, project map, and open files embedded.
+        """
         system = AGENT_SYSTEM_PROMPT
         if project_map:
             system = f"[Project structure]\n{project_map}\n\n---\n\n{system}"
@@ -389,31 +404,10 @@ class AgentUseCase:
         return messages
 
     async def _generate(self, messages: list[LLMMessage], model: str, fallback: str):
-        fallback_chain = [model, fallback]
-        last_err: Exception | None = None
-        for m in fallback_chain:
-            try:
-                return await self._llm.generate(
-                    messages=messages,
-                    model=m,
-                    temperature=0.3,
-                )
-            except Exception as e:
-                last_err = e
-        raise last_err or RuntimeError("LLM failed")
+        """Generate LLM response with fallback chain."""
+        return await generate_with_fallback(self._llm, messages, [model, fallback], temperature=0.3)
 
     async def _stream(self, messages: list[LLMMessage], model: str, fallback: str) -> AsyncIterator[str]:
-        fallback_chain = [model, fallback]
-        last_err: Exception | None = None
-        for m in fallback_chain:
-            try:
-                async for chunk in self._llm.generate_stream(
-                    messages=messages,
-                    model=m,
-                    temperature=0.3,
-                ):
-                    yield chunk
-                return
-            except Exception as e:
-                last_err = e
-        raise last_err or RuntimeError("LLM stream failed")
+        """Stream LLM response with fallback chain."""
+        async for chunk in stream_with_fallback(self._llm, messages, [model, fallback], temperature=0.3):
+            yield chunk

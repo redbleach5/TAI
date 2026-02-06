@@ -1,10 +1,14 @@
 """RAG API routes - index project for context retrieval."""
 
-from fastapi import APIRouter, Depends, Request
-from pydantic import BaseModel
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from src.api.dependencies import get_rag_adapter, limiter
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/rag", tags=["rag"])
 
@@ -12,10 +16,10 @@ router = APIRouter(prefix="/rag", tags=["rag"])
 class SearchRequest(BaseModel):
     """Request for RAG search."""
 
-    query: str
-    limit: int = 20
-    min_score: float = 0.3
-    max_tokens: int | None = None
+    query: str = Field(..., min_length=1, max_length=2000)
+    limit: int = Field(20, ge=1, le=100)
+    min_score: float = Field(0.3, ge=0.0, le=1.0)
+    max_tokens: int | None = Field(None, ge=1, le=100_000)
 
 
 class ChunkResult(BaseModel):
@@ -40,7 +44,7 @@ async def index_path(
     path: str = ".",
     incremental: bool = True,
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
-):
+) -> dict:
     """Index a directory for RAG search.
 
     Indexes all code files (.py, .ts, .tsx, .js, .json, .md, .toml, etc.)
@@ -48,7 +52,12 @@ async def index_path(
 
     incremental: If True (default), only index new/changed files. If False, full reindex.
     """
-    stats = await rag.index_path(path, incremental=incremental)
+    try:
+        stats = await rag.index_path(path, incremental=incremental)
+    except Exception:
+        logger.exception("Failed to index path: %s", path)
+        raise HTTPException(status_code=500, detail="Failed to index path")
+
     return {
         "status": "ok",
         "path": stats.get("path", path),
@@ -63,7 +72,7 @@ async def index_path(
 async def rag_status(
     request: Request,
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
-):
+) -> dict:
     """Get RAG index status with statistics."""
     stats = rag.get_stats()
     return {
@@ -80,7 +89,7 @@ async def rag_status(
 async def list_indexed_files(
     request: Request,
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
-):
+) -> dict:
     """Get list of all indexed files."""
     files = rag.get_indexed_files()
     return {"files": files, "count": len(files)}
@@ -96,17 +105,24 @@ async def search_rag(
     """Search RAG index for relevant code chunks.
 
     Args:
-        query: Search query
-        limit: Max results (default 20)
-        min_score: Minimum relevance 0-1 (default 0.3)
-        max_tokens: Limit total tokens in response
+        request: FastAPI request.
+        body: Search request (query, limit, min_score, max_tokens).
+        rag: RAG adapter (injected).
+
+    Returns:
+        Search response with chunks.
+
     """
-    chunks = await rag.search(
-        query=body.query,
-        limit=body.limit,
-        min_score=body.min_score,
-        max_tokens=body.max_tokens,
-    )
+    try:
+        chunks = await rag.search(
+            query=body.query,
+            limit=body.limit,
+            min_score=body.min_score,
+            max_tokens=body.max_tokens,
+        )
+    except Exception:
+        logger.exception("RAG search failed for query: %s", body.query)
+        raise HTTPException(status_code=500, detail="RAG search failed")
 
     results = []
     total_chars = 0
@@ -128,9 +144,13 @@ async def search_rag(
 async def clear_index(
     request: Request,
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
-):
+) -> dict:
     """Clear all indexed data."""
-    rag.clear()
+    try:
+        rag.clear()
+    except Exception:
+        logger.exception("Failed to clear RAG index")
+        raise HTTPException(status_code=500, detail="Failed to clear index")
     return {"status": "ok", "message": "Index cleared"}
 
 
@@ -139,7 +159,7 @@ async def clear_index(
 async def get_project_map(
     request: Request,
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
-):
+) -> dict:
     """Get project map (structure overview).
 
     Returns markdown description of project structure including:
@@ -150,10 +170,10 @@ async def get_project_map(
     """
     map_md = rag.get_project_map_markdown()
     if not map_md:
-        return {
-            "status": "error",
-            "error": "Project map not found. Run /rag/index first.",
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Project map not found. Run /rag/index first.",
+        )
     return {
         "status": "ok",
         "project_map": map_md,

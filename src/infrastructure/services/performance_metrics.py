@@ -35,25 +35,31 @@ class StageMetrics:
 
     @property
     def count(self) -> int:
+        """Return number of samples."""
         return len(self.samples)
 
     @property
     def avg(self) -> float:
+        """Return average duration."""
         return mean(self.samples) if self.samples else 0.0
 
     @property
     def med(self) -> float:
+        """Return median duration."""
         return median(self.samples) if self.samples else 0.0
 
     @property
     def min_time(self) -> float:
+        """Return minimum duration."""
         return min(self.samples) if self.samples else 0.0
 
     @property
     def max_time(self) -> float:
+        """Return maximum duration."""
         return max(self.samples) if self.samples else 0.0
 
     def to_dict(self) -> dict:
+        """Return metrics as dictionary."""
         return {
             "name": self.name,
             "count": self.count,
@@ -80,6 +86,7 @@ class PerformanceMetrics:
 
         Args:
             persist_path: Путь для сохранения метрик
+
         """
         self._stages: dict[str, StageMetrics] = {}
         self._persist_path = Path(persist_path) if persist_path else Path("output/metrics")
@@ -93,9 +100,10 @@ class PerformanceMetrics:
         Args:
             stage: Название этапа
             duration: Время выполнения (должно быть >= 0)
+
         """
         if duration < 0:
-            logger.warning(f"Negative duration {duration} for stage '{stage}', using 0")
+            logger.warning("Negative duration %s for stage '%s', using 0", duration, stage)
             duration = 0.0
 
         with self._lock:
@@ -188,7 +196,7 @@ class PerformanceMetrics:
                     stage.samples = [s for s in samples if isinstance(s, (int, float)) and s >= 0]
                     self._stages[stage.name] = stage
             except (json.JSONDecodeError, OSError) as e:
-                logger.warning(f"Failed to load metrics: {e}")
+                logger.warning("Failed to load metrics: %s", e)
 
     def _save_unsafe(self) -> None:
         """Сохранить метрики на диск (caller must hold lock, atomic write)."""
@@ -220,7 +228,7 @@ class PerformanceMetrics:
                     os.unlink(tmp_path)
                 raise
         except OSError as e:
-            logger.warning(f"Failed to save metrics: {e}")
+            logger.warning("Failed to save metrics: %s", e)
 
     def _save(self) -> None:
         """Сохранить метрики на диск (thread-safe)."""
@@ -236,4 +244,4 @@ class PerformanceMetrics:
                 if metrics_file.exists():
                     metrics_file.unlink()
             except OSError as e:
-                logger.warning(f"Failed to delete metrics file: {e}")
+                logger.warning("Failed to delete metrics file: %s", e)

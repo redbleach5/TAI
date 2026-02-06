@@ -1,5 +1,6 @@
 """LLM helpers: retry wrapper and streaming with callback."""
 
+import logging
 from collections.abc import Callable
 
 from tenacity import (
@@ -11,12 +12,19 @@ from tenacity import (
 
 from src.domain.ports.llm import LLMMessage, LLMPort, LLMResponse
 
+logger = logging.getLogger(__name__)
+
 
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=1, max=10),
     retry=retry_if_exception_type((TimeoutError, ConnectionError, OSError)),
     reraise=True,
+    before_sleep=lambda retry_state: logger.warning(
+        "LLM generate retry #%d after %s",
+        retry_state.attempt_number,
+        retry_state.outcome.exception() if retry_state.outcome else "unknown",
+    ),
 )
 async def _generate_impl(
     llm: LLMPort,
@@ -24,7 +32,7 @@ async def _generate_impl(
     model: str,
     temperature: float,
 ) -> LLMResponse:
-    """Internal: generate with retry."""
+    """Generate with retry (internal)."""
     return await llm.generate(
         messages=messages,
         model=model,

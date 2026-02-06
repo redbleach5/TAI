@@ -1,8 +1,11 @@
 """Fetch available models with capability scores for Ollama and LM Studio."""
 
+import logging
 from typing import TYPE_CHECKING
 
 from src.domain.services.model_capability import compute_capability
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from src.domain.ports.llm import LLMPort
@@ -34,7 +37,8 @@ async def _fetch_ollama_with_capability(host: str) -> list[tuple[str, float]]:
             resp = await client.get(f"{host}/api/tags")
             resp.raise_for_status()
             data = resp.json()
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to fetch Ollama models from %s: %s", host, e)
         return []
 
     models = data.get("models", [])
@@ -63,7 +67,8 @@ async def _fetch_generic_with_capability(llm: "LLMPort") -> list[tuple[str, floa
     """LM Studio / generic: list_models + parse from name."""
     try:
         names = await llm.list_models()
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed to list models from LLM provider: %s", e)
         return []
 
     result: list[tuple[str, float]] = []

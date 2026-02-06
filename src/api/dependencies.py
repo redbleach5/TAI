@@ -1,5 +1,7 @@
 """FastAPI dependencies - uses Container for DI."""
 
+from pathlib import Path
+
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -17,8 +19,11 @@ from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
 from src.infrastructure.persistence.conversation_memory import ConversationMemory
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 from src.infrastructure.services.code_security import CodeSecurityChecker
+from src.infrastructure.services.file_service import FileService
+from src.infrastructure.services.git_service import GitService
 from src.infrastructure.services.performance_metrics import PerformanceMetrics
 from src.infrastructure.services.prompt_templates import PromptLibrary
+from src.infrastructure.services.terminal_service import TerminalService
 
 # Rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -99,3 +104,25 @@ def get_metrics() -> PerformanceMetrics:
 def get_library() -> PromptLibrary:
     """Get prompt library from container."""
     return get_container().prompt_library
+
+
+def get_workspace_path() -> str:
+    """Get current workspace path (current project or cwd)."""
+    store = get_store()
+    current = store.get_current()
+    return current.path if current else str(Path.cwd().resolve())
+
+
+def get_file_service() -> FileService:
+    """Get file service scoped to current workspace."""
+    return FileService(root_path=get_workspace_path())
+
+
+def get_git_service() -> GitService:
+    """Get git service."""
+    return GitService()
+
+
+def get_terminal_service() -> TerminalService:
+    """Get terminal service."""
+    return TerminalService()

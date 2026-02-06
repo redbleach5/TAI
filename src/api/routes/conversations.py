@@ -1,9 +1,13 @@
 """Conversations API - list and load saved dialogues."""
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from src.api.dependencies import get_conversation_memory, limiter
 from src.infrastructure.persistence.conversation_memory import ConversationMemory
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -15,7 +19,11 @@ async def list_conversations(
     memory: ConversationMemory = Depends(get_conversation_memory),
 ) -> list[dict]:
     """List saved conversations with id and title (from first user message)."""
-    return memory.list_with_titles()
+    try:
+        return memory.list_with_titles()
+    except Exception:
+        logger.exception("Failed to list conversations")
+        raise HTTPException(status_code=500, detail="Failed to list conversations")
 
 
 @router.get("/ids")
@@ -25,7 +33,11 @@ async def list_conversation_ids(
     memory: ConversationMemory = Depends(get_conversation_memory),
 ) -> list[str]:
     """List saved conversation IDs only (legacy)."""
-    return memory.list_ids()
+    try:
+        return memory.list_ids()
+    except Exception:
+        logger.exception("Failed to list conversation IDs")
+        raise HTTPException(status_code=500, detail="Failed to list conversation IDs")
 
 
 @router.get("/{conversation_id}")
@@ -36,7 +48,11 @@ async def get_conversation(
     memory: ConversationMemory = Depends(get_conversation_memory),
 ) -> list[dict]:
     """Load conversation messages."""
-    messages = memory.load(conversation_id)
+    try:
+        messages = memory.load(conversation_id)
+    except Exception:
+        logger.exception("Failed to load conversation %s", conversation_id)
+        raise HTTPException(status_code=500, detail="Failed to load conversation")
     return [{"role": m.role, "content": m.content} for m in messages]
 
 

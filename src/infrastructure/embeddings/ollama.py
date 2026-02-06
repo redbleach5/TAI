@@ -25,6 +25,7 @@ class OllamaEmbeddingsAdapter:
     """Ollama embeddings via POST /api/embed."""
 
     def __init__(self, config: OllamaConfig, embeddings_config: EmbeddingsConfig) -> None:
+        """Initialize with Ollama and embeddings config."""
         self._host = config.host.rstrip("/")
         self._model = embeddings_config.model
         self._timeout = config.timeout
@@ -58,20 +59,20 @@ class OllamaEmbeddingsAdapter:
                 resp.raise_for_status()
                 data = resp.json()
         except httpx.HTTPStatusError as e:
-            logger.error(f"Ollama embedding error {e.response.status_code}: {e.response.text[:200]}")
+            logger.error("Ollama embedding error %s: %s", e.response.status_code, e.response.text[:200])
             raise
         except httpx.TimeoutException:
-            logger.warning(f"Ollama embedding timed out after {self._timeout}s")
+            logger.warning("Ollama embedding timed out after %ss", self._timeout)
             raise
         except httpx.NetworkError as e:
-            logger.warning(f"Ollama network error: {e}")
+            logger.warning("Ollama network error: %s", e)
             raise
 
         embeddings = data.get("embeddings", [])
 
         # Validate count matches
         if len(embeddings) != len(texts):
-            logger.warning(f"Embedding count mismatch: got {len(embeddings)}, expected {len(texts)}")
+            logger.warning("Embedding count mismatch: got %d, expected %d", len(embeddings), len(texts))
             # Pad or truncate
             while len(embeddings) < len(texts):
                 embeddings.append([])

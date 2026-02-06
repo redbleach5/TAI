@@ -1,8 +1,11 @@
 """Prompt Templates - reusable prompt library."""
 
 import json
+import logging
 from dataclasses import asdict, dataclass
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -126,7 +129,8 @@ BUILTIN_TEMPLATES: list[PromptTemplate] = [
 class PromptLibrary:
     """Manages prompt templates."""
 
-    def __init__(self, storage_path: str = "output/prompts.json"):
+    def __init__(self, storage_path: str = "output/prompts.json") -> None:
+        """Initialize with storage path for prompts JSON."""
         self._storage_path = Path(storage_path)
         self._custom_templates: dict[str, PromptTemplate] = {}
         self._load()
@@ -140,7 +144,7 @@ class PromptLibrary:
                     template = PromptTemplate(**item)
                     self._custom_templates[template.id] = template
             except Exception:
-                pass
+                logger.warning("Failed to load custom prompt templates from %s", self._storage_path, exc_info=True)
 
     def _save(self):
         """Save custom templates to storage."""

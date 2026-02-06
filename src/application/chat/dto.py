@@ -1,6 +1,6 @@
 """Chat DTOs."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.domain.ports.llm import LLMMessage
 
@@ -8,8 +8,8 @@ from src.domain.ports.llm import LLMMessage
 class ContextFile(BaseModel):
     """File content for chat context (Cursor-like)."""
 
-    path: str
-    content: str
+    path: str = Field(..., max_length=1024)
+    content: str = Field(..., max_length=500_000)
 
 
 class ChatRequest(BaseModel):
@@ -19,13 +19,13 @@ class ChatRequest(BaseModel):
     Current user message is in message; backend appends it when building LLM context.
     """
 
-    message: str
+    message: str = Field(..., min_length=1, max_length=100_000)
     history: list[LLMMessage] | None = None  # Previous turns only; do not include current message
-    conversation_id: str | None = None
-    mode_id: str | None = None  # Assistant mode (coder, researcher, etc.)
-    model: str | None = None  # Override model (Cursor-like)
-    context_files: list[ContextFile] | None = None  # Open files from IDE (Cursor-like — model sees these automatically)
-    active_file_path: str | None = None  # Path of the focused tab — "current file" for the model
+    conversation_id: str | None = Field(None, max_length=100)
+    mode_id: str | None = Field(None, max_length=100)  # Assistant mode (coder, researcher, etc.)
+    model: str | None = Field(None, max_length=255)  # Override model (Cursor-like)
+    context_files: list[ContextFile] | None = Field(None, max_length=50)  # Open files from IDE
+    active_file_path: str | None = Field(None, max_length=1024)  # Path of the focused tab
     apply_edits_required: bool = True  # Agent write_file proposed only; user applies/rejects in UI
 
 

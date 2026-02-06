@@ -1,10 +1,13 @@
 """Summarizer agent - LLM-based context summarization."""
 
 import hashlib
+import logging
 import threading
 from pathlib import Path
 
 from src.domain.ports.llm import LLMMessage, LLMPort
+
+logger = logging.getLogger(__name__)
 
 # Cache for summaries (in-memory, persisted to file); lock for thread safety
 _summary_cache: dict[str, str] = {}
@@ -21,6 +24,7 @@ def _load_cache() -> None:
 
             _summary_cache = json.loads(_cache_file.read_text())
         except Exception:
+            logger.debug("Failed to load summary cache from %s", _cache_file, exc_info=True)
             _summary_cache = {}
     else:
         _summary_cache = {}
@@ -34,7 +38,7 @@ def _save_cache() -> None:
         _cache_file.parent.mkdir(parents=True, exist_ok=True)
         _cache_file.write_text(json.dumps(_summary_cache))
     except Exception:
-        pass
+        logger.debug("Failed to save summary cache to %s", _cache_file, exc_info=True)
 
 
 def _content_hash(content: str) -> str:
@@ -91,6 +95,7 @@ async def summarize_content(
 
     Returns:
         Summarized content
+
     """
     if not content.strip():
         return ""
@@ -145,6 +150,7 @@ async def summarize_chunks(
 
     Returns:
         Combined summary
+
     """
     if not chunks:
         return ""
@@ -191,6 +197,7 @@ async def summarize_conversation(
 
     Returns:
         Conversation summary
+
     """
     if not messages:
         return ""

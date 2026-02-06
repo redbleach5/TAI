@@ -2,7 +2,7 @@
 
 **Цель:** Пошаговый гид для ручной проверки после каждой фазы. Идя по этому документу, вы поймёте, что проверять, зачем и как интерпретировать результат.
 
-**Связано с:** [CURSOR_LEVEL_ROADMAP.md](CURSOR_LEVEL_ROADMAP.md)
+**Связано с:** [ROADMAP.md](ROADMAP.md)
 
 ---
 
@@ -580,7 +580,7 @@ ls src/infrastructure/agents/  # или domain/agents/, application/agents/
 **Ожидаемо:** README — как установить и запустить; ARCHITECTURE — схема, слои, ключевые компоненты; CONTRIBUTING — как внести вклад.
 
 - [v] README — инструкция по запуску
-- [v] [ARCHITECTURE.md](ARCHITECTURE.md) — описание слоёв и потоков
+- [v] [ARCHITECTURE.md](../ARCHITECTURE.md) — описание слоёв и потоков
 - [v] CONTRIBUTING.md — руководство по внесению вклада
 
 ---

@@ -79,6 +79,7 @@ class ProjectAnalyzer:
 
         Args:
             max_file_size: Максимальный размер файла для анализа (байты)
+
         """
         if max_file_size <= 0:
             raise ValueError("max_file_size must be positive")
@@ -95,6 +96,7 @@ class ProjectAnalyzer:
 
         Raises:
             ValueError: If path is invalid or inaccessible
+
         """
         if not project_path:
             raise ValueError("Project path cannot be empty")
@@ -111,7 +113,7 @@ class ProjectAnalyzer:
         if not os.access(path, os.R_OK):
             raise ValueError(f"No read permission for: {project_path}")
 
-        logger.info(f"Analyzing project: {path}")
+        logger.info("Analyzing project: %s", path)
 
         analysis = ProjectAnalysis(
             project_path=str(path),
@@ -132,7 +134,7 @@ class ProjectAnalyzer:
                 lang = self._detect_language(file_path)
                 return metrics, security_issues, lang
             except Exception as e:
-                logger.debug(f"Error analyzing {file_path}: {e}")
+                logger.debug("Error analyzing %s: %s", file_path, e)
                 return None, [], None
 
         # Use ThreadPoolExecutor for I/O-bound file operations
@@ -155,7 +157,7 @@ class ProjectAnalyzer:
                     analysis.security_issues.extend(security_issues)
 
                 except Exception as e:
-                    logger.debug(f"Failed to get result for {file_path}: {e}")
+                    logger.debug("Failed to get result for %s: %s", file_path, e)
 
         # Анализ архитектуры
         analysis.architecture = analyze_architecture(path, files)

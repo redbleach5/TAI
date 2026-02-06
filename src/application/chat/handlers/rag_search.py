@@ -1,7 +1,11 @@
 """RAG search command handler (@rag)."""
 
+import logging
+
 from src.application.chat.handlers.base import CommandHandler, CommandResult
 from src.domain.ports.rag import RAGPort
+
+logger = logging.getLogger(__name__)
 
 
 class RAGSearchHandler(CommandHandler):
@@ -9,6 +13,7 @@ class RAGSearchHandler(CommandHandler):
 
     @property
     def command_type(self) -> str:
+        """Return command type ('rag')."""
         return "rag"
 
     async def execute(self, argument: str, **context) -> CommandResult:
@@ -17,6 +22,7 @@ class RAGSearchHandler(CommandHandler):
         Args:
             argument: Search query
             **context: Must contain 'rag' - RAGPort instance
+
         """
         if not argument.strip():
             return CommandResult(
@@ -49,6 +55,7 @@ class RAGSearchHandler(CommandHandler):
 
             return CommandResult(content="\n".join(context_parts))
         except Exception as e:
+            logger.warning("RAG search failed for query=%s: %s", argument, e, exc_info=True)
             return CommandResult(
                 content=f"[RAG error: {e}]",
                 success=False,

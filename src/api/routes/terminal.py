@@ -1,11 +1,15 @@
 """Terminal API routes - uses TerminalService."""
 
-from fastapi import APIRouter, Request
-from pydantic import BaseModel
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
-from src.api.dependencies import limiter
+from src.api.dependencies import get_terminal_service, limiter
 from src.infrastructure.services.terminal_service import TerminalService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/terminal", tags=["terminal"])
 
@@ -13,25 +17,27 @@ router = APIRouter(prefix="/terminal", tags=["terminal"])
 class ExecRequest(BaseModel):
     """Execute command request."""
 
-    command: str
-    cwd: str | None = None
-
-
-def _get_service() -> TerminalService:
-    """Get TerminalService instance."""
-    return TerminalService()
+    command: str = Field(..., min_length=1, max_length=10_000)
+    cwd: str | None = Field(None, max_length=1024)
 
 
 @router.post("/exec")
 @limiter.limit("60/minute")
-async def execute_command(request: Request, body: ExecRequest):
+async def execute_command(
+    request: Request,
+    body: ExecRequest,
+    service: TerminalService = Depends(get_terminal_service),
+) -> dict:
     """Execute a shell command.
 
     Only whitelisted commands are allowed.
     Dangerous patterns are blocked.
     """
-    service = _get_service()
-    result = await service.execute(body.command, body.cwd)
+    try:
+        result = await service.execute(body.command, body.cwd)
+    except Exception:
+        logger.exception("Failed to execute command: %s", body.command)
+        raise HTTPException(status_code=500, detail="Failed to execute command")
 
     return {
         "success": result.success,
@@ -48,13 +54,17 @@ async def stream_command(
     request: Request,
     command: str,
     cwd: str | None = None,
-):
+    service: TerminalService = Depends(get_terminal_service),
+) -> EventSourceResponse:
     """Stream command output via SSE."""
-    service = _get_service()
 
     async def event_generator():
-        async for line in service.stream(command, cwd):
-            yield {"event": "output", "data": line}
+        try:
+            async for line in service.stream(command, cwd):
+                yield {"event": "output", "data": line}
+        except Exception:
+            logger.exception("Error streaming command: %s", command)
+            yield {"event": "error", "data": "Stream failed"}
         yield {"event": "done", "data": ""}
 
     return EventSourceResponse(event_generator())
@@ -62,7 +72,9 @@ async def stream_command(
 
 @router.get("/commands")
 @limiter.limit("60/minute")
-async def list_commands(request: Request):
+async def list_commands(
+    request: Request,
+    service: TerminalService = Depends(get_terminal_service),
+) -> dict:
     """List allowed commands."""
-    service = _get_service()
     return {"commands": service.list_allowed_commands()}

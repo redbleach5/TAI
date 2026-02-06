@@ -1,5 +1,5 @@
 /**
- * Cursor-like: model selector dropdown.
+ * Cursor-like: model selector dropdown with keyboard navigation.
  */
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { ChevronDown, Loader2 } from 'lucide-react'
@@ -15,6 +15,7 @@ export function ModelSelector({ value, onChange, provider }: Props) {
   const [open, setOpen] = useState(false)
   const [models, setModels] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
+  const [focusIdx, setFocusIdx] = useState(-1)
   const ref = useRef<HTMLDivElement>(null)
 
   const fetchModels = useCallback(async () => {
@@ -51,17 +52,48 @@ export function ModelSelector({ value, onChange, provider }: Props) {
   }, [])
 
   const displayValue = value || 'Auto'
-  const options = ['', ...models]
-  const uniqueOptions = value && !models.includes(value) ? [value, ...options] : options
+  const allOptions = ['', ...models]
+  const uniqueOptions = value && !models.includes(value) ? [value, ...allOptions] : allOptions
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!open) {
+      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        setOpen(true)
+        setFocusIdx(uniqueOptions.indexOf(value))
+      }
+      return
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      setOpen(false)
+      return
+    }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setFocusIdx((i) => (i + 1) % uniqueOptions.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setFocusIdx((i) => (i - 1 + uniqueOptions.length) % uniqueOptions.length)
+    } else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      if (focusIdx >= 0 && focusIdx < uniqueOptions.length) {
+        onChange(uniqueOptions[focusIdx])
+        setOpen(false)
+      }
+    }
+  }, [open, uniqueOptions, value, focusIdx, onChange])
 
   return (
-    <div className="model-selector" ref={ref}>
+    <div className="model-selector" ref={ref} onKeyDown={handleKeyDown}>
       <button
         type="button"
         className="model-selector__trigger"
         onClick={() => !loading && setOpen(!open)}
         disabled={loading}
         title="Выбрать модель"
+        aria-haspopup="listbox"
+        aria-expanded={open}
       >
         {loading ? (
           <Loader2 size={12} className="icon-spin" />
@@ -73,28 +105,21 @@ export function ModelSelector({ value, onChange, provider }: Props) {
         )}
       </button>
       {open && !loading && (
-        <div className="model-selector__dropdown">
-          <button
-            type="button"
-            className={`model-selector__item ${!value ? 'model-selector__item--active' : ''}`}
-            onClick={() => {
-              onChange('')
-              setOpen(false)
-            }}
-          >
-            Auto
-          </button>
-          {uniqueOptions.filter(Boolean).map((m) => (
+        <div className="model-selector__dropdown" role="listbox" aria-label="Выбор модели">
+          {uniqueOptions.map((m, i) => (
             <button
-              key={m}
+              key={m || '__auto__'}
               type="button"
-              className={`model-selector__item ${value === m ? 'model-selector__item--active' : ''}`}
+              className={`model-selector__item ${value === m ? 'model-selector__item--active' : ''} ${i === focusIdx ? 'model-selector__item--focused' : ''}`}
               onClick={() => {
                 onChange(m)
                 setOpen(false)
               }}
+              onMouseEnter={() => setFocusIdx(i)}
+              role="option"
+              aria-selected={value === m}
             >
-              {m}
+              {m || 'Auto'}
             </button>
           ))}
         </div>

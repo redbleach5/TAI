@@ -66,6 +66,7 @@ def check_file_security(file_path: Path, base_path: Path) -> list[SecurityIssue]
 
     Returns:
         Список SecurityIssue. Пустой для документации/тестов или при ошибке чтения.
+
     """
     issues: list[SecurityIssue] = []
     try:

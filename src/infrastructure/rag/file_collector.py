@@ -206,7 +206,7 @@ def collect_code_files_with_stats(
     path = path.resolve()
 
     if not path.is_dir():
-        logger.warning(f"Path is not a directory: {path}")
+        logger.warning("Path is not a directory: %s", path)
         return results
 
     ignore_patterns, negated_patterns = parse_gitignore(path)
@@ -216,7 +216,7 @@ def collect_code_files_with_stats(
 
     for p in path.rglob("*"):
         if len(results) >= max_files:
-            logger.warning(f"Reached max file limit ({max_files}), stopping collection")
+            logger.warning("Reached max file limit (%d), stopping collection", max_files)
             break
 
         if p.is_symlink() and not follow_symlinks:
@@ -253,12 +253,12 @@ def collect_code_files_with_stats(
             rel = str(p.relative_to(path))
             results.append((rel, content, mtime, file_size))
         except OSError as e:
-            logger.debug(f"Failed to read {p}: {e}")
+            logger.debug("Failed to read %s: %s", p, e)
             skipped_error += 1
             continue
 
     if skipped_large or skipped_binary or skipped_error:
-        logger.debug(f"Skipped files: {skipped_large} large, {skipped_binary} binary, {skipped_error} errors")
+        logger.debug("Skipped files: %d large, %d binary, %d errors", skipped_large, skipped_binary, skipped_error)
 
     return results
 
@@ -279,12 +279,13 @@ def collect_code_files(
 
     Returns:
         List of (relative_path, content) tuples
+
     """
     results: list[tuple[str, str]] = []
     path = path.resolve()
 
     if not path.is_dir():
-        logger.warning(f"Path is not a directory: {path}")
+        logger.warning("Path is not a directory: %s", path)
         return results
 
     # Parse gitignore
@@ -298,7 +299,7 @@ def collect_code_files(
     for p in path.rglob("*"):
         # Check file count limit
         if len(results) >= max_files:
-            logger.warning(f"Reached max file limit ({max_files}), stopping collection")
+            logger.warning("Reached max file limit (%d), stopping collection", max_files)
             break
 
         # Skip symlinks unless explicitly allowed
@@ -339,12 +340,12 @@ def collect_code_files(
             rel = str(p.relative_to(path))
             results.append((rel, content))
         except OSError as e:
-            logger.debug(f"Failed to read {p}: {e}")
+            logger.debug("Failed to read %s: %s", p, e)
             skipped_error += 1
             continue
 
     if skipped_large or skipped_binary or skipped_error:
-        logger.debug(f"Skipped files: {skipped_large} large, {skipped_binary} binary, {skipped_error} errors")
+        logger.debug("Skipped files: %d large, %d binary, %d errors", skipped_large, skipped_binary, skipped_error)
 
     return results
 
@@ -368,6 +369,7 @@ def chunk_text(
 
     Raises:
         ValueError: If parameters are invalid
+
     """
     # Input validation
     if not text:

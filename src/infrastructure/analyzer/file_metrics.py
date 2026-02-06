@@ -45,6 +45,7 @@ def compute_file_metrics(file_path: Path, base_path: Path) -> FileMetrics:
 
     Returns:
         FileMetrics. При ошибке чтения — метрики с path и нулями.
+
     """
     try:
         rel_path = str(file_path.relative_to(base_path))

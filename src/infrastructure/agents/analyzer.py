@@ -1,12 +1,15 @@
 """Analyzer Agent - static and LLM-powered code analysis."""
 
 import ast
+import logging
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
 from src.domain.ports.llm import LLMMessage, LLMPort
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,6 +53,7 @@ class CodeAnalyzer:
     """Static code analyzer with LLM enhancement."""
 
     def __init__(self, llm: LLMPort | None = None) -> None:
+        """Initialize analyzer with optional LLM for enhancement."""
         self._llm = llm
 
     def _calculate_complexity(self, node: ast.AST) -> int:
@@ -284,9 +288,9 @@ class CodeAnalyzer:
                         )
                     )
         except FileNotFoundError:
-            pass  # ruff not installed
+            logger.debug("ruff not installed, skipping linter analysis")
         except Exception:
-            pass
+            logger.warning("Linter analysis failed", exc_info=True)
 
         return issues
 
@@ -350,6 +354,7 @@ Return ONLY valid JSON array, no other text."""
                 )
             return issues
         except Exception:
+            logger.warning("LLM analysis failed", exc_info=True)
             return []
 
     async def suggest_improvements(self, analysis: CodeProjectAnalysis) -> list[dict]:
@@ -436,4 +441,5 @@ Return ONLY valid JSON array.""",
                     content = content[4:]
             return json.loads(content)
         except Exception:
+            logger.warning("LLM suggest_improvements failed", exc_info=True)
             return []

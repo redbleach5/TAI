@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   GitBranch, 
   GitCommit, 
@@ -79,6 +79,15 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
   const [commitMessage, setCommitMessage] = useState('')
   const [selectedDiff, setSelectedDiff] = useState<{ path: string; diff: string } | null>(null)
   const [activeTab, setActiveTab] = useState<'changes' | 'history'>('changes')
+
+  useEffect(() => {
+    if (!selectedDiff) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSelectedDiff(null)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [selectedDiff])
 
   const handleCommit = async () => {
     if (!commitMessage.trim()) {

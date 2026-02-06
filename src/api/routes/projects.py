@@ -1,13 +1,16 @@
 """Projects API - manage multiple project contexts."""
 
+import logging
 import os
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.api.dependencies import get_rag_adapter, get_store, limiter
 from src.api.store import ProjectsStore
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -15,8 +18,8 @@ router = APIRouter(prefix="/projects", tags=["projects"])
 class ProjectCreate(BaseModel):
     """Request to add a project."""
 
-    name: str
-    path: str
+    name: str = Field(..., min_length=1, max_length=255)
+    path: str = Field(..., min_length=1, max_length=1024)
 
 
 @router.get("")
@@ -24,7 +27,7 @@ class ProjectCreate(BaseModel):
 async def list_projects(
     request: Request,
     store: ProjectsStore = Depends(get_store),
-):
+) -> dict:
     """List all registered projects."""
     projects = store.list_projects()
     current = store.get_current()
@@ -40,7 +43,7 @@ async def add_project(
     request: Request,
     body: ProjectCreate,
     store: ProjectsStore = Depends(get_store),
-):
+) -> dict:
     """Add a new project."""
     try:
         project = store.add_project(body.name, body.path)
@@ -55,7 +58,7 @@ async def remove_project(
     request: Request,
     project_id: str,
     store: ProjectsStore = Depends(get_store),
-):
+) -> dict:
     """Remove a project."""
     if store.remove_project(project_id):
         return {"status": "ok"}
@@ -68,7 +71,7 @@ async def select_project(
     request: Request,
     project_id: str,
     store: ProjectsStore = Depends(get_store),
-):
+) -> dict:
     """Select a project as current."""
     if store.set_current(project_id):
         project = store.get_project(project_id)
@@ -84,7 +87,7 @@ async def index_project(
     incremental: bool = True,
     rag: ChromaDBRAGAdapter = Depends(get_rag_adapter),
     store: ProjectsStore = Depends(get_store),
-):
+) -> dict:
     """Index a project for RAG search.
 
     incremental: If True (default), only index new/changed files. If False, full reindex.
@@ -111,6 +114,9 @@ async def index_project(
             "project": project_id,
             "stats": stats,
         }
+    except Exception:
+        logger.exception("Failed to index project %s at %s", project_id, project.path)
+        raise HTTPException(status_code=500, detail="Failed to index project")
     finally:
         os.chdir(original_cwd)
 
@@ -120,7 +126,7 @@ async def index_project(
 async def get_current_project(
     request: Request,
     store: ProjectsStore = Depends(get_store),
-):
+) -> dict:
     """Get currently selected project."""
     current = store.get_current()
     if current:

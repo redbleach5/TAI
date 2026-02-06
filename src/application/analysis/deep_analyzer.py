@@ -38,6 +38,8 @@ from src.infrastructure.analyzer.dependency_graph import (
 from src.infrastructure.analyzer.report_generator import ReportGenerator
 from src.infrastructure.services.git_service import GitService
 
+logger = logging.getLogger(__name__)
+
 if TYPE_CHECKING:
     from src.domain.ports.llm import LLMPort
     from src.domain.services.model_selector import ModelSelector
@@ -166,6 +168,7 @@ class DeepAnalyzer:
         rag: "ChromaDBRAGAdapter | None" = None,
         analyzer: "ProjectAnalyzer | None" = None,
     ) -> None:
+        """Initialize with LLM, model selector, optional RAG and project analyzer."""
         self._llm = llm
         self._model_selector = model_selector
         self._rag = rag
@@ -181,77 +184,94 @@ class DeepAnalyzer:
         if not project_path.exists() or not project_path.is_dir():
             raise ValueError(f"Invalid project path: {path}")
 
-        # 0. Key files
+        # Phase 1: Gather static context
+        key_files, static_report, framework = await self._gather_static_context(project_path)
+
+        # Phase 2: Gather project-level context (map, git, coverage)
+        project_map, git_context, coverage_context = await self._gather_project_context(project_path)
+
+        # Phase 3: Gather RAG context (initial + targeted)
+        rag_context, fallback_reason = await self._gather_rag_context(
+            multi_step, key_files, static_report, project_map,
+        )
+
+        # Phase 4: LLM synthesis
+        return await self._synthesize_with_llm(
+            key_files, static_report, framework, project_map,
+            git_context, coverage_context, rag_context, fallback_reason,
+        )
+
+    async def _gather_static_context(self, project_path: Path) -> tuple[str, str, str]:
+        """Phase 1: Key files, static analysis, dependency graph, framework detection."""
         key_files = await asyncio.to_thread(_collect_key_files, project_path)
 
-        # 1. Static analysis
         if not self._analyzer:
             from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
-
             self._analyzer = ProjectAnalyzer()
+
         analysis = await asyncio.to_thread(self._analyzer.analyze, str(project_path))
         generator = ReportGenerator()
         static_report = generator.generate_markdown(analysis)
 
-        # 1b. Dependency graph (A2): cycles, unused imports
         dep_result = await asyncio.to_thread(build_dependency_graph, str(project_path))
         dep_section = format_dependency_graph_markdown(dep_result)
         if dep_section:
             static_report = f"{static_report}\n\n{dep_section}"
 
-        # 2. Framework detection
         framework = await asyncio.to_thread(_detect_framework, project_path)
+        return key_files, static_report, framework
 
-        # 3. Project map (if RAG indexed)
+    async def _gather_project_context(self, project_path: Path) -> tuple[str, str, str]:
+        """Phase 2: Project map, git context, coverage."""
+        # Project map
         project_map = "Не доступна. Выполните индексацию workspace для полного анализа."
         if self._rag:
             map_md = self._rag.get_project_map_markdown()
             if map_md:
                 project_map = map_md[:8000]
 
-        # 3b. Git context (A3): recent commits and changed files
+        # Git context
         git_context = "Не репозиторий Git или Git недоступен."
         try:
             git_service = GitService(str(project_path))
             if await git_service.is_repo():
                 git_context = (
-                    await git_service.get_recent_changes_for_analysis(
-                        commits_limit=15,
-                        files_limit=25,
-                    )
+                    await git_service.get_recent_changes_for_analysis(commits_limit=15, files_limit=25)
                     or git_context
                 )
         except Exception as e:
-            logging.getLogger(__name__).debug("Git context for deep analysis failed: %s", e)
+            logger.debug("Git context for deep analysis failed: %s", e)
 
-        # 3c. Coverage (A4): pytest-cov/coverage in prompt
+        # Coverage
         coverage_context = await asyncio.to_thread(collect_coverage_for_analysis, str(project_path))
+        return project_map, git_context, coverage_context
 
-        # 4. Initial RAG context (expanded)
+    async def _gather_rag_context(
+        self,
+        multi_step: bool,
+        key_files: str,
+        static_report: str,
+        project_map: str,
+    ) -> tuple[str, str | None]:
+        """Phase 3: Initial RAG + optional multi-step targeted RAG."""
         rag_context = "Не доступен. Выполните индексацию workspace."
         if self._rag:
             try:
                 rag_context = await gather_initial_rag(self._rag)
             except Exception as e:
-                logging.getLogger(__name__).warning("RAG context for deep analysis failed: %s", e, exc_info=True)
+                logger.warning("RAG context for deep analysis failed: %s", e, exc_info=True)
                 rag_context = "Ошибка поиска по индексу."
 
-        # 5. Multi-step: targeted RAG per module (A1)
+        # Multi-step: targeted RAG per module
         fallback_reason: str | None = None
-        if (
-            multi_step
-            and self._rag
-            and rag_context
-            not in (
-                "Не доступен. Выполните индексацию workspace.",
-                "Ошибка поиска по индексу.",
-            )
-        ):
+        rag_unavailable = rag_context in (
+            "Не доступен. Выполните индексацию workspace.",
+            "Ошибка поиска по индексу.",
+        )
+        if multi_step and self._rag and not rag_unavailable:
             modules = await self._step1_identify_modules(
-                key_files=key_files,
-                static_report=static_report,
-                project_map=project_map,
-                rag_context=rag_context,
+                key_files=key_files, static_report=static_report,
+                project_map=project_map, rag_context=rag_context,
             )
             if modules:
                 targeted_rag_ctx = await targeted_rag(self._rag, modules)
@@ -264,12 +284,25 @@ class DeepAnalyzer:
             else:
                 fallback_reason = "не удалось выделить проблемные модули"
         elif multi_step:
-            if not self._rag:
-                fallback_reason = "RAG недоступен (индексация workspace не выполнена)"
-            else:
-                fallback_reason = "ошибка поиска по индексу или индексация не выполнена"
+            fallback_reason = (
+                "RAG недоступен (индексация workspace не выполнена)"
+                if not self._rag
+                else "ошибка поиска по индексу или индексация не выполнена"
+            )
+        return rag_context, fallback_reason
 
-        # 6. LLM synthesis (framework-specific prompt)
+    async def _synthesize_with_llm(
+        self,
+        key_files: str,
+        static_report: str,
+        framework: str,
+        project_map: str,
+        git_context: str,
+        coverage_context: str,
+        rag_context: str,
+        fallback_reason: str | None,
+    ) -> str:
+        """Phase 4: Build prompt and call LLM for final synthesis."""
         prompt_template = PROMPTS_BY_FRAMEWORK.get(framework, DEEP_ANALYSIS_PROMPT_GENERIC)
         prompt = prompt_template.format(
             key_files=key_files,
@@ -279,19 +312,13 @@ class DeepAnalyzer:
             project_map=project_map,
             rag_context=rag_context[:12000],
         )
-
         messages = [
             LLMMessage(role="system", content="Ты эксперт по анализу кода. Отвечай только на русском, в Markdown."),
             LLMMessage(role="user", content=prompt),
         ]
-
         try:
             model, _ = await self._model_selector.select_model("анализ архитектуры проекта рефакторинг рекомендации")
-            response = await self._llm.generate(
-                messages=messages,
-                model=model,
-                temperature=0.3,
-            )
+            response = await self._llm.generate(messages=messages, model=model, temperature=0.3)
             result = response.content or static_report
             if fallback_reason:
                 result = f"**Примечание:** Использован одношаговый режим ({fallback_reason}).\n\n---\n\n{result}"

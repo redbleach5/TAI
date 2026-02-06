@@ -2,6 +2,7 @@
 
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
@@ -27,6 +28,8 @@ from src.api.routes.workspace import router as workspace_router
 from src.infrastructure.config.model_validator import validate_models_config
 from src.shared.logging import setup_logging
 
+log = structlog.get_logger()
+
 
 def _apply_logging_config(container):
     """Apply logging from container config (stdout + optional file)."""
@@ -41,12 +44,30 @@ def _apply_logging_config(container):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup: load config, setup logging, validate models."""
+    """Startup: load config, setup logging, validate models, warm model selector cache."""
     container = get_container()
     _apply_logging_config(container)
+    log.info("startup_begin", llm_provider=container.config.llm.provider)
     await validate_models_config(container.llm, container.config)
+    try:
+        await container.model_selector.warm_cache()
+        log.info("model_selector_cache_warmed")
+    except Exception as e:  # noqa: BLE001
+        # LLM may be down at startup; first request will populate cache
+        log.warning("model_selector_cache_skip", reason=str(e))
+    log.info("startup_complete")
     yield
-    # Shutdown if needed
+    # Shutdown: close shared resources
+    log.info("shutdown_begin")
+    from src.infrastructure.services.http_pool import HTTPPool
+
+    await HTTPPool.reset()
+    if hasattr(container.llm, "close"):
+        try:
+            await container.llm.close()
+        except Exception:  # noqa: BLE001
+            log.debug("llm_close_error", exc_info=True)
+    log.info("shutdown_complete")
 
 
 # Create app
@@ -91,7 +112,7 @@ app.include_router(workspace_router)
 
 @app.get("/health")
 @limiter.limit("100/minute")
-async def health(request: Request):
+async def health(request: Request) -> dict:
     """Health check with LLM availability."""
     container = get_container()
     llm_available = await container.llm.is_available()

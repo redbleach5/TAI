@@ -16,11 +16,28 @@ class OpenAICompatibleAdapter:
     """LM Studio, vLLM, LocalAI - implements LLMPort via /v1/chat/completions."""
 
     def __init__(self, config: OpenAICompatibleConfig) -> None:
+        """Initialize with OpenAI-compatible config."""
         self._config = config
         self._base_url = config.base_url.rstrip("/")
         self._headers = {"Content-Type": "application/json"}
         if config.api_key:
             self._headers["Authorization"] = f"Bearer {config.api_key}"
+        self._client: httpx.AsyncClient | None = None
+
+    def _get_client(self) -> httpx.AsyncClient:
+        """Get or create persistent async HTTP client."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=self._config.timeout,
+                headers=self._headers,
+            )
+        return self._client
+
+    async def close(self) -> None:
+        """Close the underlying HTTP client (call during app shutdown)."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     def _chat_body(
         self,
@@ -57,22 +74,21 @@ class OpenAICompatibleAdapter:
             temperature,
             stream=False,
         )
-        async with httpx.AsyncClient(timeout=self._config.timeout) as client:
-            resp = await client.post(
-                f"{self._base_url}/chat/completions",
-                json=body,
-                headers=self._headers,
+        client = self._get_client()
+        resp = await client.post(
+            f"{self._base_url}/chat/completions",
+            json=body,
+        )
+        if resp.status_code >= 400:
+            err_text = resp.text
+            logger.error(
+                "LLM API error %s: %s",
+                resp.status_code,
+                err_text[:500],
+                extra={"request_body": body},
             )
-            if resp.status_code >= 400:
-                err_text = resp.text
-                logger.error(
-                    "LLM API error %s: %s",
-                    resp.status_code,
-                    err_text[:500],
-                    extra={"request_body": body},
-                )
-            resp.raise_for_status()
-            data = resp.json()
+        resp.raise_for_status()
+        data = resp.json()
         choice = data.get("choices", [{}])[0]
         content = choice.get("message", {}).get("content", "")
         return LLMResponse(content=content, model=model, done=True)
@@ -91,42 +107,41 @@ class OpenAICompatibleAdapter:
             temperature,
             stream=True,
         )
-        async with httpx.AsyncClient(timeout=self._config.timeout) as client:
-            async with client.stream(
-                "POST",
-                f"{self._base_url}/chat/completions",
-                json=body,
-                headers=self._headers,
-            ) as resp:
-                if resp.status_code >= 400:
+        client = self._get_client()
+        async with client.stream(
+            "POST",
+            f"{self._base_url}/chat/completions",
+            json=body,
+        ) as resp:
+            if resp.status_code >= 400:
+                try:
+                    err_body = await resp.aread()
+                    err_text = err_body.decode("utf-8", errors="replace")
+                    logger.error(
+                        "LLM API error %s: %s",
+                        resp.status_code,
+                        err_text[:500],
+                        extra={"request_body": body},
+                    )
+                    raise httpx.HTTPStatusError(
+                        f"LLM API error {resp.status_code}: {err_text[:200]}",
+                        request=resp.request,
+                        response=resp,
+                    )
+                except httpx.HTTPStatusError:
+                    raise
+            async for line in resp.aiter_lines():
+                if line.startswith("data: "):
+                    chunk = line[6:]
+                    if chunk.strip() == "[DONE]":
+                        break
                     try:
-                        err_body = await resp.aread()
-                        err_text = err_body.decode("utf-8", errors="replace")
-                        logger.error(
-                            "LLM API error %s: %s",
-                            resp.status_code,
-                            err_text[:500],
-                            extra={"request_body": body},
-                        )
-                        raise httpx.HTTPStatusError(
-                            f"LLM API error {resp.status_code}: {err_text[:200]}",
-                            request=resp.request,
-                            response=resp,
-                        )
-                    except httpx.HTTPStatusError:
-                        raise
-                async for line in resp.aiter_lines():
-                    if line.startswith("data: "):
-                        chunk = line[6:]
-                        if chunk.strip() == "[DONE]":
-                            break
-                        try:
-                            data = json.loads(chunk)
-                            delta = data.get("choices", [{}])[0].get("delta", {})
-                            if content := delta.get("content"):
-                                yield content
-                        except json.JSONDecodeError:
-                            pass
+                        data = json.loads(chunk)
+                        delta = data.get("choices", [{}])[0].get("delta", {})
+                        if content := delta.get("content"):
+                            yield content
+                    except json.JSONDecodeError:
+                        logger.debug("Malformed JSON chunk in stream: %s", chunk[:100])
 
     async def is_available(self) -> bool:
         """Check if LM Studio / vLLM / LocalAI is available."""
@@ -134,7 +149,8 @@ class OpenAICompatibleAdapter:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.get(f"{self._base_url}/models", headers=self._headers)
                 return resp.status_code == 200
-        except Exception:
+        except Exception as e:
+            logger.debug("OpenAI-compatible availability check failed: %s", e)
             return False
 
     async def list_models(self) -> list[str]:
@@ -146,7 +162,8 @@ class OpenAICompatibleAdapter:
                 data = resp.json()
                 models = data.get("data", [])
                 return [m.get("id", "") for m in models if m.get("id")]
-        except Exception:
+        except Exception as e:
+            logger.debug("OpenAI-compatible list_models failed: %s", e)
             return []
 
     def _messages_to_openai(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -204,16 +221,15 @@ class OpenAICompatibleAdapter:
             tools=tools,
         )
         try:
-            async with httpx.AsyncClient(timeout=self._config.timeout) as client:
-                resp = await client.post(
-                    f"{self._base_url}/chat/completions",
-                    json=body,
-                    headers=self._headers,
-                )
-                if resp.status_code >= 400:
-                    logger.warning("LM Studio tool call API error %s: %s", resp.status_code, resp.text[:300])
-                    return ("", [])
-                data = resp.json()
+            client = self._get_client()
+            resp = await client.post(
+                f"{self._base_url}/chat/completions",
+                json=body,
+            )
+            if resp.status_code >= 400:
+                logger.warning("LM Studio tool call API error %s: %s", resp.status_code, resp.text[:300])
+                return ("", [])
+            data = resp.json()
         except Exception as e:
             logger.warning("LM Studio chat_with_tools failed: %s", e)
             return ("", [])
@@ -257,67 +273,66 @@ class OpenAICompatibleAdapter:
             tools=tools,
         )
         try:
-            async with httpx.AsyncClient(timeout=self._config.timeout) as client:
-                async with client.stream(
-                    "POST",
-                    f"{self._base_url}/chat/completions",
-                    json=body,
-                    headers=self._headers,
-                ) as resp:
-                    if resp.status_code >= 400:
-                        err = await resp.aread()
-                        logger.warning("LM Studio stream tool API error %s: %s", resp.status_code, err[:300])
-                        yield ("content", "")
-                        yield ("done", None)
-                        return
-                    content_buf = ""
-                    tool_calls_acc: list[dict[str, Any]] = []
-                    async for line in resp.aiter_lines():
-                        if not line.startswith("data: "):
-                            continue
-                        chunk = line[6:]
-                        if chunk.strip() == "[DONE]":
-                            break
-                        try:
-                            data = json.loads(chunk)
-                            delta = data.get("choices", [{}])[0].get("delta", {})
-                            if delta.get("content"):
-                                content_buf += delta["content"]
-                                yield ("content", delta["content"])
-                            for tc_delta in delta.get("tool_calls") or []:
-                                idx = tc_delta.get("index", 0)
-                                while len(tool_calls_acc) <= idx:
-                                    tool_calls_acc.append(
-                                        {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
-                                    )
-                                acc = tool_calls_acc[idx]
-                                acc["id"] = acc.get("id", "") or tc_delta.get("id", "")
-                                fn = acc.setdefault("function", {"name": "", "arguments": ""})
-                                fn["name"] = fn.get("name", "") or (tc_delta.get("function") or {}).get("name", "")
-                                fn["arguments"] = (fn.get("arguments") or "") + (tc_delta.get("function") or {}).get(
-                                    "arguments", ""
-                                )
-                        except json.JSONDecodeError:
-                            pass
-                    calls = []
-                    for acc in tool_calls_acc:
-                        fn = acc.get("function", {})
-                        args = fn.get("arguments", "{}")
-                        if isinstance(args, str):
-                            try:
-                                args = json.loads(args) if args.strip() else {}
-                            except json.JSONDecodeError:
-                                args = {}
-                        calls.append(
-                            {
-                                "name": fn.get("name", ""),
-                                "arguments": args or {},
-                                "id": acc.get("id", ""),
-                            }
-                        )
-                    if calls:
-                        yield ("tool_calls", calls)
+            client = self._get_client()
+            async with client.stream(
+                "POST",
+                f"{self._base_url}/chat/completions",
+                json=body,
+            ) as resp:
+                if resp.status_code >= 400:
+                    err = await resp.aread()
+                    logger.warning("LM Studio stream tool API error %s: %s", resp.status_code, err[:300])
+                    yield ("content", "")
                     yield ("done", None)
+                    return
+                content_buf = ""
+                tool_calls_acc: list[dict[str, Any]] = []
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    chunk = line[6:]
+                    if chunk.strip() == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(chunk)
+                        delta = data.get("choices", [{}])[0].get("delta", {})
+                        if delta.get("content"):
+                            content_buf += delta["content"]
+                            yield ("content", delta["content"])
+                        for tc_delta in delta.get("tool_calls") or []:
+                            idx = tc_delta.get("index", 0)
+                            while len(tool_calls_acc) <= idx:
+                                tool_calls_acc.append(
+                                    {"id": "", "type": "function", "function": {"name": "", "arguments": ""}}
+                                )
+                            acc = tool_calls_acc[idx]
+                            acc["id"] = acc.get("id", "") or tc_delta.get("id", "")
+                            fn = acc.setdefault("function", {"name": "", "arguments": ""})
+                            fn["name"] = fn.get("name", "") or (tc_delta.get("function") or {}).get("name", "")
+                            fn["arguments"] = (fn.get("arguments") or "") + (tc_delta.get("function") or {}).get(
+                                "arguments", ""
+                            )
+                    except json.JSONDecodeError:
+                        logger.debug("Malformed JSON in tool stream chunk")
+                calls = []
+                for acc in tool_calls_acc:
+                    fn = acc.get("function", {})
+                    args = fn.get("arguments", "{}")
+                    if isinstance(args, str):
+                        try:
+                            args = json.loads(args) if args.strip() else {}
+                        except json.JSONDecodeError:
+                            args = {}
+                    calls.append(
+                        {
+                            "name": fn.get("name", ""),
+                            "arguments": args or {},
+                            "id": acc.get("id", ""),
+                        }
+                    )
+                if calls:
+                    yield ("tool_calls", calls)
+                yield ("done", None)
         except Exception as e:
             logger.warning("LM Studio chat_with_tools_stream failed: %s", e)
             yield ("content", "")

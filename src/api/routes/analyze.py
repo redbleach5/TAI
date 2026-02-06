@@ -1,11 +1,12 @@
 """Project Analysis API - анализ любого проекта."""
 
 import asyncio
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.api.dependencies import (
     get_analyzer,
@@ -24,13 +25,15 @@ from src.infrastructure.analyzer.project_analyzer import ProjectAnalyzer
 from src.infrastructure.analyzer.report_generator import ReportGenerator
 from src.infrastructure.rag.chromadb_adapter import ChromaDBRAGAdapter
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/analyze", tags=["analyze"])
 
 
 class AnalyzeRequest(BaseModel):
     """Запрос на анализ проекта."""
 
-    path: str
+    path: str = Field(..., min_length=1, max_length=1024)
     generate_report: bool = True
 
 
@@ -178,10 +181,14 @@ async def analyze_project(
     Path must be inside current workspace (or cwd if no workspace set).
 
     Args:
-        body: Путь к проекту и опции
+        request: FastAPI request.
+        body: Путь к проекту и опции.
+        store: Projects store (injected).
+        analyzer: Project analyzer (injected).
 
     Returns:
-        Результаты анализа с scores и recommendations
+        Результаты анализа с scores и recommendations.
+
     """
     path = _resolve_path_allowed(body.path, store)
 
@@ -191,17 +198,23 @@ async def analyze_project(
     if not path.is_dir():
         raise HTTPException(status_code=400, detail="Path must be a directory")
 
-    # Запускаем анализ в фоне
-    analysis = await asyncio.to_thread(analyzer.analyze, str(path))
+    try:
+        analysis = await asyncio.to_thread(analyzer.analyze, str(path))
+    except Exception:
+        logger.exception("Project analysis failed for %s", path)
+        raise HTTPException(status_code=500, detail="Project analysis failed")
 
     # Генерируем отчёт если нужно
     report_path = None
     if body.generate_report:
-        generator = ReportGenerator()
-        report_file = Path("output") / "reports" / f"{analysis.project_name}_analysis.md"
-        report_file.parent.mkdir(parents=True, exist_ok=True)
-        generator.save_report(analysis, report_file)
-        report_path = str(report_file)
+        try:
+            generator = ReportGenerator()
+            report_file = Path("output") / "reports" / f"{analysis.project_name}_analysis.md"
+            report_file.parent.mkdir(parents=True, exist_ok=True)
+            generator.save_report(analysis, report_file)
+            report_path = str(report_file)
+        except Exception:
+            logger.warning("Failed to save analysis report for %s", analysis.project_name, exc_info=True)
 
     return _analysis_to_response(analysis, report_path)
 
@@ -227,15 +240,22 @@ async def analyze_project_detailed(
     if not path.is_dir():
         raise HTTPException(status_code=400, detail="Path must be a directory")
 
-    analysis = await asyncio.to_thread(analyzer.analyze, str(path))
+    try:
+        analysis = await asyncio.to_thread(analyzer.analyze, str(path))
+    except Exception:
+        logger.exception("Detailed analysis failed for %s", path)
+        raise HTTPException(status_code=500, detail="Project analysis failed")
 
     report_path = None
     if body.generate_report:
-        generator = ReportGenerator()
-        report_file = Path("output") / "reports" / f"{analysis.project_name}_analysis.md"
-        report_file.parent.mkdir(parents=True, exist_ok=True)
-        generator.save_report(analysis, report_file)
-        report_path = str(report_file)
+        try:
+            generator = ReportGenerator()
+            report_file = Path("output") / "reports" / f"{analysis.project_name}_analysis.md"
+            report_file.parent.mkdir(parents=True, exist_ok=True)
+            generator.save_report(analysis, report_file)
+            report_path = str(report_file)
+        except Exception:
+            logger.warning("Failed to save analysis report for %s", analysis.project_name, exc_info=True)
 
     return _analysis_to_detailed_response(analysis, report_path)
 
@@ -251,15 +271,21 @@ async def get_project_report(
     """Генерирует и возвращает Markdown отчёт напрямую.
 
     Path must be inside current workspace.
+
     Returns:
         Markdown отчёт как текст
+
     """
     path = _resolve_path_allowed(body.path, store)
 
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Path not found: {body.path}")
 
-    analysis = await asyncio.to_thread(analyzer.analyze, str(path))
+    try:
+        analysis = await asyncio.to_thread(analyzer.analyze, str(path))
+    except Exception:
+        logger.exception("Report generation failed for %s", path)
+        raise HTTPException(status_code=500, detail="Report generation failed")
 
     generator = ReportGenerator()
     return generator.generate_markdown(analysis)
@@ -268,7 +294,7 @@ async def get_project_report(
 class DeepAnalyzeRequest(BaseModel):
     """Запрос на глубокий анализ (Cursor-like)."""
 
-    path: str
+    path: str = Field(..., min_length=1, max_length=1024)
 
 
 class DeepAnalyzeResponse(BaseModel):
@@ -279,7 +305,7 @@ class DeepAnalyzeResponse(BaseModel):
 
 
 @router.post("/project/deep")
-@limiter.limit("15/minute")  # 3/min слишком жёстко для одного пользователя
+@limiter.limit("15/minute")
 async def get_project_deep_report(
     request: Request,
     body: DeepAnalyzeRequest,
@@ -304,19 +330,26 @@ async def get_project_deep_report(
     if not path.is_dir():
         raise HTTPException(status_code=400, detail="Path must be a directory")
 
-    deep_analyzer = DeepAnalyzer(
-        llm=llm,
-        model_selector=model_selector,
-        rag=rag,
-        analyzer=analyzer,
-    )
-    full_md = await deep_analyzer.analyze(str(path))
+    try:
+        deep_analyzer = DeepAnalyzer(
+            llm=llm,
+            model_selector=model_selector,
+            rag=rag,
+            analyzer=analyzer,
+        )
+        full_md = await deep_analyzer.analyze(str(path))
+    except Exception:
+        logger.exception("Deep analysis failed for %s", path)
+        raise HTTPException(status_code=500, detail="Deep analysis failed")
 
     # Сохраняем полный отчёт в проекте (как Cursor)
     report_rel = "docs/ANALYSIS_REPORT.md"
     report_file = path / report_rel
-    report_file.parent.mkdir(parents=True, exist_ok=True)
-    report_file.write_text(full_md, encoding="utf-8")
+    try:
+        report_file.parent.mkdir(parents=True, exist_ok=True)
+        report_file.write_text(full_md, encoding="utf-8")
+    except OSError:
+        logger.warning("Failed to save deep analysis report to %s", report_file, exc_info=True)
 
     summary = summary_from_report(full_md, report_rel)
     return DeepAnalyzeResponse(report_path=report_rel, summary=summary)
@@ -329,22 +362,28 @@ async def check_security(
     body: AnalyzeRequest,
     store: ProjectsStore = Depends(get_store),
     analyzer: ProjectAnalyzer = Depends(get_analyzer),
-):
+) -> dict:
     """Быстрая проверка безопасности проекта.
 
     Path must be inside current workspace.
+
     Returns:
         Только security-related данные
+
     """
     path = _resolve_path_allowed(body.path, store)
 
     if not path.exists():
         raise HTTPException(status_code=404, detail=f"Path not found: {body.path}")
 
-    analysis = await asyncio.to_thread(analyzer.analyze, str(path))
+    try:
+        analysis = await asyncio.to_thread(analyzer.analyze, str(path))
+    except Exception:
+        logger.exception("Security check failed for %s", path)
+        raise HTTPException(status_code=500, detail="Security check failed")
 
     # Группируем по severity
-    by_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    by_severity: dict[str, int] = {"critical": 0, "high": 0, "medium": 0, "low": 0}
     for issue in analysis.security_issues:
         by_severity[issue.severity] += 1
 
@@ -382,24 +421,32 @@ async def compare_projects(
     request: Request,
     path1: str,
     path2: str,
+    store: ProjectsStore = Depends(get_store),
     analyzer: ProjectAnalyzer = Depends(get_analyzer),
-):
+) -> dict:
     """Сравнивает два проекта.
+
+    Both paths must be inside workspace.
 
     Returns:
         Сравнительный анализ двух проектов
+
     """
-    p1 = Path(path1).expanduser().resolve()
-    p2 = Path(path2).expanduser().resolve()
+    # Validate both paths against workspace
+    p1 = _resolve_path_allowed(path1, store)
+    p2 = _resolve_path_allowed(path2, store)
 
     if not p1.exists() or not p2.exists():
         raise HTTPException(status_code=404, detail="One or both paths not found")
 
-    # Анализируем параллельно
-    analysis1, analysis2 = await asyncio.gather(
-        asyncio.to_thread(analyzer.analyze, str(p1)),
-        asyncio.to_thread(analyzer.analyze, str(p2)),
-    )
+    try:
+        analysis1, analysis2 = await asyncio.gather(
+            asyncio.to_thread(analyzer.analyze, str(p1)),
+            asyncio.to_thread(analyzer.analyze, str(p2)),
+        )
+    except Exception:
+        logger.exception("Project comparison failed for %s vs %s", path1, path2)
+        raise HTTPException(status_code=500, detail="Project comparison failed")
 
     return {
         "comparison": {

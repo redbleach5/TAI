@@ -1,12 +1,16 @@
 """Models API - list available models and resilience stats."""
 
-from fastapi import APIRouter, Depends, Request
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from src.api.container import get_container
 from src.api.dependencies import get_llm_adapter, get_model_router, limiter
 from src.domain.ports.llm import LLMPort
 from src.domain.services.model_router import ModelRouter
 from src.infrastructure.resilience import get_all_breakers, reset_all_breakers
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/models", tags=["models"])
 
@@ -37,7 +41,11 @@ async def list_models(
     """
     if provider in ("ollama", "lm_studio"):
         llm = _get_llm_for_provider(provider)
-    return await llm.list_models()
+    try:
+        return await llm.list_models()
+    except Exception:
+        logger.exception("Failed to list models for provider=%s", provider)
+        raise HTTPException(status_code=502, detail="Failed to list models from LLM provider")
 
 
 @router.get("/router/cache")
@@ -45,14 +53,14 @@ async def list_models(
 async def get_router_cache(
     request: Request,
     router: ModelRouter = Depends(get_model_router),
-):
+) -> dict:
     """Get model router cache statistics."""
     return router.cache_info()
 
 
 @router.get("/resilience")
 @limiter.limit("60/minute")
-async def get_resilience_stats(request: Request):
+async def get_resilience_stats(request: Request) -> dict:
     """Get Circuit Breaker statistics for all services."""
     return {
         "circuit_breakers": get_all_breakers(),
@@ -61,7 +69,7 @@ async def get_resilience_stats(request: Request):
 
 @router.post("/resilience/reset")
 @limiter.limit("10/minute")
-async def reset_resilience(request: Request):
+async def reset_resilience(request: Request) -> dict:
     """Reset all Circuit Breakers (admin action)."""
     reset_all_breakers()
     return {"status": "ok", "message": "All circuit breakers reset"}

@@ -1,10 +1,12 @@
 """Self-improvement API routes."""
 
+import json
+import logging
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from src.api.dependencies import get_improvement_use_case, limiter
 from src.application.improvement import (
@@ -12,6 +14,8 @@ from src.application.improvement import (
     ImprovementRequest,
     SelfImprovementUseCase,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/improve", tags=["improve"])
 
@@ -22,7 +26,7 @@ router = APIRouter(prefix="/improve", tags=["improve"])
 class AnalyzeRequestModel(BaseModel):
     """Request to analyze project."""
 
-    path: str = "."
+    path: str = Field(".", min_length=1, max_length=1024)
     include_linter: bool = True
     use_llm: bool = False
 
@@ -30,20 +34,20 @@ class AnalyzeRequestModel(BaseModel):
 class ImprovementRequestModel(BaseModel):
     """Request to improve file."""
 
-    file_path: str
+    file_path: str = Field(..., min_length=1, max_length=1024)
     issue: dict | None = None
     auto_write: bool = True
-    max_retries: int = 3
-    related_files: list[str] = []  # B3: imports, tests for context
+    max_retries: int = Field(3, ge=1, le=10)
+    related_files: list[str] = Field(default_factory=list, max_length=50)
     # B6: inline selection (1-based inclusive); when set, only that range is improved
-    selection_start_line: int | None = None
-    selection_end_line: int | None = None
+    selection_start_line: int | None = Field(None, ge=1)
+    selection_end_line: int | None = Field(None, ge=1)
 
 
 class AddTaskRequestModel(BaseModel):
     """Request to add task to queue."""
 
-    file_path: str
+    file_path: str = Field(..., min_length=1, max_length=1024)
     issue: dict | None = None
 
 
@@ -56,7 +60,7 @@ async def analyze_project(
     request: Request,
     body: AnalyzeRequestModel,
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
-):
+) -> dict:
     """Analyze project for issues and improvement suggestions.
 
     Uses current workspace path. Runs analysis in workspace directory.
@@ -66,13 +70,18 @@ async def analyze_project(
         - avg_complexity
         - issues: list of found issues
         - suggestions: prioritized improvement suggestions
+
     """
     req = AnalyzeRequest(
         path=body.path,
         include_linter=body.include_linter,
         use_llm=body.use_llm,
     )
-    result = await use_case.analyze(req)
+    try:
+        result = await use_case.analyze(req)
+    except Exception:
+        logger.exception("Improvement analysis failed for path=%s", body.path)
+        raise HTTPException(status_code=500, detail="Analysis failed")
 
     return {
         "total_files": result.total_files,
@@ -96,12 +105,12 @@ async def analyze_project(
 
 
 @router.post("/run")
-@limiter.limit("25/minute")  # 5/min слишком жёстко для одного пользователя
+@limiter.limit("25/minute")
 async def run_improvement(
     request: Request,
     body: ImprovementRequestModel,
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
-):
+) -> dict:
     """Run improvement on single file.
 
     Uses current workspace path. Runs improvement in workspace directory.
@@ -123,7 +132,11 @@ async def run_improvement(
         selection_start_line=body.selection_start_line,
         selection_end_line=body.selection_end_line,
     )
-    result = await use_case.improve_file(req)
+    try:
+        result = await use_case.improve_file(req)
+    except Exception:
+        logger.exception("Improvement failed for file=%s", body.file_path)
+        raise HTTPException(status_code=500, detail="Improvement failed")
 
     return {
         "success": result.success,
@@ -144,7 +157,7 @@ async def run_improvement_stream(
     request: Request,
     body: ImprovementRequestModel,
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
-):
+) -> StreamingResponse:
     """Run improvement with streaming output via SSE."""
     req = ImprovementRequest(
         file_path=body.file_path,
@@ -157,10 +170,12 @@ async def run_improvement_stream(
     )
 
     async def generate() -> AsyncIterator[str]:
-        async for event in use_case.improve_file_stream(req):
-            import json
-
-            yield f"data: {json.dumps(event)}\n\n"
+        try:
+            async for event in use_case.improve_file_stream(req):
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception:
+            logger.exception("Improvement stream failed for file=%s", body.file_path)
+            yield f"data: {json.dumps({'type': 'error', 'error': 'Stream failed'})}\n\n"
 
     return StreamingResponse(
         generate(),
@@ -181,7 +196,7 @@ async def add_to_queue(
     request: Request,
     body: AddTaskRequestModel,
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
-):
+) -> dict:
     """Add improvement task to queue."""
     req = ImprovementRequest(
         file_path=body.file_path,
@@ -196,7 +211,7 @@ async def add_to_queue(
 async def get_queue_status(
     request: Request,
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
-):
+) -> dict:
     """Get queue status."""
     status = use_case.get_queue_status()
     return {
@@ -231,7 +246,7 @@ async def get_task(
     request: Request,
     task_id: str,
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
-):
+) -> dict:
     """Get specific task status."""
     task = use_case.get_task(task_id)
     if not task:
@@ -260,9 +275,13 @@ async def get_task(
 async def start_worker(
     request: Request,
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
-):
+) -> dict:
     """Start background worker to process queue."""
-    await use_case.start_worker()
+    try:
+        await use_case.start_worker()
+    except Exception:
+        logger.exception("Failed to start improvement worker")
+        raise HTTPException(status_code=500, detail="Failed to start worker")
     return {"status": "worker_started"}
 
 
@@ -271,9 +290,13 @@ async def start_worker(
 async def stop_worker(
     request: Request,
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
-):
+) -> dict:
     """Stop background worker."""
-    await use_case.stop_worker()
+    try:
+        await use_case.stop_worker()
+    except Exception:
+        logger.exception("Failed to stop improvement worker")
+        raise HTTPException(status_code=500, detail="Failed to stop worker")
     return {"status": "worker_stopped"}
 
 
@@ -282,7 +305,7 @@ async def stop_worker(
 async def clear_completed(
     request: Request,
     use_case: SelfImprovementUseCase = Depends(get_improvement_use_case),
-):
+) -> dict:
     """Clear completed and failed tasks from queue."""
     count = use_case.clear_completed_tasks()
     return {"cleared": count}

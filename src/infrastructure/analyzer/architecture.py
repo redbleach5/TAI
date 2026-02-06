@@ -24,6 +24,7 @@ def analyze_architecture(path: Path, files: list[Path]) -> ArchitectureInfo:
 
     Returns:
         ArchitectureInfo с layers, dependencies, entry_points, config_files.
+
     """
     arch = ArchitectureInfo()
 

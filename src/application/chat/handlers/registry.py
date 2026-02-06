@@ -2,15 +2,20 @@
 
 from src.application.chat.handlers.base import CommandHandler, CommandResult
 from src.application.chat.handlers.file_reader import FileReaderHandler
+from src.application.chat.handlers.folder_reader import FolderReaderHandler
+from src.application.chat.handlers.git_handler import DiffHandler, GitContextHandler
+from src.application.chat.handlers.grep_handler import GrepHandler
 from src.application.chat.handlers.help_handler import HelpHandler
 from src.application.chat.handlers.rag_search import RAGSearchHandler
+from src.application.chat.handlers.terminal_handler import TerminalHandler
 from src.application.chat.handlers.web_search import WebSearchHandler
 
 
 class CommandRegistry:
     """Registry for command handlers."""
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Create empty registry."""
         self._handlers: dict[str, CommandHandler] = {}
 
     def register(self, handler: CommandHandler) -> None:
@@ -40,6 +45,7 @@ class CommandRegistry:
 
         Returns:
             CommandResult from handler or error result
+
         """
         handler = self.get(command_type)
         if not handler:
@@ -60,12 +66,19 @@ def create_default_registry() -> CommandRegistry:
     """Create registry with all default handlers."""
     registry = CommandRegistry()
 
-    # Register all handlers
+    # Core handlers
     registry.register(WebSearchHandler())
     registry.register(RAGSearchHandler())
     registry.register(FileReaderHandler("code"))
     registry.register(FileReaderHandler("file"))
+    registry.register(FolderReaderHandler())
     registry.register(HelpHandler())
+
+    # Context handlers (Cursor-like)
+    registry.register(GitContextHandler())
+    registry.register(DiffHandler())
+    registry.register(GrepHandler())
+    registry.register(TerminalHandler())
 
     return registry
 

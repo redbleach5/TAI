@@ -32,6 +32,7 @@ class CommandHandler(ABC):
 
         Returns:
             CommandResult with content or error
+
         """
         ...
 

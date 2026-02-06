@@ -1,6 +1,7 @@
 """Self-Improvement Workflow - analyze → rag → plan → code → validate → write with retry."""
 
 import asyncio
+import logging
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -21,6 +22,8 @@ from src.infrastructure.workflow.improvement_prompts import (
 
 if TYPE_CHECKING:
     from src.domain.ports.rag import RAGPort
+
+logger = logging.getLogger(__name__)
 
 
 class ImprovementState(TypedDict, total=False):
@@ -175,6 +178,7 @@ async def _rag_node(
                     break
             rag_context = "\n\n".join(parts) if parts else ""
     except Exception:
+        logger.debug("RAG search failed during improvement research", exc_info=True)
         rag_context = ""
 
     # B2: Project map
@@ -185,7 +189,7 @@ async def _rag_node(
             if map_md:
                 project_map = map_md[:2500]
         except Exception:
-            pass
+            logger.debug("Project map fetch failed during improvement", exc_info=True)
 
     return {**state, "rag_context": rag_context, "project_map": project_map, "current_step": "plan"}
 
@@ -267,8 +271,11 @@ def _run_py_compile_sync(code_file_path: str) -> tuple[int, str, str]:
 
 
 async def _validate_node(state: ImprovementState) -> ImprovementState:
-    """Validate improved code (syntax check + basic tests). B5: full stack trace in validation_output.
-    B6: when inline selection is set, validate the full file (selection replaced) so fragment is not parsed alone."""
+    """Validate improved code (syntax check + basic tests).
+
+    B5: full stack trace in validation_output.
+    B6: when inline selection is set, validate the full file (selection replaced).
+    """
     import ast
     import tempfile
     import traceback
@@ -307,6 +314,7 @@ async def _validate_node(state: ImprovementState) -> ImprovementState:
         try:
             returncode, stdout, stderr = await asyncio.to_thread(_run_py_compile_sync, str(code_file))
         except Exception:
+            logger.warning("Validation subprocess failed", exc_info=True)
             return {
                 **state,
                 "validation_passed": False,
@@ -370,7 +378,7 @@ async def _retry_node(
                         parts.append(f"### {src}\n```\n{c.content[:400]}\n```")
                 error_rag_context = "\n\n".join(parts)
         except Exception:
-            pass
+            logger.debug("Error RAG context fetch failed", exc_info=True)
 
     return {
         **state,

@@ -107,6 +107,7 @@ class CircuitBreaker:
         Raises:
             CircuitOpenError: Если circuit открыт
             ValueError: Если func не callable
+
         """
         if not callable(func):
             raise ValueError("func must be callable")
@@ -117,7 +118,7 @@ class CircuitBreaker:
                 if self._should_try_reset():
                     self._state = CircuitState.HALF_OPEN
                     self._success_count = 0
-                    logger.debug(f"Circuit '{self.name}' transitioned to HALF_OPEN")
+                    logger.debug("Circuit '%s' transitioned to HALF_OPEN", self.name)
                 else:
                     retry_in = max(0, self.config.recovery_timeout - (time.time() - self._last_failure_time))
                     raise CircuitOpenError(f"Circuit '{self.name}' is OPEN. Retry in {retry_in:.1f}s")
@@ -147,7 +148,7 @@ class CircuitBreaker:
                     self._state = CircuitState.CLOSED
                     self._failure_count = 0  # Reset on transition to CLOSED
                     self._success_count = 0
-                    logger.info(f"Circuit '{self.name}' transitioned to CLOSED")
+                    logger.info("Circuit '%s' transitioned to CLOSED", self.name)
             elif self._state == CircuitState.CLOSED:
                 # Reset failure count on any success in CLOSED state
                 self._failure_count = 0

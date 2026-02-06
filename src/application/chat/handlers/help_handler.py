@@ -9,6 +9,7 @@ class HelpHandler(CommandHandler):
 
     @property
     def command_type(self) -> str:
+        """Return command type ('help')."""
         return "help"
 
     async def execute(self, argument: str, **context) -> CommandResult:

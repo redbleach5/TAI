@@ -1,9 +1,12 @@
 """HTTP Connection Pool - shared async HTTP client for better performance."""
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 class HTTPPool:
@@ -16,7 +19,8 @@ class HTTPPool:
     _instance: "HTTPPool | None" = None
     _lock: asyncio.Lock | None = None
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """Initialize HTTP pool (client created on first use)."""
         self._client: httpx.AsyncClient | None = None
         self._timeout = httpx.Timeout(30.0, connect=10.0)
         self._limits = httpx.Limits(
@@ -84,7 +88,7 @@ async def fetch_url(
     headers: dict | None = None,
     timeout: float | None = None,
 ) -> httpx.Response:
-    """Convenience function for HTTP requests using shared pool.
+    """Perform HTTP request using shared pool.
 
     Args:
         url: URL to fetch
@@ -96,6 +100,7 @@ async def fetch_url(
 
     Returns:
         httpx.Response object
+
     """
     async with get_http_client() as client:
         kwargs = {"params": params, "headers": headers}
@@ -121,10 +126,12 @@ async def fetch_json(
 
     Returns:
         Parsed JSON as dict, or empty dict on error
+
     """
     try:
         response = await fetch_url(url, params=params, headers=headers)
         response.raise_for_status()
         return response.json()
-    except Exception:
+    except Exception as e:
+        logger.debug("fetch_json failed for %s: %s", url, e)
         return {}

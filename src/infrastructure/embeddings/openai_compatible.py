@@ -29,6 +29,7 @@ class OpenAICompatibleEmbeddingsAdapter:
         config: OpenAICompatibleConfig,
         embeddings_config: EmbeddingsConfig,
     ) -> None:
+        """Initialize with OpenAI-compatible and embeddings config."""
         self._base_url = config.base_url.rstrip("/")
         self._model = embeddings_config.model
         self._timeout = config.timeout
@@ -66,13 +67,13 @@ class OpenAICompatibleEmbeddingsAdapter:
                 resp.raise_for_status()
                 data = resp.json()
         except httpx.HTTPStatusError as e:
-            logger.error(f"Embedding API error {e.response.status_code}: {e.response.text[:200]}")
+            logger.error("Embedding API error %s: %s", e.response.status_code, e.response.text[:200])
             raise
         except httpx.TimeoutException:
-            logger.warning(f"Embedding request timed out after {self._timeout}s")
+            logger.warning("Embedding request timed out after %ss", self._timeout)
             raise
         except httpx.NetworkError as e:
-            logger.warning(f"Embedding network error: {e}")
+            logger.warning("Embedding network error: %s", e)
             raise
 
         # Validate response structure
@@ -87,7 +88,7 @@ class OpenAICompatibleEmbeddingsAdapter:
 
         # Validate count matches
         if len(embeddings) != len(texts):
-            logger.warning(f"Embedding count mismatch: got {len(embeddings)}, expected {len(texts)}")
+            logger.warning("Embedding count mismatch: got %d, expected %d", len(embeddings), len(texts))
             # Pad or truncate
             while len(embeddings) < len(texts):
                 embeddings.append([])

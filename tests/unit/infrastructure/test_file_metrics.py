@@ -82,6 +82,6 @@ class TestEstimateComplexity:
         assert estimate_complexity(tree) == 1
 
     def test_if_increases_complexity(self):
-        """if adds to complexity."""
+        """If statement adds to cyclomatic complexity."""
         tree = ast.parse("if x:\n    pass")
         assert estimate_complexity(tree) >= 2

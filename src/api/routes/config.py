@@ -1,15 +1,18 @@
-"""Config API - read and update settings (Phase 6)."""
+"""Config API - read and update settings."""
 
+import logging
 import tomllib
 from pathlib import Path
 
 import tomli_w
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from src.api.container import reset_container
 from src.api.dependencies import get_config
 from src.domain.ports.config import AppConfig
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/config", tags=["config"])
 
@@ -36,7 +39,7 @@ def _development_path() -> Path:
 
 
 @router.get("")
-async def get_config_route(config: AppConfig = Depends(get_config)):
+async def get_config_route(config: AppConfig = Depends(get_config)) -> dict:
     """Return editable config subset for Settings UI."""
     models = config.models
     defaults = {
@@ -134,7 +137,7 @@ def _to_toml_structure(updates: dict) -> dict:
 
 
 @router.patch("")
-async def patch_config_route(updates: ConfigPatch):
+async def patch_config_route(updates: ConfigPatch) -> dict:
     """Update development.toml with partial config. Changes apply immediately."""
     updates_dict = updates.model_dump(exclude_none=True)
     toml_updates = _to_toml_structure(updates_dict)
@@ -142,37 +145,44 @@ async def patch_config_route(updates: ConfigPatch):
         return {"ok": True, "message": "No changes."}
 
     path = _development_path()
-    existing: dict = {}
-    if path.exists():
-        with open(path, "rb") as f:
-            existing = tomllib.load(f)
+    try:
+        existing: dict = {}
+        if path.exists():
+            with open(path, "rb") as f:
+                existing = tomllib.load(f)
 
-    def deep_merge(base: dict, patch: dict) -> dict:
-        result = dict(base)
-        for k, v in patch.items():
-            if k in result and isinstance(result[k], dict) and isinstance(v, dict):
-                result[k] = deep_merge(result[k], v)
-            else:
-                result[k] = v
-        return result
+        def deep_merge(base: dict, patch: dict) -> dict:
+            result = dict(base)
+            for k, v in patch.items():
+                if k in result and isinstance(result[k], dict) and isinstance(v, dict):
+                    result[k] = deep_merge(result[k], v)
+                else:
+                    result[k] = v
+            return result
 
-    merged = deep_merge(existing, toml_updates)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, "wb") as f:
-        tomli_w.dump(merged, f)
+        merged = deep_merge(existing, toml_updates)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "wb") as f:
+            tomli_w.dump(merged, f)
+    except Exception:
+        logger.exception("Failed to update config at %s", path)
+        raise HTTPException(status_code=500, detail="Failed to save config")
 
     reset_container()
 
     if "logging" in updates_dict:
-        from src.api.container import get_container
-        from src.shared.logging import setup_logging
+        try:
+            from src.api.container import get_container
+            from src.shared.logging import setup_logging
 
-        c = get_container().config
-        setup_logging(
-            level=c.log_level,
-            file_path=c.log_file or "",
-            rotation_max_mb=c.log_rotation_max_mb,
-            rotation_backups=c.log_rotation_backups,
-        )
+            c = get_container().config
+            setup_logging(
+                level=c.log_level,
+                file_path=c.log_file or "",
+                rotation_max_mb=c.log_rotation_max_mb,
+                rotation_backups=c.log_rotation_backups,
+            )
+        except Exception:
+            logger.warning("Failed to reconfigure logging", exc_info=True)
 
     return {"ok": True, "message": "Config saved."}

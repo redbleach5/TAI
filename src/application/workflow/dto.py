@@ -1,13 +1,13 @@
 """Workflow DTOs."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class WorkflowRequest(BaseModel):
     """Request to run workflow."""
 
-    task: str
-    session_id: str | None = None  # For checkpointing; auto-generated if omitted
+    task: str = Field(..., min_length=1, max_length=50_000)
+    session_id: str | None = Field(None, max_length=100)  # For checkpointing; auto-generated if omitted
 
 
 class WorkflowResponse(BaseModel):

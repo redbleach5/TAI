@@ -2,8 +2,11 @@
 
 import ast
 import json
+import logging
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -50,9 +53,11 @@ class ProjectMap:
     stats: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
+        """Return project map as dictionary."""
         return asdict(self)
 
     def to_json(self) -> str:
+        """Return project map as JSON string."""
         return json.dumps(self.to_dict(), indent=2)
 
     def to_markdown(self) -> str:
@@ -297,6 +302,7 @@ def build_project_map(
 
     Returns:
         ProjectMap with structure information
+
     """
     project_map = ProjectMap(root_path=str(root_path))
 
@@ -369,4 +375,5 @@ def load_project_map(output_dir: str = "output") -> ProjectMap | None:
             stats=data.get("stats", {}),
         )
     except Exception:
+        logger.debug("Failed to load project map", exc_info=True)
         return None

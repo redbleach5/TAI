@@ -89,6 +89,15 @@ export function Layout() {
     }
   }, [chatPanelCollapsed])
 
+  useEffect(() => {
+    if (!showSettings) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowSettings(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [showSettings])
+
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
     setResizing(true)

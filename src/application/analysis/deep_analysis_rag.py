@@ -1,11 +1,13 @@
 """RAG helpers for deep analysis: initial context and targeted (A1) context.
 
 Used by DeepAnalyzer: gather_initial_rag(rag), targeted_rag(rag, modules).
-RAG object must have async search(query, limit, min_score) returning list of
-items with .metadata and .content.
 """
 
-from typing import Any
+import logging
+
+from src.domain.ports.rag import RAGPort
+
+logger = logging.getLogger(__name__)
 
 # RAG queries - expanded for better coverage
 RAG_QUERIES = [
@@ -29,15 +31,15 @@ A1_TARGETED_QUERY_TEMPLATE = "код логика проблемы рефакт�
 A1_MIN_SCORE = 0.35
 
 
-async def gather_initial_rag(rag: Any) -> str:
+async def gather_initial_rag(rag: RAGPort) -> str:
     """Gather initial RAG context from expanded queries.
 
     Args:
-        rag: RAG adapter with async search(query, limit, min_score) returning
-             list of items with .metadata and .content.
+        rag: RAG adapter (implements RAGPort).
 
     Returns:
         Formatted context string or fallback message.
+
     """
     chunks_by_query: list[str] = []
     seen_sources: set[str] = set()
@@ -56,15 +58,16 @@ async def gather_initial_rag(rag: Any) -> str:
     return "\n\n".join(chunks_by_query) if chunks_by_query else "Не найдено релевантных чанков."
 
 
-async def targeted_rag(rag: Any, modules: list[str]) -> str:
+async def targeted_rag(rag: RAGPort, modules: list[str]) -> str:
     """RAG search per module for deeper context (A1 step 2).
 
     Args:
-        rag: Same as gather_initial_rag.
+        rag: RAG adapter (implements RAGPort).
         modules: List of module paths from step 1.
 
     Returns:
         Formatted context string or empty.
+
     """
     parts: list[str] = []
     seen: set[str] = set()
@@ -90,5 +93,6 @@ async def targeted_rag(rag: Any, modules: list[str]) -> str:
                         parts.append(f"#### {module}\n```\n{content}\n```")
                 break
             except Exception:
+                logger.debug("Targeted RAG search failed for module=%s", module, exc_info=True)
                 continue
     return "\n\n".join(parts) if parts else ""

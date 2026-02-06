@@ -1,8 +1,11 @@
 """FileWriter Agent - safe file operations with backup."""
 
+import logging
 import shutil
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Patterns to exclude from file tree
 EXCLUDED_PATTERNS = {
@@ -41,6 +44,7 @@ class FileWriter:
     """Safe file writer with automatic backup."""
 
     def __init__(self, backup_dir: str = "output/backups") -> None:
+        """Initialize writer with backup directory."""
         self._backup_dir = Path(backup_dir)
         self._backup_dir.mkdir(parents=True, exist_ok=True)
 
@@ -83,6 +87,7 @@ class FileWriter:
                 "created": bool,  # True if file was created (didn't exist)
                 "error": str | None
             }
+
         """
         file_path = Path(path).resolve()
         if not self._is_safe_path(file_path):
@@ -116,6 +121,7 @@ class FileWriter:
                 "error": None,
             }
         except Exception as e:
+            logger.warning("File write failed for %s: %s", file_path, e)
             return {
                 "success": False,
                 "path": str(file_path),
@@ -134,6 +140,7 @@ class FileWriter:
                 "content": str | None,
                 "error": str | None
             }
+
         """
         file_path = Path(path).resolve()
         if not self._is_safe_path(file_path):
@@ -152,6 +159,7 @@ class FileWriter:
                 "error": None,
             }
         except Exception as e:
+            logger.warning("File read failed for %s: %s", file_path, e)
             return {
                 "success": False,
                 "path": str(file_path),
@@ -168,6 +176,7 @@ class FileWriter:
                 "restored_path": str,
                 "error": str | None
             }
+
         """
         backup = Path(backup_path)
         original = Path(original_path)
@@ -187,6 +196,7 @@ class FileWriter:
                 "error": None,
             }
         except Exception as e:
+            logger.warning("Backup restore failed for %s: %s", original, e)
             return {
                 "success": False,
                 "restored_path": str(original),
@@ -236,6 +246,7 @@ class FileWriter:
                 },
                 "error": str | None
             }
+
         """
         root_path = Path(root).resolve()
 
@@ -293,6 +304,7 @@ class FileWriter:
                 "error": None,
             }
         except Exception as e:
+            logger.warning("File tree scan failed: %s", e)
             return {
                 "success": False,
                 "tree": None,
@@ -309,6 +321,7 @@ class FileWriter:
                 "type": "file" | "directory",
                 "error": str | None
             }
+
         """
         file_path = Path(path).resolve()
 
@@ -345,6 +358,7 @@ class FileWriter:
                 "error": None,
             }
         except Exception as e:
+            logger.warning("Create file/dir failed for %s: %s", file_path, e)
             return {
                 "success": False,
                 "path": str(file_path),
@@ -362,6 +376,7 @@ class FileWriter:
                 "backup_path": str | None,
                 "error": str | None
             }
+
         """
         file_path = Path(path).resolve()
 
@@ -401,6 +416,7 @@ class FileWriter:
                 "error": None,
             }
         except Exception as e:
+            logger.warning("Delete file failed for %s: %s", file_path, e)
             return {
                 "success": False,
                 "path": str(file_path),
@@ -418,6 +434,7 @@ class FileWriter:
                 "new_path": str,
                 "error": str | None
             }
+
         """
         old = Path(old_path).resolve()
         new = Path(new_path).resolve()
@@ -460,6 +477,7 @@ class FileWriter:
                 "error": None,
             }
         except Exception as e:
+            logger.warning("Rename failed %s -> %s: %s", old, new, e)
             return {
                 "success": False,
                 "old_path": str(old),

@@ -156,11 +156,13 @@ class TestOpenAICompatibleAdapter:
         mock_response.status_code = 200
         mock_response.json.return_value = {"choices": [{"message": {"content": "Hello!"}}]}
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+        mock_client = MagicMock()
+        mock_client.is_closed = False
+        mock_client.post = AsyncMock(return_value=mock_response)
+        adapter._client = mock_client
 
-            messages = [LLMMessage(role="user", content="Hi")]
-            result = await adapter.generate(messages, model="local")
+        messages = [LLMMessage(role="user", content="Hi")]
+        result = await adapter.generate(messages, model="local")
 
         assert result.content == "Hello!"
         assert result.model == "local"
@@ -172,15 +174,16 @@ class TestOpenAICompatibleAdapter:
         mock_response.status_code = 200
         mock_response.json.return_value = {"choices": [{"message": {"content": "Response"}}]}
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_instance = mock_client.return_value.__aenter__.return_value
-            mock_instance.post = AsyncMock(return_value=mock_response)
+        mock_client = MagicMock()
+        mock_client.is_closed = False
+        mock_client.post = AsyncMock(return_value=mock_response)
+        adapter._client = mock_client
 
-            messages = [LLMMessage(role="user", content="Hi")]
-            await adapter.generate(messages)
+        messages = [LLMMessage(role="user", content="Hi")]
+        await adapter.generate(messages)
 
-            call_args = mock_instance.post.call_args
-            assert call_args.kwargs["json"]["model"] == "default"
+        call_args = mock_client.post.call_args
+        assert call_args.kwargs["json"]["model"] == "default"
 
     @pytest.mark.asyncio
     async def test_generate_handles_error(self, adapter):
@@ -192,12 +195,14 @@ class TestOpenAICompatibleAdapter:
             "500 Error", request=MagicMock(), response=mock_response
         )
 
-        with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_response)
+        mock_client = MagicMock()
+        mock_client.is_closed = False
+        mock_client.post = AsyncMock(return_value=mock_response)
+        adapter._client = mock_client
 
-            messages = [LLMMessage(role="user", content="Hi")]
-            with pytest.raises(httpx.HTTPStatusError):
-                await adapter.generate(messages)
+        messages = [LLMMessage(role="user", content="Hi")]
+        with pytest.raises(httpx.HTTPStatusError):
+            await adapter.generate(messages)
 
     @pytest.mark.asyncio
     async def test_is_available_true(self, adapter):

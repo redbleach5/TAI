@@ -1,8 +1,11 @@
 """File reader command handler (@code, @file)."""
 
+import logging
 from pathlib import Path
 
 from src.application.chat.handlers.base import CommandHandler, CommandResult
+
+logger = logging.getLogger(__name__)
 
 
 class FileReaderHandler(CommandHandler):
@@ -15,6 +18,7 @@ class FileReaderHandler(CommandHandler):
 
     @property
     def command_type(self) -> str:
+        """Return command type ('code' or 'file')."""
         return self._command
 
     async def execute(self, argument: str, **context) -> CommandResult:
@@ -23,6 +27,7 @@ class FileReaderHandler(CommandHandler):
         Args:
             argument: File path (relative to workspace_root when provided)
             **context: Optional workspace_path — project root for resolving paths (Cursor-like).
+
         """
         if not argument.strip():
             return CommandResult(
@@ -82,25 +87,16 @@ class FileReaderHandler(CommandHandler):
             return CommandResult(content=output)
 
         except PermissionError:
+            logger.warning("Permission denied reading file: %s", argument)
             return CommandResult(
                 content=f"[Permission denied: {argument}]",
                 success=False,
                 error="Permission denied",
             )
         except Exception as e:
+            logger.warning("File read error for %s: %s", argument, e, exc_info=True)
             return CommandResult(
                 content=f"[File read error: {e}]",
                 success=False,
                 error=str(e),
             )
-
-
-# Pre-configured handlers
-def code_handler() -> FileReaderHandler:
-    """Create handler for @code command."""
-    return FileReaderHandler("code")
-
-
-def file_handler() -> FileReaderHandler:
-    """Create handler for @file command."""
-    return FileReaderHandler("file")

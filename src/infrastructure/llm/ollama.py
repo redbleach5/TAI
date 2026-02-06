@@ -24,6 +24,7 @@ class OllamaAdapter:
     """Ollama implementation of LLMPort with Circuit Breaker protection."""
 
     def __init__(self, config: OllamaConfig) -> None:
+        """Initialize with Ollama config and HTTP client."""
         self._config = config
         # Передаём timeout в ollama-клиент: connect — быстрый фейл при недоступности хоста,
         # read — полный таймаут на ответ (config.timeout в секундах). Все 4 параметра заданы явно (требование httpx).
@@ -106,6 +107,14 @@ class OllamaAdapter:
             if chunk.message and chunk.message.content:
                 yield chunk.message.content
 
+    async def close(self) -> None:
+        """Close the underlying HTTP client (resource cleanup)."""
+        if hasattr(self._client, "_client") and self._client._client:
+            try:
+                await self._client._client.aclose()
+            except Exception:
+                logger.debug("Error closing Ollama HTTP client", exc_info=True)
+
     async def is_available(self) -> bool:
         """Check if Ollama server is available. Fail-fast, no stale cache."""
         try:
@@ -187,7 +196,9 @@ class OllamaAdapter:
         model: str | None = None,
         temperature: float = 0.3,
     ) -> AsyncIterator[tuple[str, str | list[dict] | None]]:
-        """Stream chat with tools. Yields (kind, data): content chunks, then ("tool_calls", [...]) or ("done", None).
+        """Stream chat with tools.
+
+        Yields (kind, data): content chunks, then ("tool_calls", [...]) or ("done", None).
         Merges tool_calls by index (Ollama streams partial tool_calls per chunk).
         """
         import json as _json

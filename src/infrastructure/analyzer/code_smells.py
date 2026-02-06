@@ -32,6 +32,7 @@ def find_code_smells(files: list[Path], base_path: Path) -> list[str]:
 
     Returns:
         Список строк вида "rel_path: описание (N occurrences)", не более MAX_SMELLS.
+
     """
     smells: list[str] = []
     for file_path in files:

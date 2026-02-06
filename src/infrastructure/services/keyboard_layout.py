@@ -261,6 +261,7 @@ def fix_layout(text: str, direction: str = "auto") -> str:
 
     Raises:
         ValueError: If direction is invalid
+
     """
     if not text or not isinstance(text, str):
         return text or ""
@@ -291,6 +292,7 @@ def maybe_fix_query(query: str) -> tuple[str, bool]:
 
     Returns:
         (исправленный_текст, был_исправлен)
+
     """
     if looks_like_wrong_layout(query):
         fixed = fix_layout(query, "en_to_ru")

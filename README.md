@@ -65,7 +65,9 @@ npm run dev
 1. В UI откройте папку проекта (кнопка «Открыть папку»).
 2. Нажмите «Индексировать» для семантического поиска по коду (RAG). Либо в режиме агента попросите модель проиндексировать проект.
 
-## API (основное)
+## API (78 эндпоинтов)
+
+### Основные
 
 | Endpoint | Описание |
 |----------|----------|
@@ -74,15 +76,53 @@ npm run dev
 | `POST /chat/stream` | Чат (SSE, с context_files) |
 | `GET /workspace` | Текущий workspace |
 | `POST /workspace` | Открыть папку |
+| `POST /workspace/create` | Создать проект с нуля |
 | `POST /workspace/index` | Индексация проекта для RAG |
 | `GET /models` | Список моделей провайдера |
-| `GET /conversations` | Список диалогов |
 | `GET /config`, `PATCH /config` | Настройки |
+
+### Файлы и IDE
+
+| Endpoint | Описание |
+|----------|----------|
 | `POST /files/read`, `POST /files/write` | Чтение/запись файлов |
+| `POST /files/create`, `DELETE /files/delete` | Создание/удаление |
+| `POST /files/rename` | Переименование |
 | `GET /files/tree` | Дерево файлов |
-| `POST /improve/analyze`, `POST /improve/run` | Анализ и улучшение кода |
-| `POST /analyze/project` | Полный анализ проекта |
-| `POST /workflow` | Workflow (генерация кода) |
+| `POST /terminal/exec` | Выполнение shell-команд |
+| `GET /git/status`, `GET /git/diff` | Git статус и diff |
+| `POST /git/commit`, `POST /git/checkout` | Git операции |
+
+### Анализ и улучшение
+
+| Endpoint | Описание |
+|----------|----------|
+| `POST /analyze/project` | Анализ проекта |
+| `POST /analyze/project/deep` | Глубокий анализ (статика + RAG + LLM) |
+| `POST /analyze/security` | Быстрая проверка безопасности |
+| `POST /improve/analyze` | Анализ файла для улучшений |
+| `POST /improve/run` | Улучшение кода |
+| `POST /improve/run/stream` | Улучшение со стримингом |
+| `POST /workflow` | Workflow (генерация кода TDD) |
+
+### RAG
+
+| Endpoint | Описание |
+|----------|----------|
+| `POST /rag/index` | Индексация директории |
+| `POST /rag/search` | Семантический поиск по коду |
+| `GET /rag/status` | Статус индекса |
+| `GET /rag/project-map` | Карта проекта |
+
+### Управление
+
+| Endpoint | Описание |
+|----------|----------|
+| `GET /conversations` | Список диалогов |
+| `GET /projects` | Список проектов |
+| `GET /assistant/modes` | Режимы ассистента |
+| `GET /assistant/templates` | Шаблоны промптов |
+| `GET /models/resilience` | Circuit Breaker статистика |
 
 Полный список: http://localhost:8000/docs
 
@@ -99,29 +139,56 @@ npm run dev
 | `[models.lm_studio]` | Overrides для LM Studio |
 | `[embeddings] model` | Модель для RAG |
 | `[rag]` | ChromaDB path, chunk_size, chunk_overlap |
+| `[security]` | Rate limiting, CORS |
+| `[agent]` | max_iterations (лимит итераций агента) |
+| `[web_search]` | SearXNG, Brave, Tavily, Google |
+| `[logging]` | Уровень, файл, ротация |
 
 ## Структура проекта
 
 ```
 ├── src/
-│   ├── api/              # Routes, dependencies, container
-│   ├── application/      # ChatUseCase, AgentUseCase, WorkflowUseCase, Improvement
+│   ├── api/              # Routes (15 модулей), dependencies, container
+│   │   ├── routes/       # analyze, chat, files, git, improve, rag, workflow и др.
+│   │   ├── container.py  # DI-контейнер (singleton, lazy init)
+│   │   └── dependencies.py  # FastAPI Depends()
+│   ├── application/      # Use Cases и оркестрация
+│   │   ├── agent/        # AgentUseCase, ToolExecutor, tool_parser
+│   │   ├── analysis/     # DeepAnalyzer, RAG-контекст анализа
+│   │   ├── chat/         # ChatUseCase, handlers (@web, @rag, @code, @file)
+│   │   ├── improvement/  # SelfImprovementUseCase
+│   │   ├── workflow/     # WorkflowUseCase
+│   │   └── shared/       # LLM fallback utilities
 │   ├── domain/           # Entities, Ports (LLMPort, RAGPort), Services
-│   ├── infrastructure/   # Ollama, LM Studio, ChromaDB, agents
-│   └── shared/
-├── frontend/             # React + TypeScript + Vite
-├── config/               # TOML
+│   │   ├── entities/     # ModelSelection, WorkflowState, WorkflowEvents
+│   │   ├── ports/        # Protocol-интерфейсы (LLM, RAG, Embeddings, Config)
+│   │   └── services/     # ModelRouter, ModelSelector, IntentDetector
+│   ├── infrastructure/   # Адаптеры и реализации
+│   │   ├── llm/          # OllamaAdapter, OpenAICompatibleAdapter
+│   │   ├── embeddings/   # OllamaEmbeddings, OpenAICompatibleEmbeddings
+│   │   ├── rag/          # ChromaDBRAGAdapter, file_collector, index_state
+│   │   ├── agents/       # planner, coder, researcher, analyzer, validator и др.
+│   │   ├── analyzer/     # ProjectAnalyzer, security, metrics, architecture
+│   │   ├── services/     # FileService, GitService, TerminalService, WebSearch
+│   │   ├── workflow/     # LangGraph (graph, improvement_graph)
+│   │   ├── resilience/   # CircuitBreaker
+│   │   ├── persistence/  # ConversationMemory (JSON)
+│   │   └── config/       # TOML loader, model validator
+│   └── shared/           # structlog setup, logging utilities
+├── frontend/             # React 19 + TypeScript + Vite
+├── config/               # TOML (default, development)
 ├── docs/                 # Документация
-└── tests/
+└── tests/                # pytest (unit + integration)
 ```
 
 ## Документация
 
-- [CONTRIBUTING.md](CONTRIBUTING.md) — как внести вклад
-- [docs/ROADMAP.md](docs/ROADMAP.md) — план развития (единый документ)
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — архитектура
-- [docs/README.md](docs/README.md) — индекс всей документации
-- [docs/CHECKLIST.md](docs/CHECKLIST.md) — чеклист ручной проверки
+- [CONTRIBUTING.md](CONTRIBUTING.md) — как внести вклад, стандарты кода
+- [docs/README.md](docs/README.md) — индекс документации (справочник и dev)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — архитектура, DI, обработка ошибок
+- [docs/dev/ROADMAP.md](docs/dev/ROADMAP.md) — план развития
+- [docs/dev/BACKEND_POLISH.md](docs/dev/BACKEND_POLISH.md) — чеклист полировки бэкенда
+- [docs/dev/CHECKLIST.md](docs/dev/CHECKLIST.md) — чеклист ручной проверки
 
 ## Лицензия
 

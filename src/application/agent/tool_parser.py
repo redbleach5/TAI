@@ -25,6 +25,7 @@ def parse_tool_call(content: str) -> ParsedToolCall | None:
 
     Returns:
         ParsedToolCall if found, None otherwise
+
     """
     pattern = r"<tool_call>\s*([\s\S]*?)\s*</tool_call>"
     match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)

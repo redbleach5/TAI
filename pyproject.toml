@@ -57,6 +57,8 @@ ignore = []
 "src/application/chat/use_case.py" = ["E501"]
 "src/infrastructure/llm/ollama.py" = ["E501"]
 "src/infrastructure/llm/openai_compatible.py" = ["E501"]
+# Tests: docstrings on fixtures and test packages optional
+"tests/**" = ["D104", "D102", "D103", "D107"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
