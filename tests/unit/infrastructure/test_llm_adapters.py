@@ -221,7 +221,7 @@ class TestOpenAICompatibleAdapter:
         """is_available returns False on connection error."""
         with patch("httpx.AsyncClient") as mock_client:
             mock_client.return_value.__aenter__.return_value.get = AsyncMock(
-                side_effect=Exception("Connection refused")
+                side_effect=httpx.ConnectError("Connection refused")
             )
             result = await adapter.is_available()
 
@@ -244,7 +244,9 @@ class TestOpenAICompatibleAdapter:
     async def test_list_models_empty_on_error(self, adapter):
         """list_models returns empty list on error."""
         with patch("httpx.AsyncClient") as mock_client:
-            mock_client.return_value.__aenter__.return_value.get = AsyncMock(side_effect=Exception("Error"))
+            mock_client.return_value.__aenter__.return_value.get = AsyncMock(
+                side_effect=httpx.ConnectError("Error")
+            )
             result = await adapter.list_models()
 
         assert result == []
