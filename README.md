@@ -60,7 +60,18 @@ npm run dev
 - Frontend: http://localhost:5173
 - OpenAPI: http://localhost:8000/docs
 
-### 4. Проект и RAG
+При необходимости скопируйте настройки окружения: `cp .env.example .env` (см. [Конфигурация](#конфигурация)).
+
+### 4. Запуск тестов
+
+```bash
+source .venv/bin/activate
+pytest                    # все тесты
+pytest -m "not slow"      # без тестов с реальным LLM (быстрее, для CI)
+pytest tests/unit/         # только unit-тесты
+```
+
+### 5. Проект и RAG
 
 1. В UI откройте папку проекта (кнопка «Открыть папку»).
 2. Нажмите «Индексировать» для семантического поиска по коду (RAG). Либо в режиме агента попросите модель проиндексировать проект.
@@ -126,6 +137,12 @@ npm run dev
 
 Полный список: http://localhost:8000/docs
 
+## Безопасность
+
+- **Терминал** — выполнение только по whitelist команд (`python`, `pytest`, `git`, `npm` и др.), без shell-метасимволов (`|`, `;`, `&&` и т.д.). Команда передаётся в процесс через аргументы (без интерпретации shell).
+- **Файлы и Git** — все пути проверяются на нахождение внутри workspace; симлинки, ведущие наружу, блокируются. Имена веток и пути в Git валидируются.
+- **API** — лимиты запросов (slowapi), валидация входных данных (Pydantic).
+
 ## Конфигурация
 
 - `config/default.toml` — базовые настройки
@@ -183,12 +200,10 @@ npm run dev
 
 ## Документация
 
-- [CONTRIBUTING.md](CONTRIBUTING.md) — как внести вклад, стандарты кода
+- [CONTRIBUTING.md](CONTRIBUTING.md) — как внести вклад, стандарты кода, запуск тестов
 - [docs/README.md](docs/README.md) — индекс документации (справочник и dev)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — архитектура, DI, обработка ошибок
-- [docs/dev/ROADMAP.md](docs/dev/ROADMAP.md) — план развития
-- [docs/dev/BACKEND_POLISH.md](docs/dev/BACKEND_POLISH.md) — чеклист полировки бэкенда
-- [docs/dev/CHECKLIST.md](docs/dev/CHECKLIST.md) — чеклист ручной проверки
+- В каталоге [docs/dev/](docs/dev/) — ROADMAP, чеклисты и планы разработки (при наличии)
 
 ## Лицензия
 

@@ -2,6 +2,7 @@
 
 import logging
 import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -61,14 +62,17 @@ class FileWriter:
         return backup_path
 
     def _is_safe_path(self, file_path: Path) -> bool:
-        """Check path is within cwd or allowed temp directories (security)."""
+        """Check path is within cwd or system temp directory (security, cross-platform)."""
         try:
             file_path.resolve().relative_to(Path.cwd())
             return True
         except ValueError:
-            path_str = str(file_path.resolve())
-            safe_prefixes = ("/tmp", "/var/folders", "/private/var/folders")
-            return any(path_str.startswith(p) for p in safe_prefixes)
+            resolved = file_path.resolve()
+            try:
+                resolved.relative_to(Path(tempfile.gettempdir()).resolve())
+                return True
+            except ValueError:
+                return False
 
     def write_file(
         self,

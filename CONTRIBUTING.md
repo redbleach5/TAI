@@ -16,6 +16,7 @@
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
+# Опционально: cp .env.example .env и настройте переменные
 uvicorn src.main:app --reload --port 8000
 ```
 
