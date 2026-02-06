@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import shlex
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -37,7 +38,7 @@ ALLOWED_COMMANDS = {
     "go",
 }
 
-# Blocked patterns (security)
+# Blocked patterns (security) — checked on raw input before shlex parsing
 BLOCKED_PATTERNS = [
     "&&",
     "||",
@@ -46,9 +47,9 @@ BLOCKED_PATTERNS = [
     ">",
     "<",
     "`",
-    "$",
-    "eval",
-    "exec",
+    "$(",
+    "eval ",
+    "exec ",
 ]
 
 
@@ -85,17 +86,30 @@ class TerminalService:
         if not command.strip():
             return False, "Empty command"
 
-        # Check blocked patterns
+        # Check blocked patterns on raw input (before parsing)
         for pattern in BLOCKED_PATTERNS:
             if pattern in command:
                 return False, f"Blocked pattern: {pattern}"
 
-        # Check whitelist
-        cmd_name = command.split()[0]
+        # Parse safely with shlex to get actual command name
+        try:
+            parts = shlex.split(command)
+        except ValueError as e:
+            return False, f"Invalid command syntax: {e}"
+
+        if not parts:
+            return False, "Empty command after parsing"
+
+        cmd_name = parts[0]
         if cmd_name not in ALLOWED_COMMANDS:
             return False, f"Command not allowed: {cmd_name}"
 
         return True, ""
+
+    @staticmethod
+    def _parse_command(command: str) -> list[str]:
+        """Parse command string into argument list safely."""
+        return shlex.split(command)
 
     async def execute(
         self,
@@ -127,8 +141,9 @@ class TerminalService:
         cmd_timeout = timeout or self._timeout
 
         try:
-            proc = await asyncio.create_subprocess_shell(
-                command,
+            args = self._parse_command(command)
+            proc = await asyncio.create_subprocess_exec(
+                *args,
                 cwd=working_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -153,8 +168,15 @@ class TerminalService:
                 error=f"Command timed out after {cmd_timeout}s",
                 exit_code=-1,
             )
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.warning("Command execution failed: %s — %s", command, e)
+            return CommandResult(
+                success=False,
+                error=str(e),
+                exit_code=-1,
+            )
+        except Exception as e:
+            logger.warning("Unexpected error executing command: %s — %s", command, e)
             return CommandResult(
                 success=False,
                 error=str(e),
@@ -181,8 +203,9 @@ class TerminalService:
         working_dir = cwd or self._cwd
 
         try:
-            proc = await asyncio.create_subprocess_shell(
-                command,
+            args = self._parse_command(command)
+            proc = await asyncio.create_subprocess_exec(
+                *args,
                 cwd=working_dir,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
@@ -196,8 +219,11 @@ class TerminalService:
 
             await proc.wait()
 
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.warning("Stream command failed: %s — %s", command, e)
+            yield f"Error: {e}"
+        except Exception as e:
+            logger.warning("Unexpected error streaming command: %s — %s", command, e)
             yield f"Error: {e}"
 
     def list_allowed_commands(self) -> list[str]:

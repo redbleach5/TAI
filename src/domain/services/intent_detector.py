@@ -1,5 +1,6 @@
 """Intent detector - heuristic with LRU cache."""
 
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -22,6 +23,17 @@ CODE_PATTERNS = (
     "make a",
 )
 
+# Pre-compile word boundary patterns for accurate matching
+_GREETING_RE = re.compile(
+    r"(?:^|\s)(" + "|".join(re.escape(p) for p in GREETING_PATTERNS) + r")(?:\s|$|[!.,?])",
+)
+_HELP_RE = re.compile(
+    r"(?:^|\s)(" + "|".join(re.escape(p) for p in HELP_PATTERNS) + r")(?:\s|$|[!.,?])",
+)
+_CODE_RE = re.compile(
+    r"(?:^|\s)(" + "|".join(re.escape(p) for p in CODE_PATTERNS) + r")(?:\s|$|[!.,?])",
+)
+
 
 @dataclass(frozen=True)  # frozen для hashable (кэширование)
 class Intent:
@@ -31,52 +43,55 @@ class Intent:
     response: str | None = None
 
 
+# Module-level cached function (avoids lru_cache on bound method pitfalls)
+@lru_cache(maxsize=128)
+def _detect_impl(text: str) -> Intent:
+    """Run internal detection logic (cached at module level)."""
+    if not text:
+        return Intent(kind="chat")
+
+    if _GREETING_RE.search(text):
+        return Intent(
+            kind="greeting",
+            response=(
+                "Привет! Я CodeGen AI — локальный помощник для генерации кода. Задай вопрос или опиши задачу."
+            ),
+        )
+
+    if text == "?" or _HELP_RE.search(text):
+        return Intent(
+            kind="help",
+            response=(
+                "Я помогаю с кодом: отвечаю на вопросы, генерирую код, объясняю решения. "
+                "Работаю локально через Ollama. Просто напиши, что нужно."
+            ),
+        )
+
+    if _CODE_RE.search(text):
+        return Intent(kind="code")
+
+    return Intent(kind="chat")
+
+
 class IntentDetector:
     """Fast heuristic intent detection with LRU cache (128 entries)."""
 
     def __init__(self, cache_size: int = 128):
-        """Initialize with cache size."""
-        # Создаем кэшированную версию _detect
-        self._cached_detect = lru_cache(maxsize=cache_size)(self._detect_impl)
+        """Initialize with cache size.
 
-    def _detect_impl(self, text: str) -> Intent:
-        """Run internal detection logic (cached)."""
-        if not text:
-            return Intent(kind="chat")
-
-        for pattern in GREETING_PATTERNS:
-            if pattern in text or text.startswith(pattern):
-                return Intent(
-                    kind="greeting",
-                    response=(
-                        "Привет! Я CodeGen AI — локальный помощник для генерации кода. Задай вопрос или опиши задачу."
-                    ),
-                )
-
-        for pattern in HELP_PATTERNS:
-            if pattern in text or text == "?":
-                return Intent(
-                    kind="help",
-                    response=(
-                        "Я помогаю с кодом: отвечаю на вопросы, генерирую код, объясняю решения. "
-                        "Работаю локально через Ollama. Просто напиши, что нужно."
-                    ),
-                )
-
-        for pattern in CODE_PATTERNS:
-            if pattern in text:
-                return Intent(kind="code")  # Больше не возвращаем placeholder
-
-        return Intent(kind="chat")
+        Note: cache_size is accepted for API compatibility but the module-level
+        cache uses a fixed size of 128 to avoid lru_cache-on-bound-method issues.
+        """
+        self._cache_size = cache_size
 
     def detect(self, message: str) -> Intent:
         """Detect intent from message (cached). Returns template response for greeting/help."""
         text = message.strip().lower()
-        return self._cached_detect(text)
+        return _detect_impl(text)
 
     def cache_info(self) -> dict:
         """Get cache statistics."""
-        info = self._cached_detect.cache_info()
+        info = _detect_impl.cache_info()
         return {
             "hits": info.hits,
             "misses": info.misses,
@@ -86,4 +101,4 @@ class IntentDetector:
 
     def clear_cache(self) -> None:
         """Clear the intent cache."""
-        self._cached_detect.cache_clear()
+        _detect_impl.cache_clear()

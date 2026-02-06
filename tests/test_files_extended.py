@@ -46,12 +46,12 @@ class TestFileTree:
         assert not find_pycache(data["tree"])
 
     def test_get_tree_invalid_path(self):
-        """Test getting tree for non-existent path returns error."""
+        """Test getting tree for non-existent path returns 400 error."""
         response = client.get("/files/tree?path=nonexistent_dir_12345")
-        assert response.status_code == 200
+        # API raises HTTPException(400) when path not found
+        assert response.status_code == 400
         data = response.json()
-        assert data["success"] is False
-        assert "not found" in data["error"].lower() or "error" in data
+        assert "detail" in data
 
 
 class TestFileCreate:
@@ -84,12 +84,12 @@ class TestFileCreate:
                 Path(test_path).rmdir()
 
     def test_create_existing_file(self):
-        """Test creating a file that already exists."""
+        """Test creating a file that already exists returns 400."""
         response = client.post("/files/create", json={"path": "pyproject.toml", "is_directory": False})
-        assert response.status_code == 200
+        # API raises HTTPException(400) when file already exists
+        assert response.status_code == 400
         data = response.json()
-        assert data["success"] is False
-        assert "exists" in data["error"].lower()
+        assert "exists" in data["detail"].lower()
 
 
 class TestFileDelete:
@@ -107,12 +107,12 @@ class TestFileDelete:
         assert not Path(test_path).exists()
 
     def test_delete_nonexistent(self):
-        """Test deleting non-existent file returns error."""
+        """Test deleting non-existent file returns 400."""
         response = client.delete("/files/delete?path=nonexistent_file_12345.txt")
-        assert response.status_code == 200
+        # API raises HTTPException(400) when file not found
+        assert response.status_code == 400
         data = response.json()
-        assert data["success"] is False
-        assert "not found" in data["error"].lower()
+        assert "not found" in data["detail"].lower()
 
     def test_delete_creates_backup(self):
         """Test that delete creates backup."""
@@ -148,24 +148,24 @@ class TestFileRename:
                     Path(p).unlink()
 
     def test_rename_nonexistent(self):
-        """Test renaming non-existent file returns error."""
+        """Test renaming non-existent file returns 400."""
         response = client.post("/files/rename", json={"old_path": "nonexistent_12345.txt", "new_path": "new_12345.txt"})
-        assert response.status_code == 200
+        # API raises HTTPException(400) when source file not found
+        assert response.status_code == 400
         data = response.json()
-        assert data["success"] is False
-        assert "not found" in data["error"].lower()
+        assert "not found" in data["detail"].lower()
 
     def test_rename_to_existing(self):
-        """Test renaming to existing file returns error."""
+        """Test renaming to existing file returns 400."""
         old_path = "test_rename_src_12345.txt"
 
         try:
             Path(old_path).write_text("test")
             response = client.post("/files/rename", json={"old_path": old_path, "new_path": "pyproject.toml"})
-            assert response.status_code == 200
+            # API raises HTTPException(400) when target already exists
+            assert response.status_code == 400
             data = response.json()
-            assert data["success"] is False
-            assert "exists" in data["error"].lower()
+            assert "exists" in data["detail"].lower()
         finally:
             if Path(old_path).exists():
                 Path(old_path).unlink()

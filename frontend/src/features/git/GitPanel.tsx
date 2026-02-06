@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, memo } from 'react'
 import { 
   GitBranch, 
   GitCommit, 
@@ -39,12 +39,12 @@ const STATUS_LABELS: Record<string, { label: string; color: string }> = {
   'U': { label: 'Conflict', color: '#f14c4c' },
 }
 
-function FileItem({ file, onClick }: { file: GitFile; onClick?: () => void }) {
+const FileItem = memo(function FileItem({ file, onClick }: { file: GitFile; onClick?: () => void }) {
   const statusInfo = STATUS_LABELS[file.status] || { label: file.status, color: '#ccc' }
   const StatusIcon = STATUS_ICONS[file.status] || FileEdit
   
   return (
-    <div className="git-file" onClick={onClick}>
+    <div className="git-file" onClick={onClick} role="button" tabIndex={0} aria-label={`${file.path} — ${statusInfo.label}`}>
       <span className="git-file__icon" style={{ color: statusInfo.color }}>
         <StatusIcon size={14} />
       </span>
@@ -57,9 +57,9 @@ function FileItem({ file, onClick }: { file: GitFile; onClick?: () => void }) {
       )}
     </div>
   )
-}
+})
 
-function LogEntry({ entry }: { entry: GitLogEntry }) {
+const LogEntry = memo(function LogEntry({ entry }: { entry: GitLogEntry }) {
   return (
     <div className="git-log-entry">
       <div className="git-log-entry__header">
@@ -71,7 +71,7 @@ function LogEntry({ entry }: { entry: GitLogEntry }) {
       <div className="git-log-entry__date">{entry.date}</div>
     </div>
   )
-}
+})
 
 export function GitPanel({ onFileClick }: GitPanelProps) {
   const { show: showToast } = useToast()
@@ -113,8 +113,8 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
     }
   }
 
-  const stagedFiles = status?.files.filter((f) => f.staged) || []
-  const unstagedFiles = status?.files.filter((f) => !f.staged) || []
+  const stagedFiles = useMemo(() => status?.files.filter((f) => f.staged) || [], [status?.files])
+  const unstagedFiles = useMemo(() => status?.files.filter((f) => !f.staged) || [], [status?.files])
 
   if (error) {
     return (
@@ -124,7 +124,7 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
         </div>
         <div className="git-panel__error">
           {error}
-          <button onClick={fetchStatus}>
+          <button onClick={fetchStatus} aria-label="Retry loading git status">
             <RefreshCw size={12} />
             Повторить
           </button>
@@ -179,6 +179,7 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
               onChange={(e) => setCommitMessage(e.target.value)}
               placeholder="Сообщение коммита"
               onKeyDown={(e) => e.key === 'Enter' && handleCommit()}
+              aria-label="Commit message"
             />
             <button
               className="git-panel__commit-btn"
@@ -241,15 +242,15 @@ export function GitPanel({ onFileClick }: GitPanelProps) {
 
       {/* Diff modal */}
       {selectedDiff && (
-        <div className="git-panel__diff-overlay" onClick={() => setSelectedDiff(null)}>
-          <div className="git-panel__diff-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="git-panel__diff-overlay" onClick={() => setSelectedDiff(null)} role="presentation">
+          <div className="git-panel__diff-modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label={`Diff: ${selectedDiff.path}`}>
             <div className="git-panel__diff-header">
               <span>{selectedDiff.path}</span>
-              <button onClick={() => setSelectedDiff(null)}>
+              <button onClick={() => setSelectedDiff(null)} aria-label="Close diff">
                 <X size={16} />
               </button>
             </div>
-            <pre className="git-panel__diff-content">{selectedDiff.diff || 'Нет изменений'}</pre>
+            <pre className="git-panel__diff-content" aria-label="Diff content">{selectedDiff.diff || 'Нет изменений'}</pre>
           </div>
         </div>
       )}

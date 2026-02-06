@@ -42,15 +42,13 @@ async def test_run_code_with_error(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_run_empty_code(client: AsyncClient):
-    """Empty code returns error."""
+    """Empty code is rejected by validation (min_length=1)."""
     resp = await client.post(
         "/code/run",
         json={"code": ""},
     )
-    assert resp.status_code == 200
-    data = resp.json()
-    assert data["success"] is False
-    assert data["error"] is not None
+    # Pydantic validation rejects empty code with 422
+    assert resp.status_code == 422
 
 
 @pytest.mark.asyncio

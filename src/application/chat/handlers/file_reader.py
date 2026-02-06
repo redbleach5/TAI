@@ -55,6 +55,18 @@ class FileReaderHandler(CommandHandler):
                     error="Cannot access files outside project directory",
                 )
 
+            # Extra safety: if symlink, verify real target is still under base
+            if file_path.exists() and file_path.is_symlink():
+                try:
+                    real_target = file_path.resolve(strict=True)
+                    real_target.relative_to(base)
+                except (ValueError, OSError):
+                    return CommandResult(
+                        content=f"[Access denied: {argument}]",
+                        success=False,
+                        error="Symlink target is outside project directory",
+                    )
+
             if not file_path.exists():
                 return CommandResult(
                     content=f"[File not found: {argument}]",

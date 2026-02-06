@@ -76,12 +76,10 @@ class TestTerminalExec:
         assert "main.py" in data["stdout"] or "api" in data["stdout"]
 
     def test_exec_empty_command(self):
-        """Test executing empty command."""
+        """Test executing empty command — rejected by validation (min_length=1)."""
         response = client.post("/terminal/exec", json={"command": ""})
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is False
-        assert "empty" in data["error"].lower()
+        # Pydantic validation rejects empty command with 422
+        assert response.status_code == 422
 
 
 class TestTerminalStream:

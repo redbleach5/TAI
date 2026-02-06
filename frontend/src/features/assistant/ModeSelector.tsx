@@ -1,7 +1,7 @@
 /**
  * Cursor-like: compact mode dropdown with keyboard navigation.
  */
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { ChevronDown } from 'lucide-react'
 import type { AssistantMode } from './useAssistant'
 
@@ -55,9 +55,9 @@ export function ModeSelector({ modes, currentMode, onSelect, compact }: Props) {
     }
   }, [open, modes, focusIdx, currentMode, onSelect])
 
-  if (modes.length === 0) return null
+  const current = useMemo(() => modes.find((m) => m.id === currentMode) ?? modes[0], [modes, currentMode])
 
-  const current = modes.find((m) => m.id === currentMode) ?? modes[0]
+  if (modes.length === 0) return null
 
   return (
     <div

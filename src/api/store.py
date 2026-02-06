@@ -2,6 +2,7 @@
 
 import json
 import logging
+import threading
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -30,28 +31,41 @@ class ProjectsStore:
         self._file = projects_file or PROJECTS_FILE
         self._projects: dict[str, Project] = {}
         self._current_project: str | None = None
+        self._lock = threading.Lock()
         self._load()
 
     def _load(self) -> None:
         """Load projects from disk."""
         if self._file.exists():
             try:
-                data = json.loads(self._file.read_text())
+                raw = self._file.read_text(encoding="utf-8")
+                data = json.loads(raw)
                 for p_data in data.get("projects", []):
                     proj = Project(**p_data)
                     self._projects[proj.id] = proj
                 self._current_project = data.get("current")
-            except Exception:
-                logger.warning("Failed to load projects from %s", self._file, exc_info=True)
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                logger.warning("Corrupted projects file %s: %s", self._file, e)
+            except OSError as e:
+                logger.warning("Cannot read projects file %s: %s", self._file, e)
 
     def _save(self) -> None:
-        """Persist projects to disk."""
-        self._file.parent.mkdir(parents=True, exist_ok=True)
-        data = {
-            "projects": [p.model_dump() for p in self._projects.values()],
-            "current": self._current_project,
-        }
-        self._file.write_text(json.dumps(data, indent=2))
+        """Persist projects to disk (thread-safe)."""
+        with self._lock:
+            self._file.parent.mkdir(parents=True, exist_ok=True)
+            data = {
+                "projects": [p.model_dump() for p in self._projects.values()],
+                "current": self._current_project,
+            }
+            # Write to temp file first, then atomic rename
+            tmp_file = self._file.with_suffix(".tmp")
+            try:
+                tmp_file.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                tmp_file.replace(self._file)
+            except OSError:
+                logger.warning("Failed to save projects to %s", self._file, exc_info=True)
+                if tmp_file.exists():
+                    tmp_file.unlink(missing_ok=True)
 
     def list_projects(self) -> list[Project]:
         """Return all projects."""

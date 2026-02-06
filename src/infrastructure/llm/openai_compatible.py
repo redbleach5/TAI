@@ -149,8 +149,11 @@ class OpenAICompatibleAdapter:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.get(f"{self._base_url}/models", headers=self._headers)
                 return resp.status_code == 200
-        except Exception as e:
-            logger.debug("OpenAI-compatible availability check failed: %s", e)
+        except (httpx.ConnectTimeout, httpx.ConnectError, httpx.ReadTimeout, OSError) as e:
+            logger.debug("OpenAI-compatible availability check failed (connection): %s", e)
+            return False
+        except httpx.HTTPError as e:
+            logger.debug("OpenAI-compatible availability check failed (HTTP): %s", e)
             return False
 
     async def list_models(self) -> list[str]:
@@ -162,8 +165,11 @@ class OpenAICompatibleAdapter:
                 data = resp.json()
                 models = data.get("data", [])
                 return [m.get("id", "") for m in models if m.get("id")]
-        except Exception as e:
-            logger.debug("OpenAI-compatible list_models failed: %s", e)
+        except (httpx.ConnectTimeout, httpx.ConnectError, httpx.ReadTimeout, OSError) as e:
+            logger.debug("OpenAI-compatible list_models failed (connection): %s", e)
+            return []
+        except httpx.HTTPError as e:
+            logger.debug("OpenAI-compatible list_models failed (HTTP): %s", e)
             return []
 
     def _messages_to_openai(self, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:

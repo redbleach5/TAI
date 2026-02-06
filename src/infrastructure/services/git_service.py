@@ -2,10 +2,45 @@
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Regex for safe branch names: alphanumeric, hyphens, underscores, slashes, dots
+_SAFE_BRANCH_RE = re.compile(r"^[a-zA-Z0-9_.\-/]+$")
+
+# Forbidden substrings in git refs (git check-ref-format rules)
+_FORBIDDEN_REF_PARTS = ("..", "~", "^", ":", "\\", " ", "[", "@{")
+
+
+def _is_safe_branch_name(name: str) -> bool:
+    """Validate branch name is safe for git commands."""
+    if not name or len(name) > 255:
+        return False
+    if not _SAFE_BRANCH_RE.match(name):
+        return False
+    for part in _FORBIDDEN_REF_PARTS:
+        if part in name:
+            return False
+    if name.startswith("-") or name.startswith("/") or name.endswith("/") or name.endswith(".lock"):
+        return False
+    return True
+
+
+def _is_safe_file_path(filepath: str) -> bool:
+    """Validate file path is safe (no traversal, no null bytes)."""
+    if not filepath:
+        return False
+    if "\x00" in filepath:
+        return False
+    # Block absolute paths and parent traversal
+    if filepath.startswith("/") or filepath.startswith("\\"):
+        return False
+    if ".." in filepath.split("/") or ".." in filepath.split("\\"):
+        return False
+    return True
 
 
 @dataclass
@@ -104,6 +139,9 @@ class GitService:
         """Get diff for file or all changes."""
         args = ["diff"]
         if path:
+            if not _is_safe_file_path(path):
+                return GitResult(success=False, error=f"Invalid file path: {path}")
+            args.append("--")
             args.append(path)
 
         code, out, err = await self._run(args)
@@ -114,6 +152,7 @@ class GitService:
 
     async def log(self, limit: int = 20) -> GitResult:
         """Get commit log."""
+        limit = max(1, min(limit, 500))
         code, out, err = await self._run(
             [
                 "log",
@@ -198,10 +237,16 @@ class GitService:
         if not message.strip():
             return GitResult(success=False, error="Commit message required")
 
+        # Validate file paths
+        if files:
+            for f in files:
+                if not _is_safe_file_path(f):
+                    return GitResult(success=False, error=f"Invalid file path: {f}")
+
         # Stage files
         if files:
             for f in files:
-                await self._run(["add", f])
+                await self._run(["add", "--", f])
         else:
             await self._run(["add", "-A"])
 
@@ -241,6 +286,9 @@ class GitService:
         create: bool = False,
     ) -> GitResult:
         """Checkout branch."""
+        if not _is_safe_branch_name(branch):
+            return GitResult(success=False, error=f"Invalid branch name: {branch}")
+
         args = ["checkout"]
         if create:
             args.append("-b")

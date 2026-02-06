@@ -113,16 +113,31 @@ def get_workspace_path() -> str:
     return current.path if current else str(Path.cwd().resolve())
 
 
+# Cached service instances (scoped to workspace path)
+_file_service_cache: dict[str, FileService] = {}
+_git_service_cache: dict[str, GitService] = {}
+_terminal_service: TerminalService | None = None
+
+
 def get_file_service() -> FileService:
-    """Get file service scoped to current workspace."""
-    return FileService(root_path=get_workspace_path())
+    """Get file service scoped to current workspace (cached per workspace)."""
+    ws = get_workspace_path()
+    if ws not in _file_service_cache:
+        _file_service_cache[ws] = FileService(root_path=ws)
+    return _file_service_cache[ws]
 
 
 def get_git_service() -> GitService:
-    """Get git service."""
-    return GitService()
+    """Get git service scoped to current workspace (cached per workspace)."""
+    ws = get_workspace_path()
+    if ws not in _git_service_cache:
+        _git_service_cache[ws] = GitService(cwd=ws)
+    return _git_service_cache[ws]
 
 
 def get_terminal_service() -> TerminalService:
-    """Get terminal service."""
-    return TerminalService()
+    """Get terminal service (singleton)."""
+    global _terminal_service
+    if _terminal_service is None:
+        _terminal_service = TerminalService()
+    return _terminal_service

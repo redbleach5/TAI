@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo, type FormEvent, type KeyboardEvent, type ReactNode } from 'react'
 import { Send, FileText, Globe, Code, Search, HelpCircle, FolderOpen, GitBranch, FileSearch, TerminalSquare, GitCompare } from 'lucide-react'
 
 interface Props {
@@ -54,9 +54,12 @@ export function ChatInput({
   const commandsRef = useRef<HTMLDivElement>(null)
 
   // Filtered commands based on what user typed after @
-  const filtered = filter
-    ? QUICK_COMMANDS.filter((c) => c.cmd.toLowerCase().includes(`@${filter.toLowerCase()}`))
-    : QUICK_COMMANDS
+  const filtered = useMemo(
+    () => filter
+      ? QUICK_COMMANDS.filter((c) => c.cmd.toLowerCase().includes(`@${filter.toLowerCase()}`))
+      : QUICK_COMMANDS,
+    [filter],
+  )
 
   const handleSubmit = useCallback((e: FormEvent) => {
     e.preventDefault()
@@ -158,7 +161,7 @@ export function ChatInput({
   return (
     <div className="chat-input-wrapper">
       {showCommands && filtered.length > 0 && (
-        <div className="chat-input__commands" ref={commandsRef} role="listbox" aria-label="Команды">
+        <div className="chat-input__commands" ref={commandsRef} role="listbox" aria-label="Команды" id="chat-commands-listbox">
           {filtered.map((c, i) => (
             <button
               key={c.cmd}
@@ -219,6 +222,7 @@ export function ChatInput({
               aria-expanded={showCommands}
               aria-autocomplete="list"
               aria-haspopup="listbox"
+              aria-controls="chat-commands-listbox"
             />
             {onUseStreamChange && (
               <label className="chat-input__stream" title="Включить потоковую передачу">

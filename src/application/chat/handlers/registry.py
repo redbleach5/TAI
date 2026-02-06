@@ -1,6 +1,10 @@
 """Command handler registry - manages all command handlers."""
 
+import logging
+
 from src.application.chat.handlers.base import CommandHandler, CommandResult
+
+logger = logging.getLogger(__name__)
 from src.application.chat.handlers.file_reader import FileReaderHandler
 from src.application.chat.handlers.folder_reader import FolderReaderHandler
 from src.application.chat.handlers.git_handler import DiffHandler, GitContextHandler
@@ -55,7 +59,18 @@ class CommandRegistry:
                 error=f"No handler for command: {command_type}",
             )
 
-        return await handler.execute(argument, **context)
+        try:
+            return await handler.execute(argument, **context)
+        except Exception as e:
+            logger.error(
+                "Handler '%s' raised an exception: %s",
+                command_type, e, exc_info=True,
+            )
+            return CommandResult(
+                content=f"[Handler error: {e}]",
+                success=False,
+                error=str(e),
+            )
 
     def list_commands(self) -> list[str]:
         """List all registered command types."""

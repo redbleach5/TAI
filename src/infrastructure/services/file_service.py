@@ -63,14 +63,21 @@ class FileService:
         self._backup_dir = Path(backup_dir)
 
     def _is_safe_path(self, path: Path) -> bool:
-        """Check if path is within root directory (no path traversal)."""
+        """Check if path is within root directory (no path traversal, no symlink escape)."""
         try:
-            resolved = path.resolve()
-            self._root.resolve()
-            # relative_to raises ValueError if path is not under root (correct for all platforms)
-            resolved.relative_to(self._root)
+            # resolve() follows symlinks — ensures the real path is under root
+            resolved = path.resolve(strict=False)
+            root_resolved = self._root.resolve(strict=False)
+            # relative_to raises ValueError if path is not under root
+            resolved.relative_to(root_resolved)
+
+            # Extra check: if path exists and is a symlink, verify target is also under root
+            if path.exists() and path.is_symlink():
+                real_target = path.resolve(strict=True)
+                real_target.relative_to(root_resolved)
+
             return True
-        except ValueError:
+        except (ValueError, OSError):
             return False
         except Exception as e:
             logger.debug("Path safety check failed for %s: %s", path, e)

@@ -111,12 +111,10 @@ class TestGitCommit:
     """Test /git/commit endpoint."""
 
     def test_commit_empty_message(self):
-        """Test commit with empty message fails."""
+        """Test commit with empty message — rejected by validation (min_length=1)."""
         response = client.post("/git/commit", json={"message": ""})
-        assert response.status_code == 200
-        data = response.json()
-        assert data["success"] is False
-        assert "required" in data["error"].lower()
+        # Pydantic validation rejects empty message with 422
+        assert response.status_code == 422
 
     def test_commit_nothing_to_commit(self):
         """Test commit when nothing staged."""

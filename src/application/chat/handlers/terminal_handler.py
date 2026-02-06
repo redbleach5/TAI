@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import shlex
 from pathlib import Path
 
 from src.application.chat.handlers.base import CommandHandler, CommandResult
@@ -23,11 +24,27 @@ ALLOWED_PREFIXES = (
     "curl", "wget",
 )
 
+# Blocked shell metacharacters (checked on raw input)
+_BLOCKED_PATTERNS = ("&&", "||", ";", "|", ">", "<", "`", "$(")
+
 
 def _is_allowed(command: str) -> bool:
-    """Check if command is in the allowed whitelist."""
-    cmd = command.strip().split()[0] if command.strip() else ""
-    return cmd.lower() in ALLOWED_PREFIXES
+    """Check if command is in the allowed whitelist using safe parsing."""
+    try:
+        parts = shlex.split(command.strip())
+    except ValueError:
+        return False
+    if not parts:
+        return False
+    return parts[0].lower() in ALLOWED_PREFIXES
+
+
+def _has_blocked_pattern(command: str) -> str | None:
+    """Return the first blocked pattern found in raw command, or None."""
+    for pattern in _BLOCKED_PATTERNS:
+        if pattern in command:
+            return pattern
+    return None
 
 
 class TerminalHandler(CommandHandler):
@@ -56,9 +73,21 @@ class TerminalHandler(CommandHandler):
         workspace_path = context.get("workspace_path")
         cwd = workspace_path or str(Path.cwd())
 
+        # Check for shell metacharacters on raw input first
+        blocked = _has_blocked_pattern(command)
+        if blocked:
+            return CommandResult(
+                content=f"[Blocked pattern in command: {blocked}]",
+                success=False,
+                error=f"Shell metacharacter '{blocked}' is not allowed for security reasons.",
+            )
+
         # Safety check
         if not _is_allowed(command):
-            first_word = command.split()[0] if command.split() else command
+            try:
+                first_word = shlex.split(command)[0]
+            except (ValueError, IndexError):
+                first_word = command
             return CommandResult(
                 content=f"[Command not allowed: {first_word}]",
                 success=False,
@@ -67,8 +96,9 @@ class TerminalHandler(CommandHandler):
             )
 
         try:
-            proc = await asyncio.create_subprocess_shell(
-                command,
+            args = shlex.split(command)
+            proc = await asyncio.create_subprocess_exec(
+                *args,
                 cwd=cwd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,

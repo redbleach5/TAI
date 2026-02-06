@@ -82,7 +82,7 @@ class ChromaDBRAGAdapter:
             count = self._collection.count()
             if count == 0:
                 return []
-        except Exception as e:
+        except (ValueError, RuntimeError) as e:
             logger.error("Failed to get collection count: %s", e)
             return []
 
@@ -91,8 +91,11 @@ class ChromaDBRAGAdapter:
             if not query_embedding:
                 logger.warning("Empty query embedding returned")
                 return []
-        except Exception as e:
+        except (ConnectionError, OSError, RuntimeError) as e:
             logger.error("Failed to embed query: %s", e)
+            return []
+        except Exception as e:
+            logger.error("Unexpected embedding error: %s", e, exc_info=True)
             return []
 
         try:
@@ -101,7 +104,7 @@ class ChromaDBRAGAdapter:
                 n_results=min(limit, count),
                 include=["documents", "metadatas", "distances"],
             )
-        except Exception as e:
+        except (ValueError, RuntimeError) as e:
             logger.error("ChromaDB query failed: %s", e)
             return []
 

@@ -1,7 +1,7 @@
 /**
  * Cursor-like: model selector dropdown with keyboard navigation.
  */
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { ChevronDown, Loader2 } from 'lucide-react'
 import { getConfig, getModels } from '../../api/client'
 
@@ -52,8 +52,10 @@ export function ModelSelector({ value, onChange, provider }: Props) {
   }, [])
 
   const displayValue = value || 'Auto'
-  const allOptions = ['', ...models]
-  const uniqueOptions = value && !models.includes(value) ? [value, ...allOptions] : allOptions
+  const uniqueOptions = useMemo(() => {
+    const allOptions = ['', ...models]
+    return value && !models.includes(value) ? [value, ...allOptions] : allOptions
+  }, [value, models])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (!open) {
@@ -92,6 +94,7 @@ export function ModelSelector({ value, onChange, provider }: Props) {
         onClick={() => !loading && setOpen(!open)}
         disabled={loading}
         title="Выбрать модель"
+        aria-label={`Model: ${displayValue}`}
         aria-haspopup="listbox"
         aria-expanded={open}
       >

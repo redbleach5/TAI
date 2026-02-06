@@ -123,8 +123,10 @@ class OllamaAdapter:
                 if resp.status_code == 200:
                     self._available = True
                     return True
-        except Exception as e:
-            logger.debug("Ollama availability check failed: %s", e)
+        except (httpx.ConnectTimeout, httpx.ConnectError, httpx.ReadTimeout, OSError) as e:
+            logger.debug("Ollama availability check failed (connection): %s", e)
+        except httpx.HTTPError as e:
+            logger.debug("Ollama availability check failed (HTTP): %s", e)
         self._available = False
         return False
 
